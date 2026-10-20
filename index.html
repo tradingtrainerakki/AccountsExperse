@@ -2,21 +2,30 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Tally-Style GST + Inventory + BOM (Full v5)</title>
+<title>Tally-Style GST + Inventory + BOM (Final v6)</title>
 <style>
   * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, sans-serif; }
   body { margin:0; background:#1e1e2f; color:#ddd; font-size:13px; }
+  
+  /* TOPBAR */
   #topbar { background:#0d6efd; color:#fff; padding:6px 10px; display:flex; justify-content:space-between; align-items:center; }
   #topbar b { font-size:15px; }
-  #topbar .top-actions button { background:#198754; color:#fff; border:none; padding:4px 10px; border-radius:3px; cursor:pointer; font-size:12px; margin-left:10px;}
-  #topbar .top-actions button:hover { background:#157347; }
-  #topbar .top-actions button.restore { background:#ffc107; color:#000; }
-  #topbar .top-actions button.restore:hover { background:#e0a800; }
-  #userInfo { font-size:12px; cursor:pointer; margin-left:10px;}
+  .top-actions { display:flex; gap:10px; align-items:center; }
+  .top-actions button { background:#198754; color:#fff; border:none; padding:4px 10px; border-radius:3px; cursor:pointer; font-size:12px; font-weight:bold; }
+  .top-actions button:hover { background:#157347; }
+  .top-actions button.restore { background:#ffc107; color:#000; }
+  .top-actions button.restore:hover { background:#e0a800; }
+  .top-actions button.logout { background:#dc3545; }
+  .top-actions button.logout:hover { background:#bb2d3b; }
+  #userInfo { font-size:12px; margin-left:10px; font-weight:bold; }
+
+  /* MENUBAR & CONTENT */
   #menubar { background:#2d2d44; padding:6px 10px; display:flex; gap:6px; flex-wrap:wrap; border-bottom:1px solid #444; }
   #menubar button { background:#3a3a5a; color:#eee; border:1px solid #555; padding:5px 9px; cursor:pointer; border-radius:3px; font-size:12px; }
   #menubar button:hover { background:#0d6efd; }
   #content { padding:12px; height:calc(100vh - 95px); overflow:auto; }
+  
+  /* GENERAL STYLES */
   h2 { color:#0dcaf0; border-bottom:1px solid #444; padding-bottom:4px; margin-top:0; font-size:16px; }
   h3 { color:#9cf; font-size:14px; margin:8px 0 4px; }
   .card { background:#2a2a40; border:1px solid #444; border-radius:4px; padding:10px; margin-bottom:10px; }
@@ -30,23 +39,26 @@
   th { background:#3a3a5a; color:#9cf; }
   tr:nth-child(even) { background:#26263a; }
   tr.sel-row { background:#0d6efd55 !important; outline:1px solid #0dcaf0; }
+  
+  /* BUTTONS */
   .btn { background:#0d6efd; color:#fff; border:none; padding:5px 10px; border-radius:3px; cursor:pointer; font-size:12px; }
   .btn:hover { background:#0a58ca; }
   .btn-danger { background:#dc3545; }
   .btn-success { background:#198754; }
   .btn-warn { background:#ffc107; color:#000; }
   .btn-sm { padding:2px 7px; font-size:11px; }
+  
+  /* MISC */
   .small { font-size:11px; color:#aaa; }
   .right { text-align:right; }
   .center { text-align:center; }
   .totals { background:#1a1a2e; padding:8px; border-radius:3px; margin-top:8px; }
   .totals div { display:flex; justify-content:space-between; padding:2px 0; }
   .grand { font-size:15px; color:#0dcaf0; font-weight:bold; border-top:1px solid #444; margin-top:4px; padding-top:4px; }
-  .hidden { display:none !important; }
   .status { padding:8px; border-radius:3px; margin-bottom:8px; }
   .status.ok { background:#198754; }
   .status.err { background:#dc3545; }
-  .status.info { background:#0d6efd; }
+  
   #shortcutHelp { position:fixed; bottom:0; left:0; right:0; background:#000; color:#9cf; font-size:11px; padding:4px 8px; border-top:1px solid #0d6efd; z-index:5; }
   #shortcutHelp span { margin-right:12px; }
   .badge { display:inline-block; padding:1px 6px; border-radius:3px; font-size:10px; background:#6c757d; color:#fff; }
@@ -57,13 +69,11 @@
   .badge.b2b { background:#0d6efd; }
   .badge.b2c { background:#fd7e14; }
   .badge.edit { background:#ffc107; color:#000; }
-  .badge.gstr1 { background:#0d6efd; }
-  .badge.gstr3b { background:#198754; }
-  .badge.gstr9 { background:#6f42c1; }
-  .badge.gstr2b { background:#fd7e14; }
   .tabs { display:flex; gap:4px; margin-bottom:8px; flex-wrap:wrap; }
   .tabs button { background:#3a3a5a; color:#eee; border:1px solid #555; padding:5px 10px; cursor:pointer; }
   .tabs button.active { background:#0d6efd; }
+  
+  /* PRINT */
   #printArea { display:none; }
   @media print {
     body { background:#fff; color:#000; }
@@ -72,28 +82,26 @@
     #printArea table { border-collapse:collapse; width:100%; font-size:11px; }
     #printArea th, #printArea td { border:1px solid #333; padding:4px; }
     #printArea th { background:#eee; }
-    #printArea h1, #printArea h2, #printArea h3 { color:#000; }
     .no-print { display:none !important; }
   }
+  
+  /* LOGIN */
   .login-box { max-width:360px; margin:80px auto; background:#2a2a40; padding:20px; border-radius:6px; border:1px solid #444; }
   .login-box h2 { text-align:center; }
   .kbd { background:#111; border:1px solid #555; border-radius:3px; padding:1px 5px; font-size:10px; color:#9cf; }
-  .sub-tabs { display:flex; gap:3px; margin-bottom:6px; flex-wrap:wrap; }
-  .sub-tabs button { background:#222238; color:#bbb; border:1px solid #444; padding:3px 8px; cursor:pointer; font-size:11px; }
-  .sub-tabs button.active { background:#0dcaf0; color:#000; }
   .file-preview { max-width:100%; max-height:200px; border:1px solid #555; margin-top:5px; border-radius:3px; }
 </style>
 </head>
 <body>
 
 <div id="topbar">
-  <div><b>🧾 Tally-Style GST + Inventory + BOM (v5)</b></div>
+  <div><b>🧾 Tally-Style GST + Inventory + BOM (v6)</b></div>
   <div class="top-actions">
-    <!-- Tally Style Backup & Restore in Topbar -->
-    <button onclick="downloadBackup()" title="Pura data save karein (JSON format)">📤 Backup Data</button>
-    <button class="restore" onclick="document.getElementById('globalRestoreFile').click()" title="Backup file upload karein">📥 Restore Data</button>
+    <button onclick="downloadBackup()" title="Save all data to a file">📤 Backup Data</button>
+    <button class="restore" onclick="document.getElementById('globalRestoreFile').click()" title="Upload backup file">📥 Restore Data</button>
     <input type="file" id="globalRestoreFile" accept=".json" style="display:none" onchange="restoreBackup(this)">
     <span id="userInfo">Not logged in</span>
+    <button class="logout" id="logoutBtn" onclick="doLogout()" style="display:none;">Logout</button>
   </div>
 </div>
 
@@ -140,7 +148,7 @@
 
 <script>
 /* =====================================================================
-   FULL v5: + Topbar Data Backup/Restore (Tally Style Upload/Download)
+   FINAL v6: Fixed Login Session, Topbar Backup/Restore
    ===================================================================== */
 
 let DB = {
@@ -164,10 +172,9 @@ const GROUPS = ["Cash-in-Hand","Bank Accounts","Sundry Debtors","Sundry Creditor
 const ITEM_TYPES = ["Raw Material","Packing Material","Semi-Finished","Finished Goods"];
 const GST_RATES = [0,5,12,18,28];
 
-function save() { try { localStorage.setItem('tallyFullDBv5', JSON.stringify(DB)); } catch(e){ alert("Storage full! Data bahut bada hai."); } }
+function save() { try { localStorage.setItem('tallyFullDBv6', JSON.stringify(DB)); } catch(e){ alert("Storage full! Data bahut bada hai."); } }
 function load() { 
-  // Purane version ka data check karein
-  const d = localStorage.getItem('tallyFullDBv5') || localStorage.getItem('tallyFullDBv4') || localStorage.getItem('tallyFullDBv3'); 
+  const d = localStorage.getItem('tallyFullDBv6') || localStorage.getItem('tallyFullDBv5') || localStorage.getItem('tallyFullDBv4'); 
   if (d) { try { DB = JSON.parse(d); } catch(e){} } 
   if (!DB.users) DB.users=[{username:'admin',password:'admin',role:'admin'}]; 
   if (!DB.audit) DB.audit=[]; 
@@ -251,9 +258,10 @@ function removeAttachment(previewId) {
   if (prev) prev.innerHTML = '';
 }
 
-/* ---------------- LOGIN ---------------- */
+/* ---------------- LOGIN & LOGOUT ---------------- */
 function renderLogin() {
   document.getElementById('userInfo').textContent = 'Not logged in';
+  document.getElementById('logoutBtn').style.display = 'none';
   document.getElementById('content').innerHTML = `
     <div class="login-box">
       <h2>🔐 Login</h2>
@@ -270,9 +278,12 @@ function doLogin() {
   if (!usr) return toast("Invalid credentials", false);
   DB.session = { username: usr.username, role: usr.role, loginAt: nowStr() };
   audit('LOGIN','User logged in'); save();
-  document.getElementById('userInfo').textContent = `👤 ${usr.username} | Logout`;
-  document.getElementById('userInfo').onclick = () => { DB.session=null; save(); renderLogin(); };
+  document.getElementById('userInfo').textContent = `👤 ${usr.username}`;
+  document.getElementById('logoutBtn').style.display = 'inline-block';
   showView(DB.company ? 'gateway' : 'company');
+}
+function doLogout() {
+  DB.session = null; save(); renderLogin();
 }
 
 /* ---------------- ROUTER ---------------- */
@@ -282,9 +293,8 @@ function showView(name, arg) {
   currentView = name;
   const c = document.getElementById('content'); c.innerHTML = '';
   if (!DB.company && name !== 'company' && name !== 'admin') {
-    c.innerHTML = '<div class="card"><h2>🏢 Pehle Company Banao</h2><button class="btn" onclick="showView(\'company\')">Company Create</button></div>'; return;
+    c.innerHTML = '<div class="card"><h2>🏢 Pehle Company Banao</h2><p>Aapne abhi tak koi company nahi banayi hai.</p><button class="btn btn-success" onclick="showView(\'company\')">➕ Create Company</button></div>'; return;
   }
-  document.getElementById('companyName').textContent = DB.company ? DB.company.name : 'No Company';
   switch(name) {
     case 'gateway': renderGateway(); break;
     case 'company': renderCompany(); break;
@@ -329,7 +339,7 @@ function renderGateway() {
         <div><button class="btn btn-warn" onclick="showView('reports')">📊 Reports</button></div>
         <div><button class="btn btn-success" onclick="showView('gstReports')">🧾 GST Reports</button></div>
         <div><button class="btn" onclick="showView('admin')">⚙️ Admin</button></div>
-        <div><button class="btn btn-danger" onclick="resetDB()">🗑️ Reset</button></div>
+        <div><button class="btn btn-danger" onclick="resetDB()">🗑️ Reset Data</button></div>
       </div>
     </div>
     <div class="card">
@@ -349,9 +359,9 @@ function renderCompany() {
   const comp = DB.company || {name:'',gstin:'',address:'',phone:'',email:''};
   c.innerHTML = `
     <div class="card">
-      <h2>🏢 Company</h2>
+      <h2>🏢 Company Creation</h2>
       <div class="row">
-        <div><label>Name</label><input id="cName" value="${comp.name||''}"></div>
+        <div><label>Name</label><input id="cName" value="${comp.name||''}" placeholder="Apni company ka naam likhein"></div>
         <div><label>GSTIN</label><input id="cGstin" value="${comp.gstin||''}" placeholder="27AAAAA0000A1Z5"></div>
       </div>
       <div class="row">
@@ -361,13 +371,13 @@ function renderCompany() {
       </div>
       <div class="row">
         <div><label>State</label><select id="cState">${Object.entries(STATE_CODES).map(([k,v])=>`<option value="${k}" ${comp.state===k?'selected':''}>${k} - ${v}</option>`).join('')}</select></div>
-        <div style="display:flex;align-items:flex-end;"><button class="btn btn-success" onclick="saveCompany()">💾 Save</button></div>
+        <div style="display:flex;align-items:flex-end;"><button class="btn btn-success" onclick="saveCompany()">💾 Save Company</button></div>
       </div>
     </div>`;
 }
 function saveCompany() {
   const name = document.getElementById('cName').value.trim();
-  if (!name) return toast("Company name zaroori", false);
+  if (!name) return toast("Company name zaroori hai", false);
   const gstin = document.getElementById('cGstin').value.trim().toUpperCase();
   DB.company = { name, gstin, state: gstin?stateOf(gstin):document.getElementById('cState').value, address: document.getElementById('cAddr').value.trim(), phone: document.getElementById('cPhone').value.trim(), email: document.getElementById('cEmail').value.trim() };
   if (!DB.ledgers.length) {
@@ -380,7 +390,7 @@ function saveCompany() {
       if(!ledgerByName(n)) DB.ledgers.push({name:n,group:g,gstin:'',opening:0});
     });
   }
-  audit('COMPANY_SAVE', name); save(); toast("Saved!"); showView('gateway');
+  audit('COMPANY_SAVE', name); save(); toast("Company Saved!"); showView('gateway');
 }
 
 /* ---------------- LEDGER ---------------- */
@@ -388,7 +398,7 @@ function renderLedger() {
   const c = document.getElementById('content');
   c.innerHTML = `
     <div class="card">
-      <h2>📒 Ledger</h2>
+      <h2>📒 Ledger Creation</h2>
       <div class="row">
         <div><label>Name</label><input id="lName"></div>
         <div><label>Group</label><select id="lGroup">${GROUPS.map(g=>`<option>${g}</option>`).join('')}</select></div>
@@ -420,7 +430,7 @@ function renderItem() {
   const c = document.getElementById('content');
   c.innerHTML = `
     <div class="card">
-      <h2>📦 Stock Item</h2>
+      <h2>📦 Stock Item Creation</h2>
       <div class="row">
         <div><label>Name</label><input id="iName"></div>
         <div><label>Type</label><select id="iType">${ITEM_TYPES.map(t=>`<option>${t}</option>`).join('')}</select></div>
@@ -464,7 +474,7 @@ function renderBOM() {
   const fgItems = DB.items.filter(i=>i.type==='Finished Goods'||i.type==='Semi-Finished');
   c.innerHTML = `
     <div class="card">
-      <h2>⚙️ BOM</h2>
+      <h2>⚙️ BOM (Bill of Materials)</h2>
       <div class="row">
         <div><label>Finished/Semi Item</label><select id="bFg">${fgItems.map(i=>`<option>${i.name}</option>`).join('')}</select></div>
         <div><label>Output Qty</label><input id="bOut" type="number" value="1"></div>
@@ -970,8 +980,8 @@ document.addEventListener('keydown', e => {
 load();
 if (!DB.session) renderLogin();
 else {
-  document.getElementById('userInfo').textContent = `👤 ${DB.session.username} | Logout`;
-  document.getElementById('userInfo').onclick = () => { DB.session=null; save(); renderLogin(); };
+  document.getElementById('userInfo').textContent = `👤 ${DB.session.username}`;
+  document.getElementById('logoutBtn').style.display = 'inline-block';
   showView(DB.company ? 'gateway' : 'company');
 }
 </script>
