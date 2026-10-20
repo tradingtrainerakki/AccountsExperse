@@ -1,0 +1,999 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Tally-Style GST + Inventory + BOM (Full v3)</title>
+<style>
+  * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, sans-serif; }
+  body { margin:0; background:#1e1e2f; color:#ddd; font-size:13px; }
+  #topbar { background:#0d6efd; color:#fff; padding:6px 10px; display:flex; justify-content:space-between; align-items:center; }
+  #topbar b { font-size:15px; }
+  #userInfo { font-size:12px; cursor:pointer; }
+  #menubar { background:#2d2d44; padding:6px 10px; display:flex; gap:6px; flex-wrap:wrap; border-bottom:1px solid #444; }
+  #menubar button { background:#3a3a5a; color:#eee; border:1px solid #555; padding:5px 9px; cursor:pointer; border-radius:3px; font-size:12px; }
+  #menubar button:hover { background:#0d6efd; }
+  #content { padding:12px; height:calc(100vh - 95px); overflow:auto; }
+  h2 { color:#0dcaf0; border-bottom:1px solid #444; padding-bottom:4px; margin-top:0; font-size:16px; }
+  h3 { color:#9cf; font-size:14px; margin:8px 0 4px; }
+  .card { background:#2a2a40; border:1px solid #444; border-radius:4px; padding:10px; margin-bottom:10px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:6px; }
+  .row > div { flex:1; min-width:140px; }
+  label { display:block; font-size:11px; color:#9cf; margin-bottom:2px; }
+  input, select, textarea { width:100%; background:#1a1a2e; color:#fff; border:1px solid #555; padding:5px; border-radius:3px; font-size:12px; }
+  input:focus, select:focus { outline:1px solid #0dcaf0; }
+  table { width:100%; border-collapse:collapse; margin-top:6px; font-size:12px; }
+  th, td { border:1px solid #444; padding:4px 6px; text-align:left; }
+  th { background:#3a3a5a; color:#9cf; }
+  tr:nth-child(even) { background:#26263a; }
+  tr.sel-row { background:#0d6efd55 !important; outline:1px solid #0dcaf0; }
+  .btn { background:#0d6efd; color:#fff; border:none; padding:5px 10px; border-radius:3px; cursor:pointer; font-size:12px; }
+  .btn:hover { background:#0a58ca; }
+  .btn-danger { background:#dc3545; }
+  .btn-success { background:#198754; }
+  .btn-warn { background:#ffc107; color:#000; }
+  .btn-sm { padding:2px 7px; font-size:11px; }
+  .small { font-size:11px; color:#aaa; }
+  .right { text-align:right; }
+  .center { text-align:center; }
+  .totals { background:#1a1a2e; padding:8px; border-radius:3px; margin-top:8px; }
+  .totals div { display:flex; justify-content:space-between; padding:2px 0; }
+  .grand { font-size:15px; color:#0dcaf0; font-weight:bold; border-top:1px solid #444; margin-top:4px; padding-top:4px; }
+  .hidden { display:none !important; }
+  .status { padding:8px; border-radius:3px; margin-bottom:8px; }
+  .status.ok { background:#198754; }
+  .status.err { background:#dc3545; }
+  .status.info { background:#0d6efd; }
+  #shortcutHelp { position:fixed; bottom:0; left:0; right:0; background:#000; color:#9cf; font-size:11px; padding:4px 8px; border-top:1px solid #0d6efd; z-index:5; }
+  #shortcutHelp span { margin-right:12px; }
+  .badge { display:inline-block; padding:1px 6px; border-radius:3px; font-size:10px; background:#6c757d; color:#fff; }
+  .badge.raw { background:#6f42c1; }
+  .badge.pack { background:#fd7e14; }
+  .badge.semi { background:#20c997; }
+  .badge.fin { background:#0d6efd; }
+  .badge.b2b { background:#0d6efd; }
+  .badge.b2c { background:#fd7e14; }
+  .badge.edit { background:#ffc107; color:#000; }
+  .badge.gstr1 { background:#0d6efd; }
+  .badge.gstr3b { background:#198754; }
+  .badge.gstr9 { background:#6f42c1; }
+  .badge.gstr2b { background:#fd7e14; }
+  .tabs { display:flex; gap:4px; margin-bottom:8px; flex-wrap:wrap; }
+  .tabs button { background:#3a3a5a; color:#eee; border:1px solid #555; padding:5px 10px; cursor:pointer; }
+  .tabs button.active { background:#0d6efd; }
+  #printArea { display:none; }
+  @media print {
+    body { background:#fff; color:#000; }
+    #topbar, #menubar, #shortcutHelp, #content { display:none !important; }
+    #printArea { display:block !important; padding:10mm; font-family: Arial, sans-serif; color:#000; }
+    #printArea table { border-collapse:collapse; width:100%; font-size:11px; }
+    #printArea th, #printArea td { border:1px solid #333; padding:4px; }
+    #printArea th { background:#eee; }
+    #printArea h1, #printArea h2, #printArea h3 { color:#000; }
+    .no-print { display:none !important; }
+  }
+  .login-box { max-width:360px; margin:80px auto; background:#2a2a40; padding:20px; border-radius:6px; border:1px solid #444; }
+  .login-box h2 { text-align:center; }
+  .kbd { background:#111; border:1px solid #555; border-radius:3px; padding:1px 5px; font-size:10px; color:#9cf; }
+  .sub-tabs { display:flex; gap:3px; margin-bottom:6px; flex-wrap:wrap; }
+  .sub-tabs button { background:#222238; color:#bbb; border:1px solid #444; padding:3px 8px; cursor:pointer; font-size:11px; }
+  .sub-tabs button.active { background:#0dcaf0; color:#000; }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <b>🧾 Tally-Style GST + Inventory + BOM (Full v3)</b>
+  <span id="userInfo">Not logged in</span>
+</div>
+
+<div id="menubar">
+  <button onclick="showView('gateway')">🏠 Gateway</button>
+  <button onclick="showView('company')">🏢 Company</button>
+  <button onclick="showView('ledger')">📒 Ledger</button>
+  <button onclick="showView('item')">📦 Item</button>
+  <button onclick="showView('bom')">⚙️ BOM</button>
+  <button onclick="openVoucher('F8')">🧾 Sale</button>
+  <button onclick="openVoucher('F9')">📥 Purchase</button>
+  <button onclick="openVoucher('F10')">↩️ Credit Note</button>
+  <button onclick="openVoucher('F11')">↪️ Debit Note</button>
+  <button onclick="openVoucher('F5')">💸 Payment</button>
+  <button onclick="openVoucher('F6')">💰 Receipt</button>
+  <button onclick="openVoucher('F7')">📘 Journal</button>
+  <button onclick="openVoucher('F4')">🔄 Contra</button>
+  <button onclick="openVoucher('F12')">🏭 Manufacture</button>
+  <button onclick="showView('reports')">📊 Reports</button>
+  <button onclick="showView('gstReports')">🧾 GST Reports</button>
+  <button onclick="showView('bank')">🏦 Bank Recon</button>
+  <button onclick="showView('admin')">⚙️ Admin</button>
+</div>
+
+<div id="content"></div>
+<div id="printArea"></div>
+
+<div id="shortcutHelp">
+  <span><b>F8</b> Sale</span>
+  <span><b>F9</b> Purchase</span>
+  <span><b>F10</b> Credit</span>
+  <span><b>F11</b> Debit</span>
+  <span><b>F5</b> Payment</span>
+  <span><b>F6</b> Receipt</span>
+  <span><b>F7</b> Journal</span>
+  <span><b>F4</b> Contra</span>
+  <span><b>F12</b> Mfg</span>
+  <span><b>Ctrl+G</b> Gateway</span>
+  <span><b>Ctrl+A</b> Save</span>
+  <span><b>↑↓</b> Nav</span>
+  <span><b>Enter</b> Open</span>
+  <span><b>Esc</b> Back</span>
+</div>
+
+<script>
+/* =====================================================================
+   FULL v3: + GSTR-1 (all tables), GSTR-3B (summary+ITC), GSTR-9 (annual),
+   GSTR-2B Reconciliation, JSON/CSV exports for GST reports
+   ===================================================================== */
+
+let DB = {
+  company: null,
+  ledgers: [],
+  items: [],
+  vouchers: [],
+  users: [{username:'admin', password:'admin', role:'admin'}],
+  audit: [],
+  session: null,
+  counters: { sale:1, purchase:1, credit:1, debit:1, payment:1, receipt:1, journal:1, contra:1, mfg:1 }
+};
+
+const STATE_CODES = {
+  "27":"Maharashtra","07":"Delhi","29":"Karnataka","24":"Gujarat","33":"Tamil Nadu",
+  "09":"Uttar Pradesh","19":"West Bengal","08":"Rajasthan","06":"Haryana","23":"Madhya Pradesh",
+  "32":"Kerala","36":"Telangana","37":"Andhra Pradesh","21":"Odisha","03":"Punjab",
+  "10":"Bihar","22":"Chhattisgarh","34":"Puducherry","30":"Goa","02":"Himachal Pradesh"
+};
+const GROUPS = ["Cash-in-Hand","Bank Accounts","Sundry Debtors","Sundry Creditors","Sales Accounts","Purchase Accounts","Direct Expenses","Indirect Expenses","Direct Incomes","Indirect Incomes","Current Assets","Current Liabilities","Fixed Assets","Capital Account","Duties & Taxes","Stock-in-Hand"];
+const ITEM_TYPES = ["Raw Material","Packing Material","Semi-Finished","Finished Goods"];
+const GST_RATES = [0,5,12,18,28];
+
+function save() { try { localStorage.setItem('tallyFullDBv3', JSON.stringify(DB)); } catch(e){} }
+function load() { const d = localStorage.getItem('tallyFullDBv3') || localStorage.getItem('tallyFullDBv2'); if (d) { try { DB = JSON.parse(d); } catch(e){} } if (!DB.users) DB.users=[{username:'admin',password:'admin',role:'admin'}]; if (!DB.audit) DB.audit=[]; if (!DB.session) DB.session=null; }
+function resetDB() {
+  if (!confirm("Sab data delete ho jayega. Confirm?")) return;
+  DB = { company:null, ledgers:[], items:[], vouchers:[], users:[{username:'admin',password:'admin',role:'admin'}], audit:[], session:null, counters:{sale:1,purchase:1,credit:1,debit:1,payment:1,receipt:1,journal:1,contra:1,mfg:1} };
+  save(); showView('gateway');
+}
+
+function fmt(n) { return Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fmtQty(n) { return Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:3}); }
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function today() { return new Date().toISOString().slice(0,10); }
+function nowStr() { return new Date().toLocaleString('en-IN'); }
+function stateOf(g) { return g && g.length>=2 ? g.slice(0,2) : ""; }
+function stateName(c) { return STATE_CODES[c] || c || "-"; }
+function isInter(g1,g2) { const s1=stateOf(g1), s2=stateOf(g2); return !!(s1 && s2 && s1!==s2); }
+function itemByName(n) { return DB.items.find(i=>i.name===n); }
+function ledgerByName(n) { return DB.ledgers.find(l=>l.name===n); }
+
+function audit(action, detail) {
+  if (!DB.session) return;
+  DB.audit.push({ts: nowStr(), user: DB.session.username, action, detail: detail||''});
+  save();
+}
+
+function numToWords(num) {
+  const a = ['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
+  const b = ['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
+  function two(n){ if(n<20) return a[n]; return b[Math.floor(n/10)] + (n%10?' '+a[n%10]:''); }
+  function three(n){ if(n<100) return two(n); return a[Math.floor(n/100)]+' Hundred'+(n%100?' '+two(n%100):''); }
+  if (num===0) return 'Zero';
+  let rupees = Math.floor(num), paise = Math.round((num-rupees)*100);
+  let str = '';
+  const crore = Math.floor(rupees/10000000); rupees%=10000000;
+  const lakh = Math.floor(rupees/100000); rupees%=100000;
+  const thousand = Math.floor(rupees/1000); rupees%=1000;
+  if (crore) str += three(crore)+' Crore ';
+  if (lakh) str += three(lakh)+' Lakh ';
+  if (thousand) str += three(thousand)+' Thousand ';
+  if (rupees) str += three(rupees);
+  str = str.trim() + ' Rupees';
+  if (paise) str += ' and ' + two(paise) + ' Paise';
+  return str + ' Only';
+}
+
+function toast(msg, ok=true) {
+  const div = document.createElement('div');
+  div.className = 'status ' + (ok?'ok':'err');
+  div.textContent = msg;
+  const c = document.getElementById('content');
+  c.insertBefore(div, c.firstChild);
+  setTimeout(()=>div.remove(), 3500);
+}
+
+/* ---------------- LOGIN ---------------- */
+function renderLogin() {
+  document.getElementById('userInfo').textContent = 'Not logged in';
+  document.getElementById('content').innerHTML = `
+    <div class="login-box">
+      <h2>🔐 Login</h2>
+      <div class="row"><div><label>Username</label><input id="lgUser" value="admin"></div></div>
+      <div class="row"><div><label>Password</label><input id="lgPass" type="password" value="admin"></div></div>
+      <div class="row"><div><button class="btn btn-success" style="width:100%" onclick="doLogin()">Login</button></div></div>
+      <p class="small center">Default: admin / admin</p>
+    </div>`;
+}
+function doLogin() {
+  const u = document.getElementById('lgUser').value.trim();
+  const p = document.getElementById('lgPass').value;
+  const usr = DB.users.find(x=>x.username===u && x.password===p);
+  if (!usr) return toast("Invalid credentials", false);
+  DB.session = { username: usr.username, role: usr.role, loginAt: nowStr() };
+  audit('LOGIN','User logged in'); save();
+  document.getElementById('userInfo').textContent = `👤 ${usr.username} | Logout`;
+  document.getElementById('userInfo').onclick = () => { DB.session=null; save(); renderLogin(); };
+  showView(DB.company ? 'gateway' : 'company');
+}
+
+/* ---------------- ROUTER ---------------- */
+let currentView = 'gateway';
+function showView(name, arg) {
+  if (!DB.session) { renderLogin(); return; }
+  currentView = name;
+  const c = document.getElementById('content'); c.innerHTML = '';
+  if (!DB.company && name !== 'company' && name !== 'admin') {
+    c.innerHTML = '<div class="card"><h2>🏢 Pehle Company Banao</h2><button class="btn" onclick="showView(\'company\')">Company Create</button></div>'; return;
+  }
+  document.getElementById('companyName').textContent = DB.company ? DB.company.name : 'No Company';
+  switch(name) {
+    case 'gateway': renderGateway(); break;
+    case 'company': renderCompany(); break;
+    case 'ledger': renderLedger(); break;
+    case 'item': renderItem(); break;
+    case 'bom': renderBOM(); break;
+    case 'reports': renderReports(); break;
+    case 'gstReports': renderGSTReports(); break;
+    case 'voucher': renderVoucherForm(arg); break;
+    case 'bank': renderBankRecon(); break;
+    case 'admin': renderAdmin(); break;
+  }
+}
+
+/* ---------------- GATEWAY ---------------- */
+function renderGateway() {
+  const c = document.getElementById('content');
+  c.innerHTML = `
+    <div class="card">
+      <h2>🏠 Gateway of Tally</h2>
+      <p class="small">Company: <b>${DB.company.name}</b> | GSTIN: ${DB.company.gstin||'-'} | State: ${stateName(stateOf(DB.company.gstin))}</p>
+      <div class="row" style="margin-top:10px;">
+        <div><button class="btn" onclick="showView('ledger')">📒 Ledger</button></div>
+        <div><button class="btn" onclick="showView('item')">📦 Item</button></div>
+        <div><button class="btn" onclick="showView('bom')">⚙️ BOM</button></div>
+        <div><button class="btn" onclick="showView('bank')">🏦 Bank Recon</button></div>
+      </div>
+      <div class="row">
+        <div><button class="btn btn-success" onclick="openVoucher('F8')">🧾 Sale</button></div>
+        <div><button class="btn" onclick="openVoucher('F9')">📥 Purchase</button></div>
+        <div><button class="btn btn-warn" onclick="openVoucher('F10')">↩️ Credit Note</button></div>
+        <div><button class="btn btn-warn" onclick="openVoucher('F11')">↪️ Debit Note</button></div>
+      </div>
+      <div class="row">
+        <div><button class="btn" onclick="openVoucher('F5')">💸 Payment</button></div>
+        <div><button class="btn" onclick="openVoucher('F6')">💰 Receipt</button></div>
+        <div><button class="btn" onclick="openVoucher('F7')">📘 Journal</button></div>
+        <div><button class="btn" onclick="openVoucher('F4')">🔄 Contra</button></div>
+        <div><button class="btn" onclick="openVoucher('F12')">🏭 Manufacture</button></div>
+      </div>
+      <div class="row">
+        <div><button class="btn btn-warn" onclick="showView('reports')">📊 Reports</button></div>
+        <div><button class="btn btn-success" onclick="showView('gstReports')">🧾 GST Reports</button></div>
+        <div><button class="btn" onclick="showView('admin')">⚙️ Admin</button></div>
+        <div><button class="btn btn-danger" onclick="resetDB()">🗑️ Reset</button></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>📈 Quick Stats</h3>
+      <div class="row">
+        <div>Ledgers: <b>${DB.ledgers.length}</b></div>
+        <div>Items: <b>${DB.items.length}</b></div>
+        <div>Vouchers: <b>${DB.vouchers.length}</b></div>
+        <div>Audit: <b>${DB.audit.length}</b></div>
+      </div>
+    </div>`;
+}
+
+/* ---------------- COMPANY ---------------- */
+function renderCompany() {
+  const c = document.getElementById('content');
+  const comp = DB.company || {name:'',gstin:'',address:'',phone:'',email:''};
+  c.innerHTML = `
+    <div class="card">
+      <h2>🏢 Company</h2>
+      <div class="row">
+        <div><label>Name</label><input id="cName" value="${comp.name||''}"></div>
+        <div><label>GSTIN</label><input id="cGstin" value="${comp.gstin||''}" placeholder="27AAAAA0000A1Z5"></div>
+      </div>
+      <div class="row">
+        <div><label>Address</label><input id="cAddr" value="${comp.address||''}"></div>
+        <div><label>Phone</label><input id="cPhone" value="${comp.phone||''}"></div>
+        <div><label>Email</label><input id="cEmail" value="${comp.email||''}"></div>
+      </div>
+      <div class="row">
+        <div><label>State</label><select id="cState">${Object.entries(STATE_CODES).map(([k,v])=>`<option value="${k}" ${comp.state===k?'selected':''}>${k} - ${v}</option>`).join('')}</select></div>
+        <div style="display:flex;align-items:flex-end;"><button class="btn btn-success" onclick="saveCompany()">💾 Save</button></div>
+      </div>
+    </div>`;
+}
+function saveCompany() {
+  const name = document.getElementById('cName').value.trim();
+  if (!name) return toast("Company name zaroori", false);
+  const gstin = document.getElementById('cGstin').value.trim().toUpperCase();
+  DB.company = { name, gstin, state: gstin?stateOf(gstin):document.getElementById('cState').value, address: document.getElementById('cAddr').value.trim(), phone: document.getElementById('cPhone').value.trim(), email: document.getElementById('cEmail').value.trim() };
+  if (!DB.ledgers.length) {
+    ['Cash','Bank','Sales A/c','Purchase A/c','Output CGST','Output SGST','Output IGST','Input CGST','Input SGST','Input IGST','Round Off','Stock-in-Hand'].forEach(n=>{
+      let g='Current Assets';
+      if(n==='Cash')g='Cash-in-Hand'; else if(n==='Bank')g='Bank Accounts';
+      else if(n.startsWith('Sales'))g='Sales Accounts'; else if(n.startsWith('Purchase'))g='Purchase Accounts';
+      else if(n.startsWith('Output')||n.startsWith('Input'))g='Duties & Taxes';
+      else if(n==='Stock-in-Hand')g='Stock-in-Hand';
+      if(!ledgerByName(n)) DB.ledgers.push({name:n,group:g,gstin:'',opening:0});
+    });
+  }
+  audit('COMPANY_SAVE', name); save(); toast("Saved!"); showView('gateway');
+}
+
+/* ---------------- LEDGER ---------------- */
+function renderLedger() {
+  const c = document.getElementById('content');
+  c.innerHTML = `
+    <div class="card">
+      <h2>📒 Ledger</h2>
+      <div class="row">
+        <div><label>Name</label><input id="lName"></div>
+        <div><label>Group</label><select id="lGroup">${GROUPS.map(g=>`<option>${g}</option>`).join('')}</select></div>
+      </div>
+      <div class="row">
+        <div><label>GSTIN</label><input id="lGstin"></div>
+        <div><label>Opening (Dr+/Cr-)</label><input id="lOpening" type="number" value="0"></div>
+        <div style="display:flex;align-items:flex-end;"><button class="btn btn-success" onclick="addLedger()">➕ Add</button></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Ledgers (${DB.ledgers.length})</h3>
+      <table><tr><th>Name</th><th>Group</th><th>GSTIN</th><th>State</th><th>Opening</th><th>Action</th></tr>
+        ${DB.ledgers.map(l=>`<tr><td>${l.name}</td><td>${l.group}</td><td>${l.gstin||'-'}</td><td>${l.gstin?stateName(stateOf(l.gstin)):'-'}</td><td class="right">${fmt(l.opening)}</td><td><button class="btn btn-danger btn-sm" onclick="delLedger('${l.name}')">Del</button></td></tr>`).join('')}
+      </table>
+    </div>`;
+}
+function addLedger() {
+  const name = document.getElementById('lName').value.trim();
+  if (!name) return toast("Name zaroori", false);
+  if (ledgerByName(name)) return toast("Exists", false);
+  DB.ledgers.push({name, group:document.getElementById('lGroup').value, gstin:document.getElementById('lGstin').value.trim().toUpperCase(), opening:Number(document.getElementById('lOpening').value)||0});
+  audit('LEDGER_ADD', name); save(); toast("Added!"); renderLedger();
+}
+function delLedger(n) { if (!confirm(`Delete ${n}?`)) return; DB.ledgers = DB.ledgers.filter(l=>l.name!==n); audit('LEDGER_DEL', n); save(); renderLedger(); }
+
+/* ---------------- ITEM ---------------- */
+function renderItem() {
+  const c = document.getElementById('content');
+  c.innerHTML = `
+    <div class="card">
+      <h2>📦 Stock Item</h2>
+      <div class="row">
+        <div><label>Name</label><input id="iName"></div>
+        <div><label>Type</label><select id="iType">${ITEM_TYPES.map(t=>`<option>${t}</option>`).join('')}</select></div>
+        <div><label>UOM</label><input id="iUom" value="Nos"></div>
+      </div>
+      <div class="row">
+        <div><label>Rate</label><input id="iRate" type="number" value="0"></div>
+        <div><label>GST%</label><select id="iGst">${GST_RATES.map(r=>`<option value="${r}" ${r===18?'selected':''}>${r}%</option>`).join('')}</select></div>
+        <div><label>HSN</label><input id="iHsn"></div>
+        <div><label>Opening Qty</label><input id="iOpen" type="number" value="0"></div>
+        <div style="display:flex;align-items:flex-end;"><button class="btn btn-success" onclick="addItem()">➕ Add</button></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Items (${DB.items.length})</h3>
+      <table><tr><th>Name</th><th>Type</th><th>UOM</th><th>Rate</th><th>GST%</th><th>HSN</th><th>Opening</th><th>Stock</th><th>Action</th></tr>
+        ${DB.items.map(i=>`<tr><td>${i.name}</td><td><span class="badge ${i.type==='Raw Material'?'raw':i.type==='Packing Material'?'pack':i.type==='Semi-Finished'?'semi':'fin'}">${i.type}</span></td><td>${i.uom}</td><td class="right">${fmt(i.rate)}</td><td class="right">${i.gstRate}%</td><td>${i.hsn||'-'}</td><td class="right">${fmtQty(i.openingQty)}</td><td class="right"><b>${fmtQty(currentStock(i.name))}</b></td><td><button class="btn btn-danger btn-sm" onclick="delItem('${i.name}')">Del</button></td></tr>`).join('')}
+      </table>
+    </div>`;
+}
+function addItem() {
+  const name = document.getElementById('iName').value.trim();
+  if (!name) return toast("Name zaroori", false);
+  if (itemByName(name)) return toast("Exists", false);
+  DB.items.push({name, type:document.getElementById('iType').value, uom:document.getElementById('iUom').value.trim()||'Nos', rate:Number(document.getElementById('iRate').value)||0, gstRate:Number(document.getElementById('iGst').value)||0, hsn:document.getElementById('iHsn').value.trim(), openingQty:Number(document.getElementById('iOpen').value)||0, bom:[], bomOutput:1});
+  audit('ITEM_ADD', name); save(); toast("Added!"); renderItem();
+}
+function delItem(n) { if (!confirm(`Delete ${n}?`)) return; DB.items=DB.items.filter(i=>i.name!==n); audit('ITEM_DEL',n); save(); renderItem(); }
+
+/* ---------------- STOCK ---------------- */
+function currentStock(name) {
+  let qty = 0; const it = itemByName(name); if (it) qty += Number(it.openingQty)||0;
+  DB.vouchers.forEach(v => (v.stockMoves||[]).forEach(m => { if (m.name===name) qty += Number(m.qty)||0; }));
+  return qty;
+}
+
+/* ---------------- BOM ---------------- */
+let bomRows = [];
+function renderBOM() {
+  const c = document.getElementById('content');
+  const fgItems = DB.items.filter(i=>i.type==='Finished Goods'||i.type==='Semi-Finished');
+  c.innerHTML = `
+    <div class="card">
+      <h2>⚙️ BOM</h2>
+      <div class="row">
+        <div><label>Finished/Semi Item</label><select id="bFg">${fgItems.map(i=>`<option>${i.name}</option>`).join('')}</select></div>
+        <div><label>Output Qty</label><input id="bOut" type="number" value="1"></div>
+        <div style="display:flex;align-items:flex-end;"><button class="btn" onclick="addBomRow()">➕ Add</button></div>
+      </div>
+      <table id="bomTable"><tr><th>Component</th><th>Qty</th><th>Action</th></tr></table>
+      <div class="row" style="margin-top:8px;"><div><button class="btn btn-success" onclick="saveBOM()">💾 Save BOM</button></div></div>
+    </div>
+    <div class="card">
+      <h3>Existing BOMs</h3>
+      <table><tr><th>Item</th><th>Output</th><th>Components</th><th>Action</th></tr>
+      ${fgItems.map(i=>`<tr><td>${i.name}</td><td>${i.bomOutput||1}</td><td>${(i.bom||[]).map(b=>`${b.item}×${b.qty}`).join(', ')||'-'}</td><td><button class="btn btn-danger btn-sm" onclick="clearBOM('${i.name}')">Clear</button></td></tr>`).join('')}</table>
+    </div>`;
+}
+function addBomRow() { bomRows.push({item:'', qty:1}); renderBomRows(); }
+function renderBomRows() {
+  const t = document.getElementById('bomTable'); if (!t) return;
+  t.innerHTML = '<tr><th>Component</th><th>Qty</th><th>Action</th></tr>' + bomRows.map((r,idx)=>`<tr><td><select onchange="bomRows[${idx}].item=this.value"><option value="">--</option>${DB.items.filter(i=>i.type!=='Finished Goods').map(i=>`<option ${r.item===i.name?'selected':''}>${i.name}</option>`).join('')}</select></td><td><input type="number" value="${r.qty}" onchange="bomRows[${idx}].qty=Number(this.value)"></td><td><button class="btn btn-danger btn-sm" onclick="bomRows.splice(${idx},1);renderBomRows()">Del</button></td></tr>`).join('');
+}
+function saveBOM() {
+  const fg = document.getElementById('bFg').value; const out = Number(document.getElementById('bOut').value)||1;
+  const it = itemByName(fg); if (!it) return;
+  it.bom = bomRows.filter(r=>r.item).map(r=>({item:r.item, qty:Number(r.qty)||1})); it.bomOutput = out;
+  audit('BOM_SAVE', fg); save(); toast("BOM saved!"); bomRows=[]; renderBOM();
+}
+function clearBOM(n) { const it=itemByName(n); if(it){it.bom=[]; save(); renderBOM();} }
+
+/* ---------------- VOUCHER ---------------- */
+let vState = null;
+function openVoucher(key, editId) {
+  if (!DB.company) return showView('company');
+  const map = {F8:'Sale',F9:'Purchase',F10:'Credit Note',F11:'Debit Note',F5:'Payment',F6:'Receipt',F7:'Journal',F4:'Contra',F12:'Manufacture'};
+  if (editId) {
+    const v = DB.vouchers.find(x=>x.id===editId); if (!v) return toast("Not found", false);
+    vState = JSON.parse(JSON.stringify(v)); vState.editing = true; vState.editId = editId; vState.type = v.type; vState.items = vState.items || [];
+    showView('voucher', v.type); return;
+  }
+  vState = { type: map[key]||'Sale', date: today(), party:'', partyGstin:'', pos: DB.company.state, items: [], narration:'', mfgItem:'', mfgQty:1, fromAcc:'', toAcc:'', amount:0, editing:false };
+  showView('voucher', vState.type);
+}
+
+function renderVoucherForm(type) {
+  const c = document.getElementById('content'); const v = vState;
+  const partyLedgers = DB.ledgers.filter(l=>['Sundry Debtors','Sundry Creditors','Cash-in-Hand','Bank Accounts','Sales Accounts','Purchase Accounts'].includes(l.group));
+  const editBadge = v.editing ? '<span class="badge edit">EDIT MODE</span>' : '';
+
+  if (v.type === 'Payment' || v.type === 'Receipt' || v.type === 'Contra' || v.type === 'Journal') {
+    c.innerHTML = `
+      <div class="card">
+        <h2>📘 ${v.type} ${editBadge}</h2>
+        <div class="row">
+          <div><label>Date</label><input id="vDate" type="date" value="${v.date}" onchange="vState.date=this.value"></div>
+          <div><label>${v.type==='Journal'?'Dr Account':'From Account'}</label><select id="vFrom" onchange="vState.fromAcc=this.value"><option value="">--</option>${DB.ledgers.map(l=>`<option ${v.fromAcc===l.name?'selected':''}>${l.name}</option>`).join('')}</select></div>
+          <div><label>${v.type==='Journal'?'Cr Account':'To Account'}</label><select id="vTo" onchange="vState.toAcc=this.value"><option value="">--</option>${DB.ledgers.map(l=>`<option ${v.toAcc===l.name?'selected':''}>${l.name}</option>`).join('')}</select></div>
+          <div><label>Amount</label><input id="vAmt" type="number" value="${v.amount||0}" onchange="vState.amount=Number(this.value)"></div>
+        </div>
+        <div class="row"><div><label>Narration</label><input id="vNarr" value="${v.narration||''}" onchange="vState.narration=this.value"></div></div>
+        <div class="row"><div><button class="btn btn-success" onclick="saveSimpleVoucher()">💾 Save</button></div><div><button class="btn" onclick="showView('gateway')">Cancel</button></div>${v.editing?`<div><button class="btn btn-danger" onclick="deleteVoucher('${v.editId}')">🗑️ Delete</button></div>`:''}</div>
+      </div>`; return;
+  }
+
+  if (v.type === 'Manufacture') {
+    const fgItems = DB.items.filter(i=>i.type==='Finished Goods'||i.type==='Semi-Finished');
+    c.innerHTML = `
+      <div class="card">
+        <h2>🏭 Manufacture ${editBadge}</h2>
+        <div class="row">
+          <div><label>Date</label><input id="vDate" type="date" value="${v.date}" onchange="vState.date=this.value"></div>
+          <div><label>Item</label><select id="vMfg" onchange="vState.mfgItem=this.value;recalcMfg()"><option value="">--</option>${fgItems.map(i=>`<option ${v.mfgItem===i.name?'selected':''}>${i.name}</option>`).join('')}</select></div>
+          <div><label>Qty</label><input id="vMfgQty" type="number" value="${v.mfgQty||1}" onchange="vState.mfgQty=Number(this.value);recalcMfg()"></div>
+        </div>
+        <div id="mfgPreview"></div>
+        <div class="row" style="margin-top:8px;"><div><button class="btn btn-success" onclick="saveMfg()">💾 Save</button></div><div><button class="btn" onclick="showView('gateway')">Cancel</button></div>${v.editing?`<div><button class="btn btn-danger" onclick="deleteVoucher('${v.editId}')">🗑️ Delete</button></div>`:''}</div>
+      </div>`; recalcMfg(); return;
+  }
+
+  const isSale = v.type==='Sale' || v.type==='Credit Note';
+  const itemTypesToShow = isSale ? DB.items.filter(i=>i.type==='Finished Goods'||i.type==='Semi-Finished') : DB.items;
+
+  c.innerHTML = `
+    <div class="card">
+      <h2>🧾 ${v.type} ${editBadge}</h2>
+      <div class="row">
+        <div><label>Date</label><input id="vDate" type="date" value="${v.date}" onchange="vState.date=this.value"></div>
+        <div><label>Party</label><select id="vParty" onchange="onPartyChange(this.value)"><option value="">--</option>${partyLedgers.map(l=>`<option ${v.party===l.name?'selected':''}>${l.name}</option>`).join('')}</select></div>
+        <div><label>Party GSTIN</label><input id="vGstin" value="${v.partyGstin||''}" onchange="vState.partyGstin=this.value.toUpperCase();recalc()"></div>
+        <div><label>Place of Supply</label><input id="vPos" value="${v.pos||DB.company.state}" onchange="vState.pos=this.value"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>📦 Items</h3>
+      <div class="row">
+        <div><label>Item</label><select id="liItem">${itemTypesToShow.map(i=>`<option value="${i.name}">${i.name} [${i.type}] Stock:${fmtQty(currentStock(i.name))}</option>`).join('')}</select></div>
+        <div><label>Qty</label><input id="liQty" type="number" value="1"></div>
+        <div><label>Rate</label><input id="liRate" type="number" value="0"></div>
+        <div><label>GST%</label><select id="liGst">${GST_RATES.map(r=>`<option value="${r}" ${r===18?'selected':''}>${r}</option>`).join('')}</select></div>
+        <div><label>Disc%</label><input id="liDisc" type="number" value="0"></div>
+        <div style="display:flex;align-items:flex-end;"><button class="btn" onclick="addLine()">➕ Add</button></div>
+      </div>
+      <table id="liTable"><tr><th>Item</th><th>Type</th><th>Qty</th><th>Rate</th><th>Disc</th><th>Amount</th><th>GST%</th><th>CGST</th><th>SGST</th><th>IGST</th><th>Action</th></tr></table>
+    </div>
+    <div class="card">
+      <div class="row"><div><label>Narration</label><input id="vNarr" value="${v.narration||''}" onchange="vState.narration=this.value"></div></div>
+      <div class="totals" id="vTotals"></div>
+      <div class="row" style="margin-top:10px;"><div><button class="btn btn-success" onclick="saveVoucher()">💾 Save (Ctrl+A)</button></div><div><button class="btn" onclick="showView('gateway')">Cancel</button></div>${v.editing?`<div><button class="btn btn-danger" onclick="deleteVoucher('${v.editId}')">🗑️ Delete</button></div>`:''}</div>
+    </div>`;
+
+  document.getElementById('liItem').addEventListener('change', e => { const it = itemByName(e.target.value); if (it) { document.getElementById('liRate').value = it.rate; document.getElementById('liGst').value = it.gstRate; } });
+  renderLines(); recalc();
+}
+
+function onPartyChange(name) {
+  vState.party = name; const l = ledgerByName(name);
+  if (l && l.gstin) { vState.partyGstin = l.gstin; document.getElementById('vGstin').value = l.gstin; }
+  recalc();
+}
+function addLine() {
+  const name = document.getElementById('liItem').value; const it = itemByName(name); if (!it) return;
+  const qty = Number(document.getElementById('liQty').value)||0; const rate = Number(document.getElementById('liRate').value)||0;
+  const gst = Number(document.getElementById('liGst').value)||0; const disc = Number(document.getElementById('liDisc').value)||0;
+  if (qty<=0) return toast("Qty>0", false);
+  vState.items.push({name, type:it.type, qty, rate, gst, disc, hsn:it.hsn, uom:it.uom}); renderLines(); recalc();
+}
+function renderLines() {
+  const t = document.getElementById('liTable'); if (!t) return;
+  const inter = isInter(DB.company.gstin, vState.partyGstin);
+  const rows = vState.items.map((li, idx) => {
+    const gross = li.qty*li.rate; const amt = gross - gross*(li.disc||0)/100; const g = amt*li.gst/100;
+    const cgst=inter?0:g/2, sgst=inter?0:g/2, igst=inter?g:0;
+    return `<tr><td>${li.name}</td><td>${li.type}</td><td class="right">${fmtQty(li.qty)} ${li.uom||''}</td><td class="right">${fmt(li.rate)}</td><td class="right">${li.disc||0}%</td><td class="right">${fmt(amt)}</td><td class="right">${li.gst}%</td><td class="right">${fmt(cgst)}</td><td class="right">${fmt(sgst)}</td><td class="right">${fmt(igst)}</td><td><button class="btn btn-danger btn-sm" onclick="vState.items.splice(${idx},1);renderLines();recalc()">Del</button></td></tr>`;
+  }).join('');
+  t.innerHTML = `<tr><th>Item</th><th>Type</th><th>Qty</th><th>Rate</th><th>Disc</th><th>Amount</th><th>GST%</th><th>CGST</th><th>SGST</th><th>IGST</th><th>Action</th></tr>` + rows;
+}
+function calcTotals() {
+  const inter = isInter(DB.company.gstin, vState.partyGstin);
+  let sub=0,cgst=0,sgst=0,igst=0;
+  vState.items.forEach(li=>{ const gross = li.qty*li.rate; const amt = gross - gross*(li.disc||0)/100; const g = amt*li.gst/100; sub += amt; if (inter) igst+=g; else { cgst+=g/2; sgst+=g/2; } });
+  const round = Math.round(sub+cgst+sgst+igst) - (sub+cgst+sgst+igst);
+  return { inter, sub, cgst, sgst, igst, round, total: sub+cgst+sgst+igst+round };
+}
+function recalc() {
+  const el = document.getElementById('vTotals'); if (!el || !vState) return; const t = calcTotals();
+  el.innerHTML = `<div><span>Taxable</span><b>₹ ${fmt(t.sub)}</b></div><div><span>CGST</span><b>₹ ${fmt(t.cgst)}</b></div><div><span>SGST</span><b>₹ ${fmt(t.sgst)}</b></div><div><span>IGST</span><b>₹ ${fmt(t.igst)}</b></div><div><span>Round</span><b>₹ ${fmt(t.round)}</b></div><div class="grand"><span>Total</span><b>₹ ${fmt(t.total)}</b></div><div class="small">${t.inter?'🔴 IGST':'🟢 CGST+SGST'} | ${vState.partyGstin?'B2B':'B2C'}</div>`;
+}
+function recalcMfg() {
+  const el = document.getElementById('mfgPreview'); if (!el || !vState.mfgItem) return; const it = itemByName(vState.mfgItem);
+  if (!it || !it.bom || !it.bom.length) { el.innerHTML='<p class="small">BOM nahi hai.</p>'; return; }
+  const batches = vState.mfgQty/(it.bomOutput||1); let html='<h3>BOM Consumption</h3><table><tr><th>Component</th><th>Qty</th><th>Available</th></tr>'; let ok=true;
+  it.bom.forEach(b=>{ const need=b.qty*batches; const avail=currentStock(b.item); if(avail<need)ok=false; html+=`<tr><td>${b.item}</td><td class="right">${fmtQty(need)}</td><td class="right" style="color:${avail<need?'#f66':'#6f6'}">${fmtQty(avail)}</td></tr>`; });
+  html+='</table>'; if (!ok) html+='<p class="status err">⚠️ Stock kam hai</p>'; el.innerHTML=html;
+}
+function saveMfg() {
+  if (!vState.mfgItem) return toast("Item select", false); const it = itemByName(vState.mfgItem);
+  if (!it || !it.bom || !it.bom.length) return toast("BOM nahi", false);
+  const batches = vState.mfgQty/(it.bomOutput||1); let moves = [{name:vState.mfgItem, qty:+vState.mfgQty}]; let ok=true;
+  it.bom.forEach(b=>{ const need=b.qty*batches; if(currentStock(b.item)<need) ok=false; moves.push({name:b.item, qty:-need}); });
+  if (!ok && !confirm("Stock kam hai. Save?")) return;
+  if (vState.editing) { const idx = DB.vouchers.findIndex(x=>x.id===vState.editId); if (idx>=0) { DB.vouchers[idx].date=vState.date; DB.vouchers[idx].stockMoves=moves; DB.vouchers[idx].party=vState.mfgItem; audit('MFG_EDIT', vState.mfgItem); } save(); toast("Updated!"); vState=null; showView('gateway'); return; }
+  DB.vouchers.push({id:uid(),type:'Manufacture',date:vState.date,party:vState.mfgItem,items:[],narration:vState.narration,stockMoves:moves,taxable:0,cgst:0,sgst:0,igst:0,total:0});
+  audit('MFG_ADD', vState.mfgItem); save(); toast("Saved!"); vState=null; showView('gateway');
+}
+function saveSimpleVoucher() {
+  if (!vState.fromAcc || !vState.toAcc) return toast("Dono accounts", false); if (!vState.amount || vState.amount<=0) return toast("Amount>0", false);
+  if (vState.editing) { const idx = DB.vouchers.findIndex(x=>x.id===vState.editId); if (idx>=0) { Object.assign(DB.vouchers[idx], {date:vState.date, fromAcc:vState.fromAcc, toAcc:vState.toAcc, amount:vState.amount, narration:vState.narration, total:vState.amount}); audit(vState.type.toUpperCase()+'_EDIT', vState.amount); } save(); toast("Updated!"); vState=null; showView('gateway'); return; }
+  DB.vouchers.push({id:uid(),type:vState.type,date:vState.date,fromAcc:vState.fromAcc,toAcc:vState.toAcc,amount:vState.amount,narration:vState.narration,items:[],stockMoves:[],taxable:0,cgst:0,sgst:0,igst:0,total:vState.amount});
+  audit(vState.type.toUpperCase()+'_ADD', vState.amount); save(); toast("Saved!"); vState=null; showView('gateway');
+}
+function saveVoucher() {
+  if (!vState.party) return toast("Party select", false); if (!vState.items.length) return toast("Koi line nahi", false);
+  const t = calcTotals(); const isSaleSide = vState.type==='Sale'||vState.type==='Debit Note'; const isPurchaseSide = vState.type==='Purchase'||vState.type==='Credit Note';
+  const moves = []; vState.items.forEach(li=>{ if (isSaleSide) moves.push({name:li.name, qty:-li.qty}); else if (isPurchaseSide) moves.push({name:li.name, qty:+li.qty}); });
+  if (vState.editing) { const idx = DB.vouchers.findIndex(x=>x.id===vState.editId); if (idx>=0) { Object.assign(DB.vouchers[idx], { date:vState.date, party:vState.party, partyGstin:vState.partyGstin, pos:vState.pos, items:vState.items, narration:vState.narration, taxable:t.sub, cgst:t.cgst, sgst:t.sgst, igst:t.igst, round:t.round, total:t.total, interState:t.inter, stockMoves:moves }); audit(vState.type.toUpperCase()+'_EDIT', DB.vouchers[idx].voucherNo||vState.editId); } save(); toast("Updated!"); vState=null; showView('gateway'); return; }
+  const v = { id:uid(), type:vState.type, date:vState.date, party:vState.party, partyGstin:vState.partyGstin, pos:vState.pos, items:vState.items, narration:vState.narration, taxable:t.sub, cgst:t.cgst, sgst:t.sgst, igst:t.igst, round:t.round, total:t.total, interState:t.inter, stockMoves:moves };
+  const ctr = {Sale:'sale',Purchase:'purchase','Credit Note':'credit','Debit Note':'debit'}[v.type];
+  if (ctr) { v.voucherNo = v.type.slice(0,3).toUpperCase()+'-'+String(DB.counters[ctr]).padStart(4,'0'); DB.counters[ctr]++; }
+  DB.vouchers.push(v); audit(v.type.toUpperCase()+'_ADD', v.voucherNo||v.total); save(); toast(`${v.type} saved! ${v.voucherNo||''}`);
+  if (v.type==='Sale' && confirm("Print?")) { vState=null; printInvoice(v.id); return; } vState=null; showView('gateway');
+}
+function deleteVoucher(id) { const v = DB.vouchers.find(x=>x.id===id); if (!v) return; if (!confirm(`Delete ${v.type} ${v.voucherNo||''}?`)) return; DB.vouchers = DB.vouchers.filter(x=>x.id!==id); audit(v.type.toUpperCase()+'_DELETE', v.voucherNo||id); save(); toast("Deleted!"); vState=null; showView('gateway'); }
+
+/* ---------------- POSTINGS ---------------- */
+function getPostings(v) {
+  const P=[]; const push=(l,dr,cr)=>{ if(l) P.push({ledger:l,dr:dr||0,cr:cr||0}); };
+  if (v.type==='Sale'||v.type==='Debit Note') { push(v.party,v.total,0); push('Sales A/c',0,v.taxable); if(v.cgst)push('Output CGST',0,v.cgst); if(v.sgst)push('Output SGST',0,v.sgst); if(v.igst)push('Output IGST',0,v.igst); if(v.round)push('Round Off',v.round>0?0:v.round,v.round>0?v.round:0); }
+  else if (v.type==='Purchase'||v.type==='Credit Note') { push(v.party,0,v.total); push('Purchase A/c',v.taxable,0); if(v.cgst)push('Input CGST',v.cgst,0); if(v.sgst)push('Input SGST',v.sgst,0); if(v.igst)push('Input IGST',v.igst,0); }
+  else if (v.type==='Payment') { push(v.fromAcc,v.amount,0); push(v.toAcc,0,v.amount); }
+  else if (v.type==='Receipt') { push(v.toAcc,v.amount,0); push(v.fromAcc,0,v.amount); }
+  else if (v.type==='Journal'||v.type==='Contra') { push(v.fromAcc,v.amount,0); push(v.toAcc,0,v.amount); }
+  return P;
+}
+function ledgerBalance(name) { const l = ledgerByName(name); let bal = l?Number(l.opening)||0:0; DB.vouchers.forEach(v=>getPostings(v).forEach(p=>{ if(p.ledger===name) bal += p.dr-p.cr; })); return bal; }
+
+/* ---------------- ARROW NAV ---------------- */
+let navTable = null, navRows = [], navIdx = -1, navOnEnter = null;
+function setupNav(tableId, onEnter) {
+  navTable = document.getElementById(tableId); if (!navTable) return;
+  navRows = Array.from(navTable.querySelectorAll('tbody tr, tr[data-row]')); navIdx = -1; navOnEnter = onEnter;
+  navRows.forEach((r,i)=>{ r.style.cursor='pointer'; r.addEventListener('click', ()=>selectNavRow(i)); r.addEventListener('dblclick', ()=>{ selectNavRow(i); if(navOnEnter) navOnEnter(navRows[i].dataset.id); }); });
+}
+function selectNavRow(i) { if (i<0 || i>=navRows.length) return; if (navIdx>=0 && navRows[navIdx]) navRows[navIdx].classList.remove('sel-row'); navIdx = i; navRows[i].classList.add('sel-row'); navRows[i].scrollIntoView({block:'nearest'}); }
+function handleArrowNav(e) {
+  if (!navTable || !navRows.length) return false;
+  if (e.key==='ArrowDown') { e.preventDefault(); selectNavRow(Math.min(navRows.length-1, navIdx+1)); return true; }
+  if (e.key==='ArrowUp') { e.preventDefault(); selectNavRow(Math.max(0, navIdx-1)); return true; }
+  if (e.key==='Enter') { e.preventDefault(); if (navIdx<0) selectNavRow(0); const row = navRows[navIdx]; if (row && navOnEnter) navOnEnter(row.dataset.id); return true; }
+  return false;
+}
+
+/* ---------------- REPORTS (non-GST) ---------------- */
+function renderReports() {
+  const c = document.getElementById('content');
+  c.innerHTML = `
+    <div class="card">
+      <h2>📊 Reports</h2>
+      <div class="tabs">
+        <button class="active" onclick="reportTab('sales',this)">Sales</button>
+        <button onclick="reportTab('purchase',this)">Purchase</button>
+        <button onclick="reportTab('stock',this)">Stock</button>
+        <button onclick="reportTab('ledger',this)">Ledger</button>
+        <button onclick="reportTab('trial',this)">Trial Balance</button>
+        <button onclick="reportTab('pl',this)">P&L</button>
+        <button onclick="reportTab('bs',this)">Balance Sheet</button>
+        <button onclick="reportTab('day',this)">Day Book</button>
+      </div>
+      <p class="small">💡 <span class="kbd">↑</span> <span class="kbd">↓</span> select, <span class="kbd">Enter</span> open (edit)</p>
+      <div id="reportBody"></div>
+    </div>`;
+  reportTab('sales');
+}
+
+function reportTab(tab, btn) {
+  if (btn) { document.querySelectorAll('.tabs button').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); }
+  const b = document.getElementById('reportBody'); navTable = null; navRows = []; navIdx = -1; navOnEnter = null;
+  if (tab === 'sales') {
+    const arr = DB.vouchers.filter(v=>v.type==='Sale');
+    b.innerHTML = `<h3>Sales Register (${arr.length})</h3><table id="navTable"><thead><tr><th>No</th><th>Date</th><th>Party</th><th>GSTIN</th><th>Type</th><th>Taxable</th><th>CGST</th><th>SGST</th><th>IGST</th><th>Total</th><th></th></tr></thead><tbody>${arr.map(v=>`<tr data-row data-id="${v.id}"><td>${v.voucherNo||'-'}</td><td>${v.date}</td><td>${v.party}</td><td>${v.partyGstin||'-'}</td><td><span class="badge ${v.partyGstin?'b2b':'b2c'}">${v.partyGstin?'B2B':'B2C'}</span></td><td class="right">${fmt(v.taxable)}</td><td class="right">${fmt(v.cgst)}</td><td class="right">${fmt(v.sgst)}</td><td class="right">${fmt(v.igst)}</td><td class="right"><b>${fmt(v.total)}</b></td><td><button class="btn btn-sm" onclick="event.stopPropagation();printInvoice('${v.id}')">🖨️</button><button class="btn btn-sm btn-warn" onclick="event.stopPropagation();openVoucher(null,'${v.id}')">✏️</button></td></tr>`).join('')}</tbody></table>`;
+    setupNav('navTable', (id)=>openVoucher(null,id));
+  } else if (tab === 'purchase') {
+    const arr = DB.vouchers.filter(v=>v.type==='Purchase');
+    b.innerHTML = `<h3>Purchase Register (${arr.length})</h3><table id="navTable"><thead><tr><th>No</th><th>Date</th><th>Party</th><th>GSTIN</th><th>Taxable</th><th>CGST</th><th>SGST</th><th>IGST</th><th>Total</th><th></th></tr></thead><tbody>${arr.map(v=>`<tr data-row data-id="${v.id}"><td>${v.voucherNo||'-'}</td><td>${v.date}</td><td>${v.party}</td><td>${v.partyGstin||'-'}</td><td class="right">${fmt(v.taxable)}</td><td class="right">${fmt(v.cgst)}</td><td class="right">${fmt(v.sgst)}</td><td class="right">${fmt(v.igst)}</td><td class="right"><b>${fmt(v.total)}</b></td><td><button class="btn btn-sm btn-warn" onclick="event.stopPropagation();openVoucher(null,'${v.id}')">✏️</button></td></tr>`).join('')}</tbody></table>`;
+    setupNav('navTable', (id)=>openVoucher(null,id));
+  } else if (tab === 'stock') {
+    let tv=0; const rows = DB.items.map(i=>{const st=currentStock(i.name);const val=st*i.rate;tv+=val; return `<tr><td>${i.name}</td><td><span class="badge ${i.type==='Raw Material'?'raw':i.type==='Packing Material'?'pack':i.type==='Semi-Finished'?'semi':'fin'}">${i.type}</span></td><td class="right">${fmtQty(i.openingQty)}</td><td class="right"><b>${fmtQty(st)}</b></td><td class="right">${fmt(i.rate)}</td><td class="right">${fmt(val)}</td></tr>`; }).join('');
+    b.innerHTML = `<h3>Stock Summary</h3><table><tr><th>Item</th><th>Type</th><th>Opening</th><th>Current</th><th>Rate</th><th>Value</th></tr>${rows}<tr><th colspan="5">Total</th><th class="right">${fmt(tv)}</th></tr></table>`;
+  } else if (tab === 'ledger') {
+    b.innerHTML = `<h3>Ledger Report</h3><div class="row"><div><label>Ledger</label><select id="ledSel" onchange="renderLedgerReport()"><option value="">--</option>${DB.ledgers.map(l=>`<option>${l.name}</option>`).join('')}</select></div></div><div id="ledBody"></div>`;
+    renderLedgerReport();
+  } else if (tab === 'trial') {
+    const rows = DB.ledgers.map(l=>{const b=ledgerBalance(l.name);return {name:l.name,dr:b>0?b:0,cr:b<0?-b:0};}); const td=rows.reduce((s,r)=>s+r.dr,0), tc=rows.reduce((s,r)=>s+r.cr,0);
+    b.innerHTML = `<h3>Trial Balance</h3><table><tr><th>Ledger</th><th class="right">Dr</th><th class="right">Cr</th></tr>${rows.map(r=>`<tr><td>${r.name}</td><td class="right">${fmt(r.dr)}</td><td class="right">${fmt(r.cr)}</td></tr>`).join('')}<tr><th>Total</th><th class="right">${fmt(td)}</th><th class="right">${fmt(tc)}</th></tr></table>`;
+  } else if (tab === 'pl') {
+    let saleBal=0,purchBal=0,expBal=0,incBal=0;
+    DB.ledgers.forEach(l=>{const b=ledgerBalance(l.name); if(l.group==='Sales Accounts')saleBal+=-b; else if(l.group==='Purchase Accounts')purchBal+=b; else if(l.group==='Direct Expenses'||l.group==='Indirect Expenses')expBal+=b; else if(l.group==='Direct Incomes'||l.group==='Indirect Incomes')incBal+=-b;});
+    const gross=saleBal-purchBal, net=gross+incBal-expBal;
+    b.innerHTML = `<h3>P&L</h3><table><tr><th>Particulars</th><th class="right">Amount</th></tr><tr><td>Sales</td><td class="right">${fmt(saleBal)}</td></tr><tr><td>Less: Purchase</td><td class="right">${fmt(purchBal)}</td></tr><tr><th>Gross Profit</th><th class="right">${fmt(gross)}</th></tr><tr><td>Other Income</td><td class="right">${fmt(incBal)}</td></tr><tr><td>Expenses</td><td class="right">${fmt(expBal)}</td></tr><tr class="grand"><th>Net Profit</th><th class="right">${fmt(net)}</th></tr></table>`;
+  } else if (tab === 'bs') {
+    const groups={}; DB.ledgers.forEach(l=>{const b=ledgerBalance(l.name); if(!groups[l.group])groups[l.group]=0; groups[l.group]+=b;});
+    const liab=['Capital Account','Current Liabilities','Sundry Creditors','Duties & Taxes']; const asset=['Fixed Assets','Current Assets','Cash-in-Hand','Bank Accounts','Sundry Debtors','Stock-in-Hand'];
+    let lT=0,aT=0,lH='',aH='';
+    liab.forEach(g=>{if(groups[g]!==undefined){lT+=-groups[g];lH+=`<tr><td>${g}</td><td class="right">${fmt(-groups[g])}</td></tr>`;}});
+    asset.forEach(g=>{if(groups[g]!==undefined){aT+=groups[g];aH+=`<tr><td>${g}</td><td class="right">${fmt(groups[g])}</td></tr>`;}});
+    const stockVal = DB.items.reduce((s,i)=>s+currentStock(i.name)*i.rate,0); aT+=stockVal; aH+=`<tr><td>Closing Stock</td><td class="right">${fmt(stockVal)}</td></tr>`;
+    const profit = lT-aT; if (profit!==0) { lT+=profit; lH+=`<tr><td>P&L</td><td class="right">${fmt(profit)}</td></tr>`; }
+    b.innerHTML = `<h3>Balance Sheet</h3><table><tr><th>Liabilities</th><th class="right">Amount</th></tr>${lH}<tr><th>Total</th><th class="right">${fmt(lT)}</th></tr></table><table style="margin-top:10px;"><tr><th>Assets</th><th class="right">Amount</th></tr>${aH}<tr><th>Total</th><th class="right">${fmt(aT)}</th></tr></table>`;
+  } else if (tab === 'day') {
+    const sorted = [...DB.vouchers].sort((a,b)=>a.date.localeCompare(b.date));
+    b.innerHTML = `<h3>Day Book (${sorted.length})</h3><table id="navTable"><thead><tr><th>Date</th><th>Type</th><th>No</th><th>Party</th><th>Total</th><th></th></tr></thead><tbody>${sorted.map(v=>`<tr data-row data-id="${v.id}"><td>${v.date}</td><td>${v.type}</td><td>${v.voucherNo||'-'}</td><td>${v.party||v.fromAcc||'-'}</td><td class="right">${fmt(v.total)}</td><td>${v.type==='Sale'?`<button class="btn btn-sm" onclick="event.stopPropagation();printInvoice('${v.id}')">🖨️</button>`:''}<button class="btn btn-sm btn-warn" onclick="event.stopPropagation();openVoucher(null,'${v.id}')">✏️</button></td></tr>`).join('')}</tbody></table>`;
+    setupNav('navTable', (id)=>openVoucher(null,id));
+  }
+}
+
+function renderLedgerReport() {
+  const sel = document.getElementById('ledSel'); if (!sel) return; const name = sel.value; const el = document.getElementById('ledBody');
+  navTable=null; navRows=[]; navIdx=-1; navOnEnter=null; if (!name) { el.innerHTML=''; return; }
+  const l = ledgerByName(name); let opening = l?Number(l.opening)||0:0; const entries = [];
+  DB.vouchers.forEach(v=>{getPostings(v).forEach(p=>{ if(p.ledger===name && (p.dr||p.cr)) entries.push({date:v.date,type:v.type,no:v.voucherNo||'',dr:p.dr,cr:p.cr,narr:v.narration||v.party||'',id:v.id}); });});
+  entries.sort((a,b)=>a.date.localeCompare(b.date)); let bal=opening;
+  const rows = entries.map(e=>{bal+=e.dr-e.cr; return `<tr data-row data-id="${e.id}"><td>${e.date}</td><td>${e.type}</td><td>${e.no}</td><td>${e.narr}</td><td class="right">${fmt(e.dr)}</td><td class="right">${fmt(e.cr)}</td><td class="right">${fmt(bal)}</td></tr>`;}).join('');
+  el.innerHTML = `<table id="navTable"><thead><tr><th>Date</th><th>Voucher</th><th>No</th><th>Narration</th><th class="right">Dr</th><th class="right">Cr</th><th class="right">Balance</th></tr></thead><tbody><tr><td colspan="6"><b>Opening</b></td><td class="right"><b>${fmt(opening)}</b></td></tr>${rows}<tr><th colspan="6">Closing</th><th class="right">${fmt(bal)}</th></tr></tbody></table>`;
+  setupNav('navTable', (id)=>openVoucher(null,id));
+}
+
+/* =====================================================================
+   GST REPORTS — GSTR-1 (all tables), GSTR-3B, GSTR-9, GSTR-2B
+   ===================================================================== */
+let gstTab = 'gstr1';
+function renderGSTReports() {
+  const c = document.getElementById('content');
+  c.innerHTML = `
+    <div class="card">
+      <h2>🧾 GST Reports (Tally-style)</h2>
+      <div class="tabs">
+        <button class="${gstTab==='gstr1'?'active':''}" onclick="gstTab='gstr1';renderGSTReports()">GSTR-1</button>
+        <button class="${gstTab==='gstr3b'?'active':''}" onclick="gstTab='gstr3b';renderGSTReports()">GSTR-3B</button>
+        <button class="${gstTab==='gstr9'?'active':''}" onclick="gstTab='gstr9';renderGSTReports()">GSTR-9 (Annual)</button>
+        <button class="${gstTab==='gstr2b'?'active':''}" onclick="gstTab='gstr2b';renderGSTReports()">GSTR-2B Recon</button>
+      </div>
+      <div id="gstBody"></div>
+    </div>`;
+  if (gstTab==='gstr1') renderGSTR1();
+  else if (gstTab==='gstr3b') renderGSTR3B();
+  else if (gstTab==='gstr9') renderGSTR9();
+  else if (gstTab==='gstr2b') renderGSTR2B();
+}
+
+/* ---------- GSTR-1 ---------- */
+let gstr1SubTab = 'b2b';
+function renderGSTR1() {
+  const b = document.getElementById('gstBody');
+  const sales = DB.vouchers.filter(v=>v.type==='Sale');
+  const cn = DB.vouchers.filter(v=>v.type==='Credit Note');
+  const dn = DB.vouchers.filter(v=>v.type==='Debit Note');
+  b.innerHTML = `
+    <p class="small">GSTR-1 — Outward Supplies. Tally jaisa table-wise breakup. <span class="badge gstr1">GSTR-1</span></p>
+    <div class="sub-tabs">
+      <button class="${gstr1SubTab==='b2b'?'active':''}" onclick="gstr1SubTab='b2b';renderGSTR1()">4A/4B/4C — B2B</button>
+      <button class="${gstr1SubTab==='b2cl'?'active':''}" onclick="gstr1SubTab='b2cl';renderGSTR1()">5A — B2C Large</button>
+      <button class="${gstr1SubTab==='b2cs'?'active':''}" onclick="gstr1SubTab='b2cs';renderGSTR1()">7 — B2C Small</button>
+      <button class="${gstr1SubTab==='cdnr'?'active':''}" onclick="gstr1SubTab='cdnr';renderGSTR1()">9B — Credit/Debit Notes</button>
+      <button class="${gstr1SubTab==='hsn'?'active':''}" onclick="gstr1SubTab='hsn';renderGSTR1()">12 — HSN Summary</button>
+      <button class="${gstr1SubTab==='doc'?'active':''}" onclick="gstr1SubTab='doc';renderGSTR1()">13 — Doc Summary</button>
+    </div>
+    <div id="gstr1Body"></div>`;
+  const el = document.getElementById('gstr1Body');
+  if (gstr1SubTab==='b2b') {
+    const arr = sales.filter(v=>v.partyGstin);
+    el.innerHTML = `<h3>4A — B2B Invoices (Registered)</h3>
+      <table><tr><th>GSTIN</th><th>Party</th><th>Invoice No</th><th>Date</th><th>Invoice Value</th><th>Place of Supply</th><th>Taxable</th><th>CGST</th><th>SGST</th><th>IGST</th></tr>
+      ${arr.map(v=>`<tr><td>${v.partyGstin}</td><td>${v.party}</td><td>${v.voucherNo||'-'}</td><td>${v.date}</td><td class="right">${fmt(v.total)}</td><td>${stateName(v.pos||stateOf(v.partyGstin))}</td><td class="right">${fmt(v.taxable)}</td><td class="right">${fmt(v.cgst)}</td><td class="right">${fmt(v.sgst)}</td><td class="right">${fmt(v.igst)}</td></tr>`).join('')}
+      </table>
+      <div class="totals"><div><span>Total B2B Invoices</span><b>${arr.length}</b></div><div><span>Total Taxable</span><b>₹ ${fmt(arr.reduce((s,v)=>s+v.taxable,0))}</b></div></div>`;
+  } else if (gstr1SubTab==='b2cl') {
+    const arr = sales.filter(v=>!v.partyGstin && v.total > 250000 && v.interState);
+    el.innerHTML = `<h3>5A — B2C Large (Inter-state, Invoice > ₹2.5 Lakh)</h3>
+      <table><tr><th>Invoice No</th><th>Date</th><th>Place of Supply</th><th>Invoice Value</th><th>Taxable</th><th>IGST</th></tr>
+      ${arr.map(v=>`<tr><td>${v.voucherNo||'-'}</td><td>${v.date}</td><td>${stateName(v.pos)}</td><td class="right">${fmt(v.total)}</td><td class="right">${fmt(v.taxable)}</td><td class="right">${fmt(v.igst)}</td></tr>`).join('')}
+      </table><p class="small">${arr.length? '': 'Koi B2C Large invoice nahi.'}</p>`;
+  } else if (gstr1SubTab==='b2cs') {
+    const arr = sales.filter(v=>!v.partyGstin && !(v.total > 250000 && v.interState));
+    const grouped = {};
+    arr.forEach(v=>{ const key = (v.pos||'')+'|'+(v.items[0]?.gst||0); if (!grouped[key]) grouped[key]={pos:v.pos,rate:v.items[0]?.gst||0,taxable:0,cgst:0,sgst:0,igst:0}; grouped[key].taxable+=v.taxable; grouped[key].cgst+=v.cgst; grouped[key].sgst+=v.sgst; grouped[key].igst+=v.igst; });
+    el.innerHTML = `<h3>7 — B2C Small (Consolidated, State + Rate wise)</h3>
+      <table><tr><th>Place of Supply</th><th>Rate</th><th>Taxable</th><th>CGST</th><th>SGST</th><th>IGST</th></tr>
+      ${Object.values(grouped).map(g=>`<tr><td>${stateName(g.pos)}</td><td class="right">${g.rate}%</td><td class="right">${fmt(g.taxable)}</td><td class="right">${fmt(g.cgst)}</td><td class="right">${fmt(g.sgst)}</td><td class="right">${fmt(g.igst)}</td></tr>`).join('')}
+      </table><p class="small">${Object.keys(grouped).length? '': 'Koi B2C Small invoice nahi.'}</p>`;
+  } else if (gstr1SubTab==='cdnr') {
+    const cns = cn.map(v=>({...v, noteType:'C'}));
+    const dns = dn.map(v=>({...v, noteType:'D'}));
+    const arr = [...cns, ...dns];
+    el.innerHTML = `<h3>9B — Credit / Debit Notes (Registered)</h3>
+      <table><tr><th>Type</th><th>Note No</th><th>Date</th><th>Party</th><th>GSTIN</th><th>Taxable</th><th>CGST</th><th>SGST</th><th>IGST</th></tr>
+      ${arr.map(v=>`<tr><td><span class="badge ${v.noteType==='C'?'b2c':'b2b'}">${v.noteType==='C'?'Credit Note':'Debit Note'}</span></td><td>${v.voucherNo||'-'}</td><td>${v.date}</td><td>${v.party}</td><td>${v.partyGstin||'-'}</td><td class="right">${fmt(v.taxable)}</td><td class="right">${fmt(v.cgst)}</td><td class="right">${fmt(v.sgst)}</td><td class="right">${fmt(v.igst)}</td></tr>`).join('')}
+      </table><p class="small">${arr.length? '': 'Koi Credit/Debit Note nahi.'}</p>`;
+  } else if (gstr1SubTab==='hsn') {
+    const map = {};
+    sales.forEach(v=>v.items.forEach(li=>{
+      const key = (li.hsn||'-')+'|'+li.gst;
+      if (!map[key]) map[key]={hsn:li.hsn||'-',desc:li.name,uom:li.uom,qty:0,rate:li.gst,taxable:0,cgst:0,sgst:0,igst:0};
+      const gross=li.qty*li.rate; const amt=gross-gross*(li.disc||0)/100; const g=amt*li.gst/100;
+      map[key].qty+=li.qty; map[key].taxable+=amt; if (v.interState) map[key].igst+=g; else { map[key].cgst+=g/2; map[key].sgst+=g/2; }
+    }));
+    el.innerHTML = `<h3>12 — HSN-wise Summary (Outward)</h3>
+      <table><tr><th>HSN</th><th>Description</th><th>UOM</th><th>Qty</th><th>Rate</th><th>Taxable</th><th>CGST</th><th>SGST</th><th>IGST</th></tr>
+      ${Object.values(map).map(h=>`<tr><td>${h.hsn}</td><td>${h.desc}</td><td>${h.uom}</td><td class="right">${fmtQty(h.qty)}</td><td class="right">${h.rate}%</td><td class="right">${fmt(h.taxable)}</td><td class="right">${fmt(h.cgst)}</td><td class="right">${fmt(h.sgst)}</td><td class="right">${fmt(h.igst)}</td></tr>`).join('')}
+      </table>`;
+  } else if (gstr1SubTab==='doc') {
+    const arr = sales;
+    el.innerHTML = `<h3>13 — Documents Issued</h3>
+      <table><tr><th>Nature</th><th>From</th><th>To</th><th>Total Issued</th><th>Cancelled</th></tr>
+      <tr><td>Invoices — Sale</td><td>${arr[0]?.voucherNo||'-'}</td><td>${arr[arr.length-1]?.voucherNo||'-'}</td><td class="right">${arr.length}</td><td class="right">0</td></tr>
+      <tr><td>Credit Notes</td><td>${cn[0]?.voucherNo||'-'}</td><td>${cn[cn.length-1]?.voucherNo||'-'}</td><td class="right">${cn.length}</td><td class="right">0</td></tr>
+      <tr><td>Debit Notes</td><td>${dn[0]?.voucherNo||'-'}</td><td>${dn[dn.length-1]?.voucherNo||'-'}</td><td class="right">${dn.length}</td><td class="right">0</td></tr>
+      </table>`;
+  }
+}
+
+/* ---------- GSTR-3B ---------- */
+function renderGSTR3B() {
+  const b = document.getElementById('gstBody');
+  const sales = DB.vouchers.filter(v=>v.type==='Sale');
+  const purchases = DB.vouchers.filter(v=>v.type==='Purchase');
+  const cn = DB.vouchers.filter(v=>v.type==='Credit Note');
+  let outTaxable=0, outCgst=0, outSgst=0, outIgst=0;
+  sales.forEach(v=>{ outTaxable+=v.taxable; outCgst+=v.cgst; outSgst+=v.sgst; outIgst+=v.igst; });
+  cn.forEach(v=>{ outTaxable-=v.taxable; outCgst-=v.cgst; outSgst-=v.sgst; outIgst-=v.igst; });
+  let inTaxable=0, inCgst=0, inSgst=0, inIgst=0;
+  purchases.forEach(v=>{ inTaxable+=v.taxable; inCgst+=v.cgst; inSgst+=v.sgst; inIgst+=v.igst; });
+  const netCgst = outCgst - inCgst, netSgst = outSgst - inSgst, netIgst = outIgst - inIgst;
+  b.innerHTML = `
+    <h3>GSTR-3B — Summary Return <span class="badge gstr3b">GSTR-3B</span></h3>
+    <table style="margin-top:8px;">
+      <tr><th colspan="5">3.1 — Details of Outward Supplies</th></tr>
+      <tr><th>Nature</th><th>Taxable</th><th>CGST</th><th>SGST</th><th>IGST</th></tr>
+      <tr><td>(a) Outward taxable supplies (other than zero rated, nil rated, exempted)</td><td class="right">${fmt(outTaxable)}</td><td class="right">${fmt(outCgst)}</td><td class="right">${fmt(outSgst)}</td><td class="right">${fmt(outIgst)}</td></tr>
+      <tr><td>(b) Outward taxable supplies (zero rated)</td><td class="right">0.00</td><td class="right">0.00</td><td class="right">0.00</td><td class="right">0.00</td></tr>
+      <tr><td>(c) Other outward supplies (nil rated, exempted)</td><td class="right">0.00</td><td class="right">0.00</td><td class="right">0.00</td><td class="right">0.00</td></tr>
+      <tr><th>Total</th><th class="right">${fmt(outTaxable)}</th><th class="right">${fmt(outCgst)}</th><th class="right">${fmt(outSgst)}</th><th class="right">${fmt(outIgst)}</th></tr>
+    </table>
+    <table style="margin-top:10px;">
+      <tr><th colspan="5">4 — Eligible ITC</th></tr>
+      <tr><th>Details</th><th>IGST</th><th>CGST</th><th>SGST</th><th>Cess</th></tr>
+      <tr><td>(A) ITC Available — All other ITC</td><td class="right">${fmt(inIgst)}</td><td class="right">${fmt(inCgst)}</td><td class="right">${fmt(inSgst)}</td><td class="right">0.00</td></tr>
+      <tr><td>(B) ITC Reversed</td><td class="right">0.00</td><td class="right">0.00</td><td class="right">0.00</td><td class="right">0.00</td></tr>
+      <tr><th>(C) Net ITC Available (A-B)</th><th class="right">${fmt(inIgst)}</th><th class="right">${fmt(inCgst)}</th><th class="right">${fmt(inSgst)}</th><th class="right">0.00</th></tr>
+    </table>
+    <div class="totals" style="margin-top:10px;">
+      <div><span>Output Tax (CGST+SGST+IGST)</span><b>₹ ${fmt(outCgst+outSgst+outIgst)}</b></div>
+      <div><span>Input Tax Credit (CGST+SGST+IGST)</span><b>₹ ${fmt(inCgst+inSgst+inIgst)}</b></div>
+      <div class="grand"><span>Net GST Payable</span><b>₹ ${fmt(netCgst+netSgst+netIgst)}</b></div>
+      <div class="small">Net CGST: ${fmt(netCgst)} | Net SGST: ${fmt(netSgst)} | Net IGST: ${fmt(netIgst)}</div>
+    </div>
+    <p class="small" style="margin-top:8px;">⚠️ GSTR-3B ek summary return hai. Outward liability July 2025 se GSTR-1 se auto-populate hoti hai. Yahan sirf overview diya gaya hai.</p>`;
+}
+
+/* ---------- GSTR-9 ---------- */
+function renderGSTR9() {
+  const b = document.getElementById('gstBody');
+  const sales = DB.vouchers.filter(v=>v.type==='Sale');
+  const purchases = DB.vouchers.filter(v=>v.type==='Purchase');
+  const cn = DB.vouchers.filter(v=>v.type==='Credit Note');
+  const dn = DB.vouchers.filter(v=>v.type==='Debit Note');
+  let outTaxable=0, outCgst=0, outSgst=0, outIgst=0;
+  sales.forEach(v=>{ outTaxable+=v.taxable; outCgst+=v.cgst; outSgst+=v.sgst; outIgst+=v.igst; });
+  cn.forEach(v=>{ outTaxable-=v.taxable; outCgst-=v.cgst; outSgst-=v.sgst; outIgst-=v.igst; });
+  let inTaxable=0, inCgst=0, inSgst=0, inIgst=0;
+  purchases.forEach(v=>{ inTaxable+=v.taxable; inCgst+=v.cgst; inSgst+=v.sgst; inIgst+=v.igst; });
+  b.innerHTML = `
+    <h3>GSTR-9 — Annual Return <span class="badge gstr9">GSTR-9</span></h3>
+    <p class="small">Ye basic annual computation hai. Tally mein GST Annual Computation report hoti hai jo ye data deti hai.</p>
+    <table>
+      <tr><th colspan="5">4 — Details of Advances, Inward and Outward Supplies</th></tr>
+      <tr><th>Nature of Supply</th><th>Taxable Value</th><th>CGST</th><th>SGST</th><th>IGST</th></tr>
+      <tr><td>Outward taxable supplies (other than zero rated, nil rated, exempted)</td><td class="right">${fmt(outTaxable)}</td><td class="right">${fmt(outCgst)}</td><td class="right">${fmt(outSgst)}</td><td class="right">${fmt(outIgst)}</td></tr>
+      <tr><td>Inward supplies liable to reverse charge</td><td class="right">0.00</td><td class="right">0.00</td><td class="right">0.00</td><td class="right">0.00</td></tr>
+      <tr><th>Total</th><th class="right">${fmt(outTaxable)}</th><th class="right">${fmt(outCgst)}</th><th class="right">${fmt(outSgst)}</th><th class="right">${fmt(outIgst)}</th></tr>
+    </table>
+    <table style="margin-top:10px;">
+      <tr><th colspan="5">6 — ITC Availed as per GSTR-3B</th></tr>
+      <tr><th>Details</th><th>IGST</th><th>CGST</th><th>SGST</th><th>Cess</th></tr>
+      <tr><td>All other ITC (from purchases)</td><td class="right">${fmt(inIgst)}</td><td class="right">${fmt(inCgst)}</td><td class="right">${fmt(inSgst)}</td><td class="right">0.00</td></tr>
+      <tr><th>Total ITC Availed</th><th class="right">${fmt(inIgst)}</th><th class="right">${fmt(inCgst)}</th><th class="right">${fmt(inSgst)}</th><th class="right">0.00</th></tr>
+    </table>
+    <table style="margin-top:10px;">
+      <tr><th colspan="3">9 — Tax Payable and Paid</th></tr>
+      <tr><th>Tax</th><th>Payable</th><th>Paid</th></tr>
+      <tr><td>CGST</td><td class="right">${fmt(outCgst)}</td><td class="right">${fmt(inCgst)}</td></tr>
+      <tr><td>SGST</td><td class="right">${fmt(outSgst)}</td><td class="right">${fmt(inSgst)}</td></tr>
+      <tr><td>IGST</td><td class="right">${fmt(outIgst)}</td><td class="right">${fmt(inIgst)}</td></tr>
+      <tr><th>Total</th><th class="right">${fmt(outCgst+outSgst+outIgst)}</th><th class="right">${fmt(inCgst+inSgst+inIgst)}</th></tr>
+    </table>
+    <div class="totals" style="margin-top:10px;"><div class="grand"><span>Net Tax Payable (after ITC)</span><b>₹ ${fmt((outCgst-inCgst)+(outSgst-inSgst)+(outIgst-inIgst))}</b></div></div>
+    <p class="small" style="margin-top:8px;">📌 GSTR-9C (reconciliation statement) audited financials par based hota hai — wo yahan nahi hai. Ye sirf basic annual summary hai.</p>`;
+}
+
+/* ---------- GSTR-2B Recon ---------- */
+function renderGSTR2B() {
+  const b = document.getElementById('gstBody');
+  const purchases = DB.vouchers.filter(v=>v.type==='Purchase');
+  b.innerHTML = `
+    <h3>GSTR-2B — ITC Reconciliation <span class="badge gstr2b">GSTR-2B</span></h3>
+    <p class="small">GSTR-2B GST portal se download hota hai (JSON). Yahan aapke purchase vouchers ki list hai — isse 2B se compare karein. (Auto-import 2B JSON abhi nahi hai.)</p>
+    <table>
+      <tr><th>Date</th><th>Voucher No</th><th>Supplier</th><th>GSTIN</th><th>Taxable</th><th>CGST</th><th>SGST</th><th>IGST</th><th>Total</th></tr>
+      ${purchases.map(v=>`<tr><td>${v.date}</td><td>${v.voucherNo||'-'}</td><td>${v.party}</td><td>${v.partyGstin||'-'}</td><td class="right">${fmt(v.taxable)}</td><td class="right">${fmt(v.cgst)}</td><td class="right">${fmt(v.sgst)}</td><td class="right">${fmt(v.igst)}</td><td class="right">${fmt(v.total)}</td></tr>`).join('')}
+    </table>
+    <div class="totals" style="margin-top:8px;">
+      <div><span>Total Purchase Vouchers</span><b>${purchases.length}</b></div>
+      <div><span>Total ITC (CGST+SGST+IGST)</span><b>₹ ${fmt(purchases.reduce((s,v)=>s+v.cgst+v.sgst+v.igst,0))}</b></div>
+    </div>
+    <h3 style="margin-top:14px;">📤 Export GSTR-1 JSON (GST Portal Upload Format — Basic)</h3>
+    <p class="small">Tally jaisa JSON export. Ye basic format hai; portal-specific validation (schema GST3.2.4) ke liye official offline tool use karein.</p>
+    <div class="row">
+      <div><button class="btn" onclick="exportGSTR1JSON()">⬇️ Download GSTR-1 JSON</button></div>
+      <div><button class="btn" onclick="exportGSTR3BJSON()">⬇️ Download GSTR-3B JSON</button></div>
+    </div>`;
+}
+
+/* ---------- GST JSON EXPORTS ---------- */
+function exportGSTR1JSON() {
+  const sales = DB.vouchers.filter(v=>v.type==='Sale');
+  const b2b = sales.filter(v=>v.partyGstin).map(v=>({
+    ctin: v.partyGstin, inv: [{ inum: v.voucherNo||'', idt: v.date, val: v.total, pos: v.pos||'', rchrg:'N', inv_typ:'R',
+      itms: v.items.map((li,i)=>({ num:i+1, itm_det:{ txval: li.qty*li.rate*(1-(li.disc||0)/100), rt: li.gst, iamt: li.gst? (v.interState?(li.qty*li.rate*(1-(li.disc||0)/100)*li.gst/100):0):0, camt: li.gst? (!v.interState?(li.qty*li.rate*(1-(li.disc||0)/100)*li.gst/200):0):0, samt: li.gst? (!v.interState?(li.qty*li.rate*(1-(li.disc||0)/100)*li.gst/200):0):0, csamt:0 } })) }]
+  }));
+  const b2cs = sales.filter(v=>!v.partyGstin).map(v=>({ pos:v.pos||'', txval:v.taxable, rt:v.items[0]?.gst||0, iamt:v.igst, camt:v.cgst, samt:v.sgst, csamt:0 }));
+  const hsn = {}; sales.forEach(v=>v.items.forEach(li=>{ const key=(li.hsn||'-')+'|'+li.gst; if(!hsn[key])hsn[key]={hsn_sc:li.hsn||'',desc:li.name,uqc:li.uom||'NOS',qty:0,txval:0,iamt:0,camt:0,samt:0,csamt:0,rt:li.gst}; const amt=li.qty*li.rate*(1-(li.disc||0)/100); hsn[key].qty+=li.qty; hsn[key].txval+=amt; if(v.interState)hsn[key].iamt+=amt*li.gst/100; else { hsn[key].camt+=amt*li.gst/200; hsn[key].samt+=amt*li.gst/200; } }));
+  const json = { gstin: DB.company.gstin||'', fp: today().slice(0,7).replace('-',''), version:'GST3.2.4', hash:'hash', b2b, b2cs, hsn: { data: Object.values(hsn) } };
+  const blob = new Blob([JSON.stringify(json,null,2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href=url; a.download='GSTR1_'+today()+'.json'; a.click(); URL.revokeObjectURL(url);
+  audit('GSTR1_JSON_EXPORT',''); toast("GSTR-1 JSON downloaded (basic)");
+}
+function exportGSTR3BJSON() {
+  const sales = DB.vouchers.filter(v=>v.type==='Sale'); const purchases = DB.vouchers.filter(v=>v.type==='Purchase');
+  let outTaxable=0,outCgst=0,outSgst=0,outIgst=0; sales.forEach(v=>{outTaxable+=v.taxable;outCgst+=v.cgst;outSgst+=v.sgst;outIgst+=v.igst;});
+  let inCgst=0,inSgst=0,inIgst=0; purchases.forEach(v=>{inCgst+=v.cgst;inSgst+=v.sgst;inIgst+=v.igst;});
+  const json = { gstin: DB.company.gstin||'', ret_period: today().slice(0,7).replace('-',''), sup_details: { osup_det: { txval: outTaxable, iamt: outIgst, camt: outCgst, samt: outSgst, csamt: 0 } }, itc_elg: { itc_avl: [{ ty:'OTH', iamt:inIgst, camt:inCgst, samt:inSgst, csamt:0 }] } };
+  const blob = new Blob([JSON.stringify(json,null,2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href=url; a.download='GSTR3B_'+today()+'.json'; a.click(); URL.revokeObjectURL(url);
+  audit('GSTR3B_JSON_EXPORT',''); toast("GSTR-3B JSON downloaded (basic)");
+}
+
+/* ---------------- BANK RECON ---------------- */
+function renderBankRecon() {
+  const c = document.getElementById('content'); const banks = DB.ledgers.filter(l=>l.group==='Bank Accounts');
+  c.innerHTML = `<div class="card"><h2>🏦 Bank Reconciliation</h2><div class="row"><div><label>Bank Ledger</label><select id="brBank" onchange="renderBankEntries()"><option value="">--</option>${banks.map(b=>`<option>${b.name}</option>`).join('')}</select></div></div><div id="brBody"></div></div>`;
+}
+function renderBankEntries() {
+  const bank = document.getElementById('brBank').value; const el = document.getElementById('brBody'); if (!bank) { el.innerHTML=''; return; }
+  const entries = []; DB.vouchers.forEach(v=>{getPostings(v).forEach(p=>{ if(p.ledger===bank && (p.dr||p.cr)) entries.push({id:v.id,date:v.date,type:v.type,no:v.voucherNo||'',dr:p.dr,cr:p.cr,narr:v.narration||v.party||'',reconciled: v.reconciled||false}); });});
+  let bal=0; entries.forEach(e=>bal+=e.dr-e.cr); let recon=0; entries.forEach(e=>{ if(e.reconciled) recon+=e.dr-e.cr; });
+  const rows = entries.map((e,idx)=>`<tr><td><input type="checkbox" ${e.reconciled?'checked':''} onchange="toggleRecon('${e.id}',this.checked)"></td><td>${e.date}</td><td>${e.type}</td><td>${e.no}</td><td>${e.narr}</td><td class="right">${fmt(e.dr)}</td><td class="right">${fmt(e.cr)}</td></tr>`).join('');
+  el.innerHTML = `<table><tr><th>✓</th><th>Date</th><th>Voucher</th><th>No</th><th>Narration</th><th class="right">Dr</th><th class="right">Cr</th></tr>${rows}</table><div class="totals" style="margin-top:8px;"><div><span>Bank Book Balance</span><b>₹ ${fmt(bal)}</b></div><div><span>Reconciled Balance</span><b>₹ ${fmt(recon)}</b></div><div><span>Unreconciled</span><b>₹ ${fmt(bal-recon)}</b></div></div>`;
+}
+function toggleRecon(vid, checked) { const v = DB.vouchers.find(x=>x.id===vid); if (v) { v.reconciled = checked; audit('BANK_RECON', vid); save(); renderBankEntries(); } }
+
+/* ---------------- ADMIN ---------------- */
+function renderAdmin() {
+  const c = document.getElementById('content');
+  c.innerHTML = `
+    <div class="card">
+      <h2>⚙️ Admin</h2>
+      <h3>💾 Backup / Restore</h3>
+      <div class="row"><div><button class="btn btn-success" onclick="downloadBackup()">⬇️ Download JSON Backup</button></div><div><input type="file" id="restoreFile" accept=".json" onchange="restoreBackup(this)"></div></div>
+      <h3>📤 GSTR-1 CSV Exports</h3>
+      <div class="row"><div><button class="btn" onclick="exportGSTR1('b2b')">B2B CSV</button></div><div><button class="btn" onclick="exportGSTR1('b2c')">B2C CSV</button></div><div><button class="btn" onclick="exportGSTR1('hsn')">HSN Summary CSV</button></div><div><button class="btn" onclick="exportGSTR1('doc')">Doc Summary CSV</button></div></div>
+      <h3>👥 Users</h3><table><tr><th>Username</th><th>Role</th></tr>${DB.users.map(u=>`<tr><td>${u.username}</td><td>${u.role}</td></tr>`).join('')}</table>
+      <div class="row" style="margin-top:6px;"><div><input id="newUser" placeholder="New username"></div><div><input id="newPass" placeholder="Password"></div><div style="display:flex;align-items:flex-end;"><button class="btn btn-success" onclick="addUser()">➕ Add User</button></div></div>
+    </div>
+    <div class="card"><h3>📜 Audit Trail (${DB.audit.length})</h3><table><tr><th>Time</th><th>User</th><th>Action</th><th>Detail</th></tr>${[...DB.audit].reverse().slice(0,100).map(a=>`<tr><td>${a.ts}</td><td>${a.user}</td><td>${a.action}</td><td>${a.detail}</td></tr>`).join('')}</table></div>`;
+}
+function addUser() { const u = document.getElementById('newUser').value.trim(); const p = document.getElementById('newPass').value; if (!u||!p) return toast("Username+password", false); if (DB.users.find(x=>x.username===u)) return toast("Exists", false); DB.users.push({username:u,password:p,role:'user'}); audit('USER_ADD', u); save(); renderAdmin(); }
+function downloadBackup() { const blob = new Blob([JSON.stringify(DB, null, 2)], {type:'application/json'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href=url; a.download='tally-backup-'+today()+'.json'; a.click(); URL.revokeObjectURL(url); audit('BACKUP_DOWNLOAD',''); }
+function restoreBackup(input) { const f = input.files[0]; if (!f) return; const r = new FileReader(); r.onload = () => { try { const d = JSON.parse(r.result); if (!d.company) return toast("Invalid backup", false); if (!confirm("Current data overwrite ho jayega. Continue?")) return; DB = d; if (!DB.users) DB.users=[{username:'admin',password:'admin',role:'admin'}]; if (!DB.audit) DB.audit=[]; audit('BACKUP_RESTORE', f.name); save(); toast("Restored!"); showView('gateway'); } catch(e) { toast("Parse error", false); } }; r.readAsText(f); }
+function exportGSTR1(type) {
+  const sales = DB.vouchers.filter(v=>v.type==='Sale'); let csv = '', fname='';
+  if (type==='b2b') { fname='GSTR1_B2B.csv'; csv='GSTIN,Party,Invoice No,Date,Invoice Value,Place of Supply,Taxable,CGST,SGST,IGST\n'; sales.filter(v=>v.partyGstin).forEach(v=>{csv+=`"${v.partyGstin}","${v.party}","${v.voucherNo||''}","${v.date}","${v.total}","${v.pos||''}","${v.taxable}","${v.cgst}","${v.sgst}","${v.igst}"\n`;}); }
+  else if (type==='b2c') { fname='GSTR1_B2C.csv'; csv='Invoice No,Date,Invoice Value,Place of Supply,Rate,Taxable,CGST,SGST,IGST\n'; sales.filter(v=>!v.partyGstin).forEach(v=>{csv+=`"${v.voucherNo||''}","${v.date}","${v.total}","${v.pos||''}","","${v.taxable}","${v.cgst}","${v.sgst}","${v.igst}"\n`;}); }
+  else if (type==='hsn') { fname='GSTR1_HSN.csv'; csv='HSN,Description,UOM,Quantity,Rate,Taxable,CGST,SGST,IGST\n'; const map = {}; sales.forEach(v=>v.items.forEach(li=>{ const key = (li.hsn||'-')+'|'+li.gst; if (!map[key]) map[key]={hsn:li.hsn||'-',desc:li.name,uom:li.uom,qty:0,rate:li.gst,taxable:0,cgst:0,sgst:0,igst:0}; const gross=li.qty*li.rate; const amt=gross-gross*(li.disc||0)/100; const g=amt*li.gst/100; map[key].qty+=li.qty; map[key].taxable+=amt; if (v.interState) map[key].igst+=g; else { map[key].cgst+=g/2; map[key].sgst+=g/2; } })); Object.values(map).forEach(h=>{csv+=`"${h.hsn}","${h.desc}","${h.uom}","${h.qty}","${h.rate}","${h.taxable}","${h.cgst}","${h.sgst}","${h.igst}"\n`;}); }
+  else if (type==='doc') { fname='GSTR1_DOC.csv'; csv='Type,From,To,Count,Cancelled\n'; csv+=`"Sale","${sales[0]?.voucherNo||'-'}","${sales[sales.length-1]?.voucherNo||'-'}","${sales.length}","0"\n`; }
+  const blob = new Blob([csv], {type:'text/csv'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href=url; a.download=fname; a.click(); URL.revokeObjectURL(url); audit('GSTR1_EXPORT', type);
+}
+
+/* ---------------- PRINT ---------------- */
+function printInvoice(id) {
+  const v = DB.vouchers.find(x=>x.id===id); if (!v) return; const c = DB.company;
+  const hsnMap = {}; v.items.forEach(li=>{ const key = (li.hsn||'-')+'|'+li.gst; if (!hsnMap[key]) hsnMap[key]={hsn:li.hsn||'-',gst:li.gst,taxable:0,cgst:0,sgst:0,igst:0}; const gross=li.qty*li.rate; const amt=gross-gross*(li.disc||0)/100; const g=amt*li.gst/100; hsnMap[key].taxable+=amt; if (v.interState) hsnMap[key].igst+=g; else { hsnMap[key].cgst+=g/2; hsnMap[key].sgst+=g/2; } });
+  const hsnRows = Object.values(hsnMap).map(h=>`<tr><td>${h.hsn}</td><td class="right">${h.gst}%</td><td class="right">${fmt(h.taxable)}</td><td class="right">${fmt(h.cgst)}</td><td class="right">${fmt(h.sgst)}</td><td class="right">${fmt(h.igst)}</td><td class="right">${fmt(h.taxable+h.cgst+h.sgst+h.igst)}</td></tr>`).join('');
+  const itemRows = v.items.map((li,idx)=>{const gross=li.qty*li.rate;const amt=gross-gross*(li.disc||0)/100; return `<tr><td class="center">${idx+1}</td><td>${li.name}<br><span style="font-size:9px;">HSN: ${li.hsn||'-'}</span></td><td>${li.hsn||'-'}</td><td class="right">${fmtQty(li.qty)} ${li.uom||''}</td><td class="right">${fmt(li.rate)}</td><td class="right">${li.disc||0}%</td><td class="right">${fmt(amt)}</td><td class="right">${li.gst}%</td><td class="right">${fmt(v.interState?0:amt*li.gst/200)}</td><td class="right">${fmt(v.interState?0:amt*li.gst/200)}</td><td class="right">${fmt(v.interState?amt*li.gst/100:0)}</td><td class="right">${fmt(amt+amt*li.gst/100)}</td></tr>`;}).join('');
+  document.getElementById('printArea').innerHTML = `<div style="text-align:center;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:10px;"><h1 style="margin:0;">${c.name}</h1><div style="font-size:11px;">${c.address||''}</div><div style="font-size:11px;">Phone: ${c.phone||'-'} | Email: ${c.email||'-'}</div><div style="font-size:11px;"><b>GSTIN: ${c.gstin||'-'}</b> | State: ${stateName(stateOf(c.gstin))}</div></div><h2 style="text-align:center;margin:6px 0;">${v.type==='Sale'?'TAX INVOICE':v.type.toUpperCase()}</h2><table><tr><td style="width:50%;vertical-align:top;"><b>Bill To:</b><br>${v.party}<br>${v.partyGstin?'GSTIN: '+v.partyGstin+'<br>':''}State: ${stateName(stateOf(v.partyGstin)||v.pos)}<br>${v.partyGstin?'(B2B)':'(B2C)'}</td><td style="width:50%;vertical-align:top;"><b>Invoice No:</b> ${v.voucherNo||'-'}<br><b>Date:</b> ${v.date}<br><b>Place of Supply:</b> ${stateName(v.pos||'')}<br><b>Type:</b> ${v.interState?'Inter-State (IGST)':'Intra-State (CGST+SGST)'}</td></tr></table><table><thead><tr><th>#</th><th>Description</th><th>HSN</th><th>Qty</th><th>Rate</th><th>Disc</th><th>Taxable</th><th>GST%</th><th>CGST</th><th>SGST</th><th>IGST</th><th>Total</th></tr></thead><tbody>${itemRows}</tbody></table><table style="margin-top:8px;"><tr><td style="width:55%;vertical-align:top;"><b>HSN-wise Summary</b><table style="margin-top:4px;"><tr><th>HSN</th><th>GST%</th><th>Taxable</th><th>CGST</th><th>SGST</th><th>IGST</th><th>Total</th></tr>${hsnRows}</table></td><td style="width:45%;vertical-align:top;"><table><tr><td>Taxable</td><td class="right">₹ ${fmt(v.taxable)}</td></tr><tr><td>CGST</td><td class="right">₹ ${fmt(v.cgst)}</td></tr><tr><td>SGST</td><td class="right">₹ ${fmt(v.sgst)}</td></tr><tr><td>IGST</td><td class="right">₹ ${fmt(v.igst)}</td></tr><tr><td>Round</td><td class="right">₹ ${fmt(v.round||0)}</td></tr><tr><th>Grand Total</th><th class="right">₹ ${fmt(v.total)}</th></tr></table></td></tr></table><div style="margin-top:8px;font-size:11px;"><b>Amount in Words:</b> ${numToWords(v.total)}</div><div style="margin-top:8px;font-size:11px;"><b>Narration:</b> ${v.narration||'-'}</div><table style="margin-top:20px;"><tr><td style="width:50%;height:60px;vertical-align:bottom;">Customer Signature</td><td style="width:50%;height:60px;vertical-align:bottom;text-align:right;">For <b>${c.name}</b><br><br>Authorised Signatory</td></tr></table><div style="text-align:center;font-size:10px;margin-top:10px;">Computer generated invoice.</div><div class="no-print" style="text-align:center;margin-top:10px;"><button onclick="window.print()" style="padding:8px 20px;font-size:14px;cursor:pointer;">🖨️ Print</button><button onclick="document.getElementById('printArea').innerHTML=''" style="padding:8px 20px;font-size:14px;cursor:pointer;">Close</button></div>`;
+  window.print();
+}
+
+/* ---------------- KEYBOARD ---------------- */
+document.addEventListener('keydown', e => {
+  if (!DB.session) return;
+  if (['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)) return;
+  if (handleArrowNav(e)) return;
+  if (e.ctrlKey && e.key.toLowerCase()==='g') { e.preventDefault(); showView('gateway'); return; }
+  if (e.ctrlKey && e.key.toLowerCase()==='a' && currentView==='voucher') { e.preventDefault(); if (['Sale','Purchase','Credit Note','Debit Note'].includes(vState.type)) saveVoucher(); else if (vState.type==='Manufacture') saveMfg(); else saveSimpleVoucher(); return; }
+  if (e.key==='Escape') { if (currentView==='voucher') { vState=null; showView('gateway'); } return; }
+  const map = {F8:'F8',F9:'F9',F10:'F10',F11:'F11',F5:'F5',F6:'F6',F7:'F7',F4:'F4',F12:'F12'};
+  if (map[e.key]) { e.preventDefault(); openVoucher(map[e.key]); }
+});
+
+/* ---------------- INIT ---------------- */
+load();
+if (!DB.session) renderLogin();
+else {
+  document.getElementById('userInfo').textContent = `👤 ${DB.session.username} | Logout`;
+  document.getElementById('userInfo').onclick = () => { DB.session=null; save(); renderLogin(); };
+  showView(DB.company ? 'gateway' : 'company');
+}
+</script>
+</body>
+</html>
