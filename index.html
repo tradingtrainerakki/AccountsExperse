@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TallyPrime GST - Complete Accounting & ERP</title>
+<title>TallyPrime GST - Complete Accounting &amp; Multi-Entity ERP</title>
 <style>
   :root {
     --pri: #0f6e4e;
@@ -33,7 +33,7 @@
   }
   .brand-area { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 15px; letter-spacing: 0.4px; }
   .brand-badge { background: #fbbf24; color: #0f172a; padding: 2px 7px; border-radius: 3px; font-size: 11px; font-weight: 800; }
-  .top-meta { display: flex; align-items: center; gap: 16px; font-size: 12px; }
+  .top-meta { display: flex; align-items: center; gap: 14px; font-size: 12px; }
   .top-meta span { background: rgba(255,255,255,0.12); padding: 3px 8px; border-radius: 4px; cursor: pointer; }
   .top-meta span:hover { background: rgba(255,255,255,0.24); }
   .kbd {
@@ -42,152 +42,95 @@
     font-size: 11px; font-weight: 700; line-height: 16px;
   }
 
-  /* Main App Shell: Left Info + Center Workspace + Right Function Bar */
-  .app-shell {
-    display: grid;
-    grid-template-columns: 270px 1fr 145px;
-    height: calc(100vh - 60px);
-    width: 100%;
-  }
+  /* Main App Shell */
+  .app-shell { display: grid; grid-template-columns: 270px 1fr 145px; height: calc(100vh - 60px); width: 100%; }
   
-  /* Left Company Info Panel (Gateway Left) */
-  .left-panel {
-    background: #f8fafc; border-right: 1px solid var(--border);
-    padding: 10px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto;
-  }
-  .info-box {
-    background: #fff; border: 1px solid var(--border); border-top: 3px solid var(--pri);
-    border-radius: 4px; padding: 8px 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.03);
-  }
+  /* Left Panel */
+  .left-panel { background: #f8fafc; border-right: 1px solid var(--border); padding: 10px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+  .info-box { background: #fff; border: 1px solid var(--border); border-top: 3px solid var(--pri); border-radius: 4px; padding: 8px 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
   .info-box h4 { font-size: 11px; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; letter-spacing: 0.5px; }
   .info-row { display: flex; justify-content: space-between; font-size: 12px; padding: 3px 0; border-bottom: 1px dashed #e2e8f0; }
   .info-row:last-child { border-bottom: none; }
   .info-val { font-weight: 600; color: var(--pri-dark); text-align: right; }
 
   /* Center Workspace */
-  .center-panel {
-    background: var(--panel-bg); display: flex; flex-direction: column; height: 100%; overflow: hidden; position: relative;
-  }
-  .screen-header {
-    background: var(--pri); color: #fff; padding: 6px 12px;
-    display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 13.5px;
-  }
+  .center-panel { background: var(--panel-bg); display: flex; flex-direction: column; height: 100%; overflow: hidden; position: relative; }
+  .screen-header { background: var(--pri); color: #fff; padding: 6px 12px; display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 13.5px; }
   .screen-header .sub-info { font-size: 11.5px; font-weight: 400; opacity: 0.92; }
-  .screen-body {
-    flex: 1; overflow-y: auto; padding: 12px; position: relative;
-  }
+  .screen-body { flex: 1; overflow-y: auto; padding: 12px; position: relative; }
 
-  /* Gateway of Tally Menu Box */
-  .gateway-wrap {
-    display: flex; align-items: center; justify-content: center; height: 100%;
-    background: radial-gradient(circle at center, #ffffff 0%, #eef6f2 100%);
-  }
-  .gateway-box {
-    width: 340px; border: 2px solid var(--pri); background: #fff;
-    box-shadow: 0 10px 25px rgba(15,110,78,0.12); border-radius: 4px; overflow: hidden;
-  }
-  .gateway-title {
-    background: var(--pri); color: #fff; text-align: center; padding: 8px;
-    font-weight: 700; font-size: 14px; letter-spacing: 0.6px; border-bottom: 2px solid #fbbf24;
-  }
-  .gateway-section {
-    padding: 6px 14px 3px; font-size: 10.5px; font-weight: 700; color: var(--muted);
-    text-transform: uppercase; letter-spacing: 0.8px; background: #f8fafc; border-top: 1px solid #e2e8f0;
-  }
-  .gw-item {
-    padding: 7px 18px; cursor: pointer; display: flex; justify-content: space-between;
-    align-items: center; font-size: 13px; border-left: 4px solid transparent;
-  }
+  /* Gateway */
+  .gateway-wrap { display: flex; align-items: center; justify-content: center; height: 100%; background: radial-gradient(circle at center, #ffffff 0%, #eef6f2 100%); }
+  .gateway-box { width: 340px; border: 2px solid var(--pri); background: #fff; box-shadow: 0 10px 25px rgba(15,110,78,0.12); border-radius: 4px; overflow: hidden; }
+  .gateway-title { background: var(--pri); color: #fff; text-align: center; padding: 8px; font-weight: 700; font-size: 14px; letter-spacing: 0.6px; border-bottom: 2px solid #fbbf24; }
+  .gateway-section { padding: 6px 14px 3px; font-size: 10.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; background: #f8fafc; border-top: 1px solid #e2e8f0; }
+  .gw-item { padding: 7px 18px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-size: 13px; border-left: 4px solid transparent; }
   .gw-item:hover { background: #f1f5f9; }
-  .gw-item.active {
-    background: #fef08a; color: #0f172a; font-weight: 700; border-left-color: var(--pri);
-  }
+  .gw-item.active { background: #fef08a; color: #0f172a; font-weight: 700; border-left-color: var(--pri); }
   .gw-item .hk { color: #dc2626; font-weight: 800; text-decoration: underline; }
 
-  /* Right F-Key Bar */
-  .right-bar {
-    background: #e2e8f0; border-left: 1px solid #94a3b8;
-    padding: 4px; display: flex; flex-direction: column; gap: 3px; overflow-y: auto;
-  }
-  .fn-btn {
-    background: #fff; border: 1px solid #cbd5e1; border-left: 3px solid var(--pri);
-    padding: 5px 6px; text-align: left; font-size: 11.5px; cursor: pointer;
-    border-radius: 2px; display: flex; align-items: center; gap: 5px; color: var(--text);
-  }
+  /* Right Bar */
+  .right-bar { background: #e2e8f0; border-left: 1px solid #94a3b8; padding: 4px; display: flex; flex-direction: column; gap: 3px; overflow-y: auto; }
+  .fn-btn { background: #fff; border: 1px solid #cbd5e1; border-left: 3px solid var(--pri); padding: 5px 6px; text-align: left; font-size: 11.5px; cursor: pointer; border-radius: 2px; display: flex; align-items: center; gap: 5px; color: var(--text); }
   .fn-btn:hover { background: var(--pri-light); border-color: var(--pri); }
   .fn-btn .fn-key { font-weight: 700; color: var(--pri-dark); min-width: 34px; font-family: var(--mono); font-size: 11px; }
 
-  /* Tables & Keyboard Row Selection (Your exact kb-sel style!) */
+  /* Tables & Keyboard Row Selection */
   table.tally-tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; background: #fff; }
-  table.tally-tbl th {
-    background: #f1f5f9; color: #1e293b; font-weight: 700; padding: 7px 8px;
-    border-top: 1px solid var(--border); border-bottom: 2px solid var(--pri); text-align: left;
-    position: sticky; top: 0; z-index: 2;
-  }
+  table.tally-tbl th { background: #f1f5f9; color: #1e293b; font-weight: 700; padding: 7px 8px; border-top: 1px solid var(--border); border-bottom: 2px solid var(--pri); text-align: left; position: sticky; top: 0; z-index: 2; }
   table.tally-tbl td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
   table.tally-tbl tr:hover { background: #f8fafc; }
   .num { text-align: right !important; font-family: var(--mono); }
   
-  /* Your exact keyboard selection highlight */
   tr.kb-sel > td{ background:#ecfdf5 !important; box-shadow:inset 0 2px 0 #0f6e4e, inset 0 -2px 0 #0f6e4e; }
   tr.kb-sel > td:first-child{ box-shadow:inset 2px 2px 0 #0f6e4e, inset 0 -2px 0 #0f6e4e; }
   tr.kb-sel > td:last-child{ box-shadow:inset -2px 2px 0 #0f6e4e, inset 0 -2px 0 #0f6e4e; }
   .kb-rowhint{ font-size:11.5px; color:var(--muted); margin:0 0 8px; }
   @media (max-width: 899px){ .kb-rowhint{ display:none; } }
 
-  /* Forms & Inputs */
-  .form-card {
-    background: #fff; border: 1px solid var(--border); border-radius: 4px; padding: 12px; margin-bottom: 12px;
-  }
+  /* Forms & Buttons */
+  .form-card { background: #fff; border: 1px solid var(--border); border-radius: 4px; padding: 12px; margin-bottom: 12px; }
   .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
   .field { display: flex; flex-direction: column; gap: 3px; }
   .field label { font-size: 11.5px; font-weight: 600; color: #334155; }
-  .field input, .field select, .field textarea {
-    padding: 6px 8px; border: 1px solid #94a3b8; border-radius: 3px; font-size: 12.5px;
-    font-family: inherit; background: #fff; color: var(--text);
-  }
-  .field input:focus, .field select:focus, .field textarea:focus {
-    outline: none; border-color: var(--pri); background: #fefce8; box-shadow: 0 0 0 2px rgba(15,110,78,0.18);
-  }
-  .btn {
-    padding: 6px 12px; border: 1px solid var(--pri); background: var(--pri); color: #fff;
-    border-radius: 3px; font-weight: 600; font-size: 12px; cursor: pointer;
-  }
+  .field input, .field select, .field textarea { padding: 6px 8px; border: 1px solid #94a3b8; border-radius: 3px; font-size: 12.5px; font-family: inherit; background: #fff; color: var(--text); }
+  .field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: var(--pri); background: #fefce8; box-shadow: 0 0 0 2px rgba(15,110,78,0.18); }
+  .btn { padding: 6px 12px; border: 1px solid var(--pri); background: var(--pri); color: #fff; border-radius: 3px; font-weight: 600; font-size: 12px; cursor: pointer; }
   .btn:hover { background: var(--pri-dark); }
   .btn-sec { background: #fff; color: var(--text); border-color: #94a3b8; }
   .btn-sec:hover { background: #f1f5f9; }
-  .btn-danger { background: var(--danger); border-color: var(--danger); }
+  .btn-danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+  .btn-warn { background: var(--warn); border-color: var(--warn); color: #fff; }
 
-  /* Bottom Status Bar */
-  .status-bar {
-    height: 24px; background: #0f172a; color: #cbd5e1; display: flex;
-    align-items: center; justify-content: space-between; padding: 0 12px; font-size: 11.5px;
-  }
+  /* Voucher Header Band */
+  .vch-band { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-radius: 4px; color: #fff; font-weight: 700; margin-bottom: 10px; }
+  .vch-Sales { background: #0f6e4e; }
+  .vch-Purchase { background: #1e3a8a; }
+  .vch-Payment { background: #991b1b; }
+  .vch-Receipt { background: #065f46; }
+  .vch-Contra { background: #475569; }
+  .vch-Journal { background: #6b21a8; }
+  .vch-CreditNote { background: #0369a1; }
+  .vch-DebitNote { background: #b45309; }
 
-  /* Modal Overlay */
-  .modal-backdrop {
-    position: fixed; inset: 0; background: rgba(15,23,42,0.55);
-    display: none; align-items: center; justify-content: center; z-index: 1000;
-  }
+  /* Summary Cards */
+  .stat-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 12px; }
+  .stat-card { background: #fff; border: 1px solid var(--border); border-left: 4px solid var(--pri); padding: 8px 10px; border-radius: 4px; }
+  .stat-card .lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; }
+  .stat-card .val { font-size: 15px; font-weight: 700; font-family: var(--mono); margin-top: 2px; }
+
+  /* Status Bar */
+  .status-bar { height: 24px; background: #0f172a; color: #cbd5e1; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; font-size: 11.5px; }
+
+  /* Modal */
+  .modal-backdrop { position: fixed; inset: 0; background: rgba(15,23,42,0.55); display: none; align-items: center; justify-content: center; z-index: 1000; }
   .modal-backdrop.open { display: flex; }
-  .modal-card {
-    background: #fff; border: 2px solid var(--pri); width: 92%; max-width: 680px;
-    max-height: 88vh; display: flex; flex-direction: column; border-radius: 4px;
-    box-shadow: 0 20px 35px rgba(0,0,0,0.3);
-  }
-  .modal-head {
-    background: var(--pri); color: #fff; padding: 8px 12px; font-weight: 700;
-    display: flex; justify-content: space-between; align-items: center;
-  }
+  .modal-card { background: #fff; border: 2px solid var(--pri); width: 92%; max-width: 720px; max-height: 90vh; display: flex; flex-direction: column; border-radius: 4px; box-shadow: 0 20px 35px rgba(0,0,0,0.3); }
+  .modal-head { background: var(--pri); color: #fff; padding: 8px 12px; font-weight: 700; display: flex; justify-content: space-between; align-items: center; }
   .modal-body { padding: 14px; overflow-y: auto; flex: 1; }
   .modal-foot { padding: 8px 14px; background: #f8fafc; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
 
-  /* Toast Notification */
-  #toastBox {
-    position: fixed; bottom: 34px; right: 160px; background: #0f172a; color: #fff;
-    padding: 8px 14px; border-left: 4px solid #fbbf24; border-radius: 3px;
-    font-size: 12.5px; display: none; z-index: 2000; box-shadow: 0 5px 15px rgba(0,0,0,0.25);
-  }
+  #toastBox { position: fixed; bottom: 34px; right: 160px; background: #0f172a; color: #fff; padding: 8px 14px; border-left: 4px solid #fbbf24; border-radius: 3px; font-size: 12.5px; display: none; z-index: 2000; box-shadow: 0 5px 15px rgba(0,0,0,0.25); }
 </style>
 </head>
 <body>
@@ -196,26 +139,29 @@
 <div class="top-bar">
   <div class="brand-area">
     <span class="brand-badge">PRIME GST</span>
-    <span id="topCmpName">TallyPrime Accounting ERP</span>
+    <span id="topCmpName">Shree Ganesh Traders Pvt. Ltd.</span>
   </div>
   <div class="top-meta">
     <span onclick="openPeriodModal()" title="Alt+F2: Change Period">📅 Period: <b id="topPeriod">01-Apr-2026 to 31-Mar-2027</b></span>
-    <span onclick="openDateModal()" title="F2: Current Date">🕒 Date: <b id="topCurDate">21-Oct-2026</b></span>
-    <span onclick="openEntitySwitcherModal()" title="F3: Company Info">🏢 Company (<kbd class="kbd">F3</kbd>)</span>
-    <span onclick="openHelpModal()" title="Shortcut Help">❓ Help (<kbd class="kbd">?</kbd>)</span>
+    <span onclick="openDateModal()" title="F2: Change Current Date">🕒 Date: <b id="topCurDate">21-Oct-2026</b></span>
+    <span onclick="openCompanyModal()" title="F3: Select / Create / Alter Company or Trust">🏢 Company (<kbd class="kbd">F3</kbd>)</span>
+    <span onclick="openShortcutHelpModal()" title="Keyboard Shortcuts">❓ Help (<kbd class="kbd">?</kbd>)</span>
   </div>
 </div>
 
-<!-- MAIN 3-COLUMN WORKSPACE -->
+<!-- MAIN WORKSPACE -->
 <div class="app-shell">
-  <!-- LEFT PANEL: Company & Tax Snapshot -->
+  <!-- LEFT COMPANY & FINANCIAL PULSE PANEL -->
   <aside class="left-panel">
     <div class="info-box">
-      <h4>Current Company</h4>
+      <h4>Current Company / Trust</h4>
       <div class="info-row"><span>Name</span><span class="info-val" id="lpCmpName">-</span></div>
-      <div class="info-row"><span>GSTIN</span><span class="info-val" id="lpCmpGstin">-</span></div>
+      <div class="info-row"><span>GSTIN / Reg</span><span class="info-val" id="lpCmpGstin">-</span></div>
       <div class="info-row"><span>State</span><span class="info-val" id="lpCmpState">-</span></div>
       <div class="info-row"><span>Reg. Type</span><span class="info-val" id="lpCmpReg">Regular</span></div>
+      <div style="margin-top:8px;">
+        <button class="btn" style="width:100%; padding:5px; font-size:11.5px;" onclick="openCompanyModal()">🏢 Switch / Create Entity (F3)</button>
+      </div>
     </div>
 
     <div class="info-box">
@@ -230,6 +176,7 @@
     <div class="info-box">
       <h4>Quick Shortcuts</h4>
       <div style="font-size:11.5px; line-height:1.7; color:#334155;">
+        <div><span class="kbd">F3</span> Select / Create Company</div>
         <div><span class="kbd">Alt+C</span> Ledger/Item On-Spot</div>
         <div><span class="kbd">Ctrl+A</span> Accept / Save Screen</div>
         <div><span class="kbd">Esc</span> Quit / Go Back</div>
@@ -238,23 +185,21 @@
     </div>
   </aside>
 
-  <!-- CENTER WORKSPACE -->
+  <!-- CENTER SCREEN -->
   <main class="center-panel">
     <div class="screen-header">
       <span id="screenTitle">Gateway of Tally</span>
-      <span class="sub-info" id="screenSub">Use ↑ ↓ &amp; Enter or Hotkeys | Esc to Go Back</span>
+      <span class="sub-info" id="screenSub">Press Hotkey (Red Letter) or ↑ ↓ + Enter</span>
     </div>
-    <div class="screen-body" id="screenBody">
-      <!-- Dynamic Screens Rendered Here -->
-    </div>
+    <div class="screen-body" id="screenBody"></div>
   </main>
 
-  <!-- RIGHT FUNCTION BUTTON BAR (F2 - F12) -->
+  <!-- RIGHT FUNCTION BUTTON BAR -->
   <aside class="right-bar">
     <button class="fn-btn" onclick="navigate('gateway')"><span class="fn-key">Esc</span><span>Gateway</span></button>
     <button class="fn-btn" onclick="openDateModal()"><span class="fn-key">F2</span><span>Date</span></button>
     <button class="fn-btn" onclick="openPeriodModal()"><span class="fn-key">A+F2</span><span>Period</span></button>
-    <button class="fn-btn" onclick="openEntitySwitcherModal()"><span class="fn-key">F3</span><span>Company</span></button>
+    <button class="fn-btn" onclick="openCompanyModal()"><span class="fn-key">F3</span><span>Company</span></button>
     <hr style="border:none; border-top:1px solid #cbd5e1; margin:2px 0;">
     <button class="fn-btn" onclick="openVoucherScreen('Contra')"><span class="fn-key">F4</span><span>Contra</span></button>
     <button class="fn-btn" onclick="openVoucherScreen('Payment')"><span class="fn-key">F5</span><span>Payment</span></button>
@@ -262,8 +207,8 @@
     <button class="fn-btn" onclick="openVoucherScreen('Journal')"><span class="fn-key">F7</span><span>Journal</span></button>
     <button class="fn-btn" onclick="openVoucherScreen('Sales')"><span class="fn-key">F8</span><span>Sales</span></button>
     <button class="fn-btn" onclick="openVoucherScreen('Purchase')"><span class="fn-key">F9</span><span>Purchase</span></button>
-    <button class="fn-btn" onclick="openVoucherScreen('Credit Note')"><span class="fn-key">A+F6</span><span>Cr Note</span></button>
-    <button class="fn-btn" onclick="openVoucherScreen('Debit Note')"><span class="fn-key">A+F5</span><span>Dr Note</span></button>
+    <button class="fn-btn" onclick="openVoucherScreen('CreditNote')"><span class="fn-key">A+F6</span><span>Cr Note</span></button>
+    <button class="fn-btn" onclick="openVoucherScreen('DebitNote')"><span class="fn-key">A+F5</span><span>Dr Note</span></button>
     <hr style="border:none; border-top:1px solid #cbd5e1; margin:2px 0;">
     <button class="fn-btn" onclick="navigate('daybook')"><span class="fn-key">Alt+D</span><span>Day Book</span></button>
     <button class="fn-btn" onclick="navigate('ledgers_view')"><span class="fn-key">Alt+L</span><span>Ledger View</span></button>
@@ -273,9 +218,9 @@
   </aside>
 </div>
 
-<!-- BOTTOM STATUS BAR -->
+<!-- STATUS BAR -->
 <div class="status-bar">
-  <div>TallyPrime GST Core Engine v1.0 | Double-Entry + Auto IGST / CGST+SGST</div>
+  <div>TallyPrime GST Core Engine v1.0 | Multi-Entity (Business + Trust) + Auto IGST / CGST+SGST</div>
   <div id="statusRight">Ready</div>
 </div>
 
@@ -294,9 +239,9 @@
 <div id="toastBox"></div>
 
 <script>
-// ============================================================================
-// PART 1 JS: GST STATE CODES, 28 GROUPS, DB ENGINE, COMPANY & GATEWAY NAVIGATION
-// ============================================================================
+/* ============================================================================
+   PART 1: CORE ENGINE, STATECodes, MULTI-ENTITY STORAGE & GATEWAY
+   ============================================================================ */
 
 const GST_STATES = {
   "01":"Jammu & Kashmir","02":"Himachal Pradesh","03":"Punjab","04":"Chandigarh",
@@ -310,7 +255,6 @@ const GST_STATES = {
   "37":"Andhra Pradesh","38":"Ladakh"
 };
 
-// 28 Standard Tally Accounting Groups
 const DEFAULT_GROUPS = [
   { name: "Capital Account", nature: "Liabilities", affectsGP: false },
   { name: "Reserves & Surplus", parent: "Capital Account", nature: "Liabilities", affectsGP: false },
@@ -342,14 +286,13 @@ const DEFAULT_GROUPS = [
   { name: "Indirect Expenses", nature: "Expenses", affectsGP: false }
 ];
 
-const STORAGE_KEY = "TALLY_PRIME_GST_DB_V1";
-let ROLE = "admin";
 let CURRENT_SCREEN = "gateway";
 let NAV_STACK = [];
 let GW_INDEX = 0;
 
-// Global Data Store
-let CURRENT_ENTITY_ID = "DEFAULT_ENTITY"; // Current active company/trust ID
+// Multi-Entity Global Store
+let CURRENT_ENTITY_ID = localStorage.getItem("TALLY_ACTIVE_ENTITY") || "DEFAULT_ENTITY";
+
 let DB = {
   company: {
     name: "Shree Ganesh Traders Pvt. Ltd.",
@@ -367,7 +310,7 @@ let DB = {
   vouchers: []
 };
 
-let vouchers = DB.vouchers; // Alias for direct compatibility with your existing functions
+let vouchers = DB.vouchers;
 
 function uid(prefix="ID") {
   return prefix + "_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 6);
@@ -396,104 +339,165 @@ function fmtDate(iso) {
 
 function seedDefaultMasters() {
   if (DB.ledgers.length > 0) return;
+  const isTrust = (DB.company.regType === "Trust / NGO");
   DB.ledgers = [
-    { id: "L_CASH", name: "Cash", group: "Cash-in-Hand", opBal: 50000, opType: "Dr", gstin: "", stateCode: DB.company.stateCode },
-    { id: "L_BANK", name: "SBI Current A/c", group: "Bank Accounts", opBal: 250000, opType: "Dr", gstin: "", stateCode: DB.company.stateCode },
-    { id: "L_SALES_GST", name: "Sales GST Local/Inter", group: "Sales Accounts", opBal: 0, opType: "Cr", gstApplicable: true },
-    { id: "L_PURC_GST", name: "Purchase GST Account", group: "Purchase Accounts", opBal: 0, opType: "Dr", gstApplicable: true },
-    { id: "L_CGST_OUT", name: "Output CGST", group: "Duties & Taxes", taxType: "GST", taxHead: "CGST", opBal: 0, opType: "Cr" },
-    { id: "L_SGST_OUT", name: "Output SGST", group: "Duties & Taxes", taxType: "GST", taxHead: "SGST", opBal: 0, opType: "Cr" },
-    { id: "L_IGST_OUT", name: "Output IGST", group: "Duties & Taxes", taxType: "GST", taxHead: "IGST", opBal: 0, opType: "Cr" },
-    { id: "L_CGST_IN", name: "Input CGST", group: "Duties & Taxes", taxType: "GST", taxHead: "CGST_IN", opBal: 0, opType: "Dr" },
-    { id: "L_SGST_IN", name: "Input SGST", group: "Duties & Taxes", taxType: "GST", taxHead: "SGST_IN", opBal: 0, opType: "Dr" },
-    { id: "L_IGST_IN", name: "Input IGST", group: "Duties & Taxes", taxType: "GST", taxHead: "IGST_IN", opBal: 0, opType: "Dr" },
+    { id: "L_CASH", name: "Cash", group: "Cash-in-Hand", opBal: isTrust ? 0 : 50000, opType: "Dr", gstin: "", stateCode: DB.company.stateCode || "05" },
+    { id: "L_BANK", name: "SBI Current A/c", group: "Bank Accounts", opBal: isTrust ? 0 : 250000, opType: "Dr", gstin: "", stateCode: DB.company.stateCode || "05" },
+    { id: "L_CORPUS", name: "Corpus / Trust Fund", group: "Capital Account", opBal: 0, opType: "Cr", gstin: "", stateCode: DB.company.stateCode || "05" },
+    { id: "L_DONATION", name: "Donations Received", group: "Indirect Incomes", opBal: 0, opType: "Cr", gstin: "", stateCode: DB.company.stateCode || "05" },
+    { id: "L_SALES_GST", name: "Sales Account", group: "Sales Accounts", opBal: 0, opType: "Cr", gstin: "", stateCode: "05" },
+    { id: "L_PURC_GST", name: "Purchase Account", group: "Purchase Accounts", opBal: 0, opType: "Dr", gstin: "", stateCode: "05" },
+    { id: "L_CGST_OUT", name: "Output CGST", group: "Duties & Taxes", taxHead: "CGST", opBal: 0, opType: "Cr" },
+    { id: "L_SGST_OUT", name: "Output SGST", group: "Duties & Taxes", taxHead: "SGST", opBal: 0, opType: "Cr" },
+    { id: "L_IGST_OUT", name: "Output IGST", group: "Duties & Taxes", taxHead: "IGST", opBal: 0, opType: "Cr" },
+    { id: "L_CGST_IN", name: "Input CGST", group: "Duties & Taxes", taxHead: "CGST", opBal: 0, opType: "Dr" },
+    { id: "L_SGST_IN", name: "Input SGST", group: "Duties & Taxes", taxHead: "SGST", opBal: 0, opType: "Dr" },
+    { id: "L_IGST_IN", name: "Input IGST", group: "Duties & Taxes", taxHead: "IGST", opBal: 0, opType: "Dr" },
     { id: "L_ROUNDOFF", name: "Round Off", group: "Indirect Expenses", opBal: 0, opType: "Dr" },
     { id: "L_PARTY_LOCAL", name: "Himalaya Enterprises (UK)", group: "Sundry Debtors", opBal: 0, opType: "Dr", gstin: "05AABCH1111K1Z5", stateCode: "05", regType: "Regular" },
-    { id: "L_PARTY_INTER", name: "Delhi Metro Suppliers (DL)", group: "Sundry Creditors", opBal: 0, opType: "Cr", gstin: "07AABCD2222M1Z2", stateCode: "07", regType: "Regular" }
+    { id: "L_PARTY_INTER", name: "Delhi Industrial Corp (DL)", group: "Sundry Creditors", opBal: 0, opType: "Cr", gstin: "07AABCD2222M1Z2", stateCode: "07", regType: "Regular" }
   ];
 
   DB.items = [
     { id: "I_1", name: "Solar Inverter 5KVA", hsn: "850440", uom: "NOS", gstRate: 18, rate: 32000, opQty: 10, opRate: 28000 },
-    { id: "I_2", name: "Lithium Battery 100Ah", hsn: "850760", uom: "NOS", gstRate: 18, rate: 18500, opQty: 20, opRate: 15500 },
-    { id: "I_3", name: "Copper DC Cable (Roll)", hsn: "854449", uom: "MTR", gstRate: 18, rate: 120, opQty: 500, opRate: 95 }
+    { id: "I_2", name: "Lithium Battery 100Ah", hsn: "850760", uom: "NOS", gstRate: 18, rate: 18500, opQty: 15, opRate: 15000 },
+    { id: "I_3", name: "Solar Panel 540W Mono", hsn: "854140", uom: "NOS", gstRate: 12, rate: 11200, opQty: 30, opRate: 9500 }
   ];
 }
 
-// REPLACE OLD loadDB WITH THIS:
-function loadDB(entityId = "DEFAULT_ENTITY") {
-  CURRENT_ENTITY_ID = entityId;
+function loadDB(entityId) {
+  if (entityId) {
+    CURRENT_ENTITY_ID = entityId;
+    localStorage.setItem("TALLY_ACTIVE_ENTITY", entityId);
+  } else {
+    CURRENT_ENTITY_ID = localStorage.getItem("TALLY_ACTIVE_ENTITY") || "DEFAULT_ENTITY";
+  }
   try {
     const storageKey = "TALLY_PRIME_GST_DB_" + CURRENT_ENTITY_ID;
-    const raw = localStorage.getItem(storageKey);
+    let raw = localStorage.getItem(storageKey);
+    // Migrate legacy single-company data if present
+    if (!raw && CURRENT_ENTITY_ID === "DEFAULT_ENTITY") {
+      raw = localStorage.getItem("TALLY_PRIME_GST_DB_V1");
+      if (raw) localStorage.setItem(storageKey, raw);
+    }
     if (raw) {
       const parsed = JSON.parse(raw);
-      DB = Object.assign(DB, parsed);
+      DB = Object.assign({ groups: [...DEFAULT_GROUPS], ledgers: [], items: [], vouchers: [] }, parsed);
+      if (!DB.groups || DB.groups.length === 0) DB.groups = [...DEFAULT_GROUPS];
     } else {
-      // Agar nayi entity hai toh default masters seed karein
-      DB.company = { name: CURRENT_ENTITY_ID === "DEFAULT_ENTITY" ? "Shree Ganesh Traders" : "Charitable Trust", gstin: "", stateCode: "05", address: "Roorkee", regType: "Regular", fyFrom: "2026-04-01", fyTo: "2027-03-31", curDate: "2026-10-21" };
+      DB.groups = [...DEFAULT_GROUPS];
       DB.ledgers = [];
       DB.items = [];
       DB.vouchers = [];
-      if (typeof seedDefaultMasters === "function") seedDefaultMasters();
+      seedDefaultMasters();
+      saveDB();
     }
   } catch (e) { console.error("DB load failed:", e); }
   vouchers = DB.vouchers;
-  if (typeof refreshHeaderAndSidebar === "function") refreshHeaderAndSidebar();
+  refreshHeaderAndSidebar();
 }
 
-// REPLACE OLD saveDB WITH THIS:
 function saveDB() {
   vouchers = DB.vouchers;
   const storageKey = "TALLY_PRIME_GST_DB_" + CURRENT_ENTITY_ID;
   localStorage.setItem(storageKey, JSON.stringify(DB));
-  if (typeof refreshHeaderAndSidebar === "function") refreshHeaderAndSidebar();
-  toast("💾 Saved Locally!");
+  localStorage.setItem("TALLY_ACTIVE_ENTITY", CURRENT_ENTITY_ID);
+  refreshHeaderAndSidebar();
 }
+
+function getLedgerById(id) { return DB.ledgers.find(l => l.id === id); }
+function getGroupNature(groupName) {
+  const g = DB.groups.find(x => x.name === groupName);
+  return g ? g.nature : "Assets";
+}
+
+function computeAllLedgerBalances(fromDate = DB.company.fyFrom, toDate = DB.company.fyTo) {
+  const map = {};
+  DB.ledgers.forEach(l => {
+    const opDr = l.opType === "Dr" ? (Number(l.opBal) || 0) : 0;
+    const opCr = l.opType === "Cr" ? (Number(l.opBal) || 0) : 0;
+    map[l.id] = { ledger: l, opDr, opCr, txDr: 0, txCr: 0, clDr: 0, clCr: 0, netDr: 0 };
+  });
+
+  DB.vouchers.forEach(v => {
+    if (v.date < fromDate || v.date > toDate) return;
+    (v.entries || []).forEach(e => {
+      if (!map[e.ledgerId]) return;
+      if (e.type === "Dr") map[e.ledgerId].txDr += Number(e.amount) || 0;
+      else map[e.ledgerId].txCr += Number(e.amount) || 0;
+    });
+  });
+
+  Object.values(map).forEach(row => {
+    const totDr = row.opDr + row.txDr;
+    const totCr = row.opCr + row.txCr;
+    if (totDr >= totCr) {
+      row.clDr = +(totDr - totCr).toFixed(2);
+      row.clCr = 0;
+      row.netDr = row.clDr;
+    } else {
+      row.clCr = +(totCr - totDr).toFixed(2);
+      row.clDr = 0;
+      row.netDr = -row.clCr;
+    }
+  });
+  return map;
+}
+
 function refreshHeaderAndSidebar() {
   const c = DB.company;
   document.getElementById("topCmpName").textContent = c.name;
   document.getElementById("topPeriod").textContent = `${fmtDate(c.fyFrom)} to ${fmtDate(c.fyTo)}`;
   document.getElementById("topCurDate").textContent = fmtDate(c.curDate);
+
   document.getElementById("lpCmpName").textContent = c.name;
   document.getElementById("lpCmpGstin").textContent = c.gstin || "Unregistered";
   document.getElementById("lpCmpState").textContent = `${c.stateCode} - ${GST_STATES[c.stateCode] || ""}`;
   document.getElementById("lpCmpReg").textContent = c.regType || "Regular";
-  document.getElementById("lpVchCount").textContent = DB.vouchers.length;
 
-  // Calculate quick balances if engine is loaded
-  if (typeof computeQuickPulse === "function") {
-    computeQuickPulse();
-  }
+  const balMap = computeAllLedgerBalances();
+  let cashBank = 0, salesTot = 0, purcTot = 0, outTax = 0, inTax = 0;
+
+  Object.values(balMap).forEach(r => {
+    const g = r.ledger.group;
+    if (g === "Cash-in-Hand" || g === "Bank Accounts") cashBank += r.netDr;
+    if (g === "Sales Accounts") salesTot += (r.clCr - r.clDr);
+    if (g === "Purchase Accounts") purcTot += (r.clDr - r.clCr);
+    if (r.ledger.id.includes("_OUT")) outTax += (r.clCr - r.clDr);
+    if (r.ledger.id.includes("_IN")) inTax += (r.clDr - r.clCr);
+  });
+
+  const netGst = outTax - inTax;
+  document.getElementById("lpCashBal").textContent = `₹${fmtINR(Math.abs(cashBank))} ${cashBank >= 0 ? 'Dr' : 'Cr'}`;
+  document.getElementById("lpSalesTot").textContent = `₹${fmtINR(Math.max(0, salesTot))}`;
+  document.getElementById("lpPurcTot").textContent = `₹${fmtINR(Math.max(0, purcTot))}`;
+  document.getElementById("lpGstNet").textContent = `₹${fmtINR(Math.abs(netGst))} ${netGst >= 0 ? 'Payable' : 'ITC Cr'}`;
+  document.getElementById("lpGstNet").style.color = netGst >= 0 ? "var(--danger)" : "var(--ok)";
+  document.getElementById("lpVchCount").textContent = DB.vouchers.length;
 }
 
-// Gateway Menu Definition
 const GATEWAY_MENU = [
   { section: "Masters", label: "Create / Alter Ledgers", hk: "L", screen: "masters_ledger" },
   { section: "Masters", label: "Stock Items & HSN Master", hk: "I", screen: "masters_item" },
-  { section: "Masters", label: "Chart of Accounts (28 Groups)", hk: "G", screen: "masters_groups" },
+  { section: "Masters", label: "Chart of Accounts (28 Groups)", hk: "G", screen: "masters_group" },
   { section: "Transactions", label: "Vouchers Entry (F4 - F9)", hk: "V", screen: "voucher_entry" },
   { section: "Transactions", label: "Day Book / All Transactions", hk: "D", screen: "daybook" },
   { section: "Accounting Reports", label: "Ledger Account (By Head)", hk: "A", screen: "ledgers_view" },
   { section: "Accounting Reports", label: "Trial Balance", hk: "T", screen: "trial_balance" },
   { section: "Accounting Reports", label: "Profit & Loss A/c", hk: "P", screen: "pnl_report" },
-  { section: "Accounting Reports", label: "Balance Sheet", hk: "B", screen: "balance_sheet" },
+  { section: "Accounting Reports", label: "Balance Sheet", hk: "B", screen: "bs_report" },
   { section: "GST Statutory Reports", label: "GSTR-1 (Outward Supplies & JSON)", hk: "1", screen: "gstr1" },
   { section: "GST Statutory Reports", label: "GSTR-3B (Tax & ITC Summary)", hk: "3", screen: "gstr3b" }
 ];
 
 function navigate(screen, pushHistory = true) {
-  if (pushHistory && CURRENT_SCREEN !== screen) {
-    NAV_STACK.push(CURRENT_SCREEN);
-  }
+  if (pushHistory && CURRENT_SCREEN !== screen) NAV_STACK.push(CURRENT_SCREEN);
   CURRENT_SCREEN = screen;
   renderScreen(screen);
 }
 
 function goBack() {
-  if (document.getElementById("appModal").classList.contains("open")) {
-    closeModal();
-    return;
-  }
+  if (kbOverlayOpen()) { closeModal(); return; }
   if (CURRENT_SCREEN === "gateway") return;
   const prev = NAV_STACK.pop() || "gateway";
   CURRENT_SCREEN = prev;
@@ -502,7 +506,7 @@ function goBack() {
 
 function renderGateway() {
   document.getElementById("screenTitle").textContent = "Gateway of Tally";
-  document.getElementById("screenSub").textContent = "Press Hotkey (Red Letter) or ↑ ↓ + Enter";
+  document.getElementById("screenSub").textContent = `Active Entity: ${DB.company.name} | Press F3 to Switch/Create Company`;
 
   let html = `<div class="gateway-wrap"><div class="gateway-box"><div class="gateway-title">GATEWAY OF TALLY</div>`;
   let lastSec = "";
@@ -512,96 +516,14 @@ function renderGateway() {
       lastSec = m.section;
     }
     const activeCls = idx === GW_INDEX ? "active" : "";
-    // Highlight Hotkey letter
-    const reg = new RegExp(`(${m.hk})`, "i");
-    const lbl = m.label.replace(reg, `<span class="hk">$1</span>`);
+    const labelHtml = m.label.replace(new RegExp(`(${m.hk})`, "i"), `<span class="hk">$1</span>`);
     html += `<div class="gw-item ${activeCls}" onclick="GW_INDEX=${idx}; navigate('${m.screen}')">
-      <span>${lbl}</span>
+      <span>${labelHtml}</span>
       <span class="kbd">${m.hk}</span>
     </div>`;
   });
   html += `</div></div>`;
   document.getElementById("screenBody").innerHTML = html;
-}
-
-// Company Modal (F3)
-function openEntitySwitcherModal() {
-  const c = DB.company;
-  let stateOpts = Object.entries(GST_STATES).map(([code, nm]) =>
-    `<option value="${code}" ${c.stateCode === code ? "selected" : ""}>${code} - ${nm}</option>`
-  ).join("");
-
-  const body = `
-    <div class="form-grid">
-      <div class="field" style="grid-column: span 2;">
-        <label>Company Name</label>
-        <input id="cmpNameInp" value="${c.name}">
-      </div>
-      <div class="field">
-        <label>GSTIN (15 Digits)</label>
-        <input id="cmpGstinInp" value="${c.gstin}" maxlength="15" oninput="autoDetectStateFromGstin(this.value, 'cmpStateInp')">
-      </div>
-      <div class="field">
-        <label>State (Auto from GSTIN)</label>
-        <select id="cmpStateInp">${stateOpts}</select>
-      </div>
-      <div class="field">
-        <label>Registration Type</label>
-        <select id="cmpRegInp">
-          <option ${c.regType==="Regular"?"selected":""}>Regular</option>
-          <option ${c.regType==="Composition"?"selected":""}>Composition</option>
-          <option ${c.regType==="Unregistered"?"selected":""}>Unregistered</option>
-        </select>
-      </div>
-      <div class="field">
-        <label>Address / City</label>
-        <input id="cmpAddrInp" value="${c.address || ''}">
-      </div>
-    </div>
-  `;
-  const foot = `
-    <button class="btn btn-sec" onclick="closeModal()">Cancel (Esc)</button>
-    <button class="btn" onclick="saveCompanyModal()">Save Company (Ctrl+A)</button>
-  `;
-  showModal("Company Alteration / GST Configuration (F3)", body, foot);
-}
-
-function autoDetectStateFromGstin(gstin, selectId) {
-  const clean = (gstin || "").trim().toUpperCase();
-  if (clean.length >= 2) {
-    const code = clean.slice(0, 2);
-    if (GST_STATES[code]) {
-      const sel = document.getElementById(selectId);
-      if (sel) sel.value = code;
-    }
-  }
-}
-
-function saveCompanyModal() {
-  DB.company.name = document.getElementById("cmpNameInp").value.trim() || "My Company";
-  DB.company.gstin = document.getElementById("cmpGstinInp").value.trim().toUpperCase();
-  DB.company.stateCode = document.getElementById("cmpStateInp").value;
-  DB.company.regType = document.getElementById("cmpRegInp").value;
-  DB.company.address = document.getElementById("cmpAddrInp").value.trim();
-  saveDB();
-  closeModal();
-  toast("✅ Company & GST Settings Saved");
-}
-
-function openDateModal() {
-  const body = `<div class="field"><label>Current Voucher Date (F2)</label><input type="date" id="curDateInp" value="${DB.company.curDate}"></div>`;
-  const foot = `<button class="btn" onclick="DB.company.curDate=document.getElementById('curDateInp').value; saveDB(); closeModal(); toast('📅 Date Updated');">Apply</button>`;
-  showModal("Change Current Date (F2)", body, foot);
-}
-
-function openPeriodModal() {
-  const body = `
-    <div class="form-grid">
-      <div class="field"><label>From Date</label><input type="date" id="fyFromInp" value="${DB.company.fyFrom}"></div>
-      <div class="field"><label>To Date</label><input type="date" id="fyToInp" value="${DB.company.fyTo}"></div>
-    </div>`;
-  const foot = `<button class="btn" onclick="DB.company.fyFrom=document.getElementById('fyFromInp').value; DB.company.fyTo=document.getElementById('fyToInp').value; saveDB(); closeModal(); renderScreen(CURRENT_SCREEN); toast('📅 Period Updated');">Apply Period</button>`;
-  showModal("Change Financial Period (Alt+F2)", body, foot);
 }
 
 function showModal(title, bodyHtml, footHtml) {
@@ -623,6 +545,24 @@ function kbOverlayOpen() {
   return document.getElementById("appModal").classList.contains("open");
 }
 
+function openDateModal() {
+  showModal("Change Current Date (F2)",
+    `<div class="field"><label>Current Voucher Date</label><input type="date" id="mdlCurDate" value="${DB.company.curDate}"></div>`,
+    `<button class="btn btn-sec" onclick="closeModal()">Cancel</button>
+     <button class="btn" onclick="DB.company.curDate=document.getElementById('mdlCurDate').value; saveDB(); closeModal(); renderScreen(CURRENT_SCREEN); toast('Current Date Updated');">Accept (Enter)</button>`
+  );
+}
+
+function openPeriodModal() {
+  showModal("Change Financial Period (Alt+F2)",
+    `<div class="form-grid">
+      <div class="field"><label>From Date</label><input type="date" id="mdlFyFrom" value="${DB.company.fyFrom}"></div>
+      <div class="field"><label>To Date</label><input type="date" id="mdlFyTo" value="${DB.company.fyTo}"></div>
+    </div>`,
+    `<button class="btn btn-sec" onclick="closeModal()">Cancel</button>
+     <button class="btn" onclick="DB.company.fyFrom=document.getElementById('mdlFyFrom').value; DB.company.fyTo=document.getElementById('mdlFyTo').value; saveDB(); closeModal(); renderScreen(CURRENT_SCREEN); toast('Period Updated');">Accept</button>`
+  );
+  
 // ============================================================================
 // CONTINUE INSERTING PART 2 BELOW THIS LINE
 // ============================================================================
@@ -2132,662 +2072,15 @@ function cancelEditVoucher() {
 // PART 4 JS: DAY BOOK, LEDGERS VIEW, REPORTS (TB, P&L, B/S, GSTR-1, GSTR-3B) & RENDER ENGINE
 // ============================================================================
 
-// Global Keyboard Navigation for Tables (Matches your exact `tr.kb-sel` requirement!)
-let KB_ROW = null;   // { vid }
-function kbRowTab(){ const t = CURRENT_SCREEN; return (t === 'daybook' || t === 'ledgers_view') ? t : ''; }
-function kbRowList(){
-  const wrap = document.getElementById("kbTableWrap");
-  return wrap ? [...wrap.querySelectorAll('tr[data-vid]')] : [];
-}
-function kbSetRow(tr, scroll){
-  document.querySelectorAll('tr.kb-sel').forEach(x=>x.classList.remove('kb-sel'));
-  if(!tr){ KB_ROW = null; return; }
-  tr.classList.add('kb-sel'); KB_ROW = { vid: tr.dataset.vid };
-  if(scroll && tr.scrollIntoView) tr.scrollIntoView({ block:'nearest' });
-}
-function kbReapplyRow(){
-  if(!KB_ROW) return;
-  const list = kbRowList();
-  const tr = list.find(x=>x.dataset.vid === KB_ROW.vid);
-  if(tr) tr.classList.add('kb-sel'); 
-  else if(DB.vouchers.some(v=>v.id === KB_ROW.vid)) {
-    // keep or pick first
-  } else {
-    KB_ROW = null;
-  }
-}
-function kbMoveRow(delta){
-  const list = kbRowList(); if(!list.length) return false;
-  let i = KB_ROW ? list.findIndex(x=>x.dataset.vid === KB_ROW.vid) : -1;
-  if(i < 0) i = delta > 0 ? 0 : list.length - 1;
-  else i = Math.max(0, Math.min(list.length - 1, i + delta));
-  kbSetRow(list[i], true);
-  return true;
-}
-function kbEditSelected(){
-  if(!KB_ROW) return false;
-  const v = DB.vouchers.find(x=>x.id === KB_ROW.vid); if(!v) return false;
-  if(ROLE === 'viewer'){ toast('👁️ Viewer edit nahi kar sakta'); return true; }
-  openVoucherScreen(v.type, v.id);
-  return true;
-}
-
-// Global Keydown Keyboard Handler
-document.addEventListener('click', (e)=>{
-  const tr = e.target.closest && e.target.closest('tr[data-vid]');
-  if(tr && kbRowTab()) kbSetRow(tr, false);
-});
-
-document.addEventListener('keydown', (e)=>{
-  if(e.isComposing || e.ctrlKey || e.metaKey || e.altKey) {
-    if (e.altKey && (e.key === 'd' || e.key === 'D')) { e.preventDefault(); navigate('daybook'); }
-    if (e.altKey && (e.key === 'l' || e.key === 'L')) { e.preventDefault(); navigate('ledgers_view'); }
-    if (e.altKey && (e.key === 'g' || e.key === 'G')) { e.preventDefault(); navigate('gstr1'); }
-    if (e.ctrlKey && (e.key === 'e' || e.key === 'E')) { e.preventDefault(); exportBackupJSON(); }
-    if (e.ctrlKey && (e.key === 'a' || e.key === 'A')) {
-      e.preventDefault();
-      if (document.getElementById("appModal").classList.contains("open")) {
-        if (typeof saveCompanyModal === 'function' && document.getElementById("cmpNameInp")) saveCompanyModal();
-      } else if (CURRENT_SCREEN === 'voucher_entry') {
-        saveCurrentVoucher();
-      }
-    }
-    return;
-  }
-
-  if (typeof kbOverlayOpen === 'function' && kbOverlayOpen()) return;
-  const target = e.target, key = e.key;
-
-  if (key === 'Escape') {
-    e.preventDefault();
-    goBack();
-    return;
-  }
-  if (key === 'F2') { e.preventDefault(); openDateModal(); return; }
-  if (key === 'F3') { e.preventDefault(); openEntitySwitcherModal(); return; }
-  if (key === '?') { e.preventDefault(); openHelpModal(); return; }
-
-  // Table row navigation
-  if(!kbRowTab() || (target && ['INPUT', 'SELECT', 'TEXTAREA'].includes(target.tagName))) return;
-
-  if(key === 'ArrowDown' || key === 'ArrowUp'){
-    if(kbMoveRow(key === 'ArrowDown' ? 1 : -1)){ e.preventDefault(); e.stopImmediatePropagation(); }
-    return;
-  }
-  if(key === 'Home' || key === 'End'){
-    const l = kbRowList();
-    if(l.length){ kbSetRow(key === 'Home' ? l[0] : l[l.length - 1], true); e.preventDefault(); e.stopImmediatePropagation(); }
-    return;
-  }
-  const interactive = target && target.closest && target.closest('button, a');
-  if((key === 'e' || key === 'E') || (key === 'Enter' && !interactive)){
-    if(kbEditSelected()){ e.preventDefault(); e.stopImmediatePropagation(); }
-  }
-}, true);
-
-
-// ============================================================================
-// SCREEN 4: DAY BOOK (ALT+D)
-// ============================================================================
-
-function renderDayBookScreen() {
-  document.getElementById("screenTitle").textContent = "Day Book (All Transactions)";
-  document.getElementById("screenSub").textContent = "↑ ↓ to select | Enter / E to Edit | Esc to Gateway";
-
-  const sorted = [...DB.vouchers].sort((a,b) => (a.date > b.date ? 1 : -1));
-  let totAmt = 0;
-
-  let rowsHtml = sorted.map((v, idx) => {
-    totAmt = +(totAmt + (Number(v.amount) || 0)).toFixed(2);
-    const partyName = getLedgerName(v.partyLedgerId || v.drLedgerId);
-    return `
-      <tr data-vid="${v.id}" onclick="kbSetRow(this, false)" ondblclick="openVoucherScreen('${v.type}', '${v.id}')" style="cursor:pointer;">
-        <td>${idx + 1}</td>
-        <td><b>${fmtDate(v.date)}</b></td>
-        <td><span class="kbd">${v.type}</span></td>
-        <td><b>${v.vchNo}</b></td>
-        <td>${partyName}</td>
-        <td>${v.narration || "-"}</td>
-        <td class="num"><b>₹${fmtINR(v.amount)}</b></td>
-        <td>
-          <button class="btn btn-sec" style="padding:2px 7px; font-size:11px;" onclick="event.stopPropagation(); openVoucherScreen('${v.type}', '${v.id}')">Edit</button>
-          <button class="btn btn-danger" style="padding:2px 7px; font-size:11px;" onclick="event.stopPropagation(); deleteVoucher('${v.id}')">Del</button>
-        </td>
-      </tr>
-    `;
-  }).join("");
-
-  document.getElementById("screenBody").innerHTML = `
-    <div class="kb-rowhint">💡 Keyboard Tip: Use <span class="kbd">↑</span> <span class="kbd">↓</span> to select entry, <span class="kbd">E</span> or <span class="kbd">Enter</span> to edit, <span class="kbd">Esc</span> to return.</div>
-    <div class="form-card" style="padding:0; overflow:hidden;" id="kbTableWrap">
-      <table class="tally-tbl">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Date</th>
-            <th>Type</th>
-            <th>Voucher No</th>
-            <th>Particulars / Party</th>
-            <th>Narration</th>
-            <th class="num">Amount (₹)</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>${rowsHtml || `<tr><td colspan="8" style="text-align:center; padding:20px; color:var(--muted);">No Vouchers Entered Yet. Press F8 for Sales or F9 for Purchase.</td></tr>`}</tbody>
-        <tfoot>
-          <tr style="background:#f1f5f9; font-weight:700;">
-            <td colspan="6" style="text-align:right;">Total Day Book Amount:</td>
-            <td class="num">₹${fmtINR(totAmt)}</td>
-            <td></td>
-          </tr>
-        </tfoot>
-      </table>
-    </div>
-  `;
-  setTimeout(() => {
-    const list = kbRowList();
-    if (list.length && !KB_ROW) kbSetRow(list[0], false);
-    else kbReapplyRow();
-  }, 50);
-}
-
-function deleteVoucher(vid) {
-  DB.vouchers = DB.vouchers.filter(v => v.id !== vid);
-  saveDB();
-  renderScreen(CURRENT_SCREEN);
-  toast("🗑️ Voucher Deleted");
-}
-
-
-// ============================================================================
-// SCREEN 5: LEDGER ACCOUNT VIEW (ALT+L - DRILL DOWN)
-// ============================================================================
-
-let SELECTED_LEDGER_FOR_VIEW = "";
-
-function renderLedgersViewScreen() {
-  document.getElementById("screenTitle").textContent = "Ledger Account Statement";
-  document.getElementById("screenSub").textContent = "Select Ledger to view complete transactions and running balance";
-
-  if (!SELECTED_LEDGER_FOR_VIEW && DB.ledgers.length > 0) {
-    SELECTED_LEDGER_FOR_VIEW = DB.ledgers[0].id;
-  }
-
-  const ledOpts = DB.ledgers.map(l => `<option value="${l.id}" ${l.id === SELECTED_LEDGER_FOR_VIEW ? "selected" : ""}>${l.name} [${l.group}]</option>`).join("");
-  const balMap = computeAllLedgerBalances();
-  const curBal = balMap[SELECTED_LEDGER_FOR_VIEW] || { opDr:0, opCr:0, closeBal:0, closeType:"Dr" };
-  const targetLedger = getLedger(SELECTED_LEDGER_FOR_VIEW);
-
-  let running = (curBal.opDr - curBal.opCr);
-  let rowsHtml = `
-    <tr style="background:#f8fafc; font-weight:600;">
-      <td>-</td>
-      <td>${fmtDate(DB.company.fyFrom)}</td>
-      <td>Opening Balance</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td class="num">${running >= 0 ? `₹${fmtINR(running)} Dr` : `₹${fmtINR(Math.abs(running))} Cr`}</td>
-    </tr>
-  `;
-
-  const sortedVouchers = [...DB.vouchers].sort((a,b) => (a.date > b.date ? 1 : -1));
-  sortedVouchers.forEach((v, idx) => {
-    const entries = getVoucherEntries(v);
-    const match = entries.find(e => e.ledgerId === SELECTED_LEDGER_FOR_VIEW);
-    if (!match) return;
-
-    const drAmt = match.type === "Dr" ? match.amount : 0;
-    const crAmt = match.type === "Cr" ? match.amount : 0;
-    running = +(running + drAmt - crAmt).toFixed(2);
-
-    rowsHtml += `
-      <tr data-vid="${v.id}" onclick="kbSetRow(this, false)" style="cursor:pointer;">
-        <td>${idx + 1}</td>
-        <td>${fmtDate(v.date)}</td>
-        <td><span class="kbd">${v.type}</span> <b>${v.vchNo}</b></td>
-        <td>${v.narration || "-"}</td>
-        <td class="num">${drAmt ? `₹${fmtINR(drAmt)}` : "-"}</td>
-        <td class="num">${crAmt ? `₹${fmtINR(crAmt)}` : "-"}</td>
-        <td class="num"><b>₹${fmtINR(Math.abs(running))} ${running >= 0 ? "Dr" : "Cr"}</b></td>
-      </tr>
-    `;
-  });
-
-  document.getElementById("screenBody").innerHTML = `
-    <div class="form-card" style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
-      <div class="field" style="flex:1;">
-        <label>Select Ledger Account:</label>
-        <select style="padding:6px; font-size:13px; font-weight:600;" onchange="SELECTED_LEDGER_FOR_VIEW=this.value; renderLedgersViewScreen();">
-          ${ledOpts}
-        </select>
-      </div>
-      <div>
-        <div style="font-size:11.5px; color:var(--muted);">Closing Balance:</div>
-        <div style="font-size:15px; font-weight:800; color:var(--pri-dark);">₹${fmtINR(curBal.closeBal)} ${curBal.closeType}</div>
-      </div>
-    </div>
-
-    <div class="form-card" style="padding:0; overflow:hidden;" id="kbTableWrap">
-      <table class="tally-tbl">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Date</th>
-            <th>Particulars / Vch</th>
-            <th>Narration</th>
-            <th class="num">Debit (₹)</th>
-            <th class="num">Credit (₹)</th>
-            <th class="num">Running Balance</th>
-          </tr>
-        </thead>
-        <tbody>${rowsHtml}</tbody>
-      </table>
-    </div>
-  `;
-}
-
-
-// ============================================================================
-// SCREEN 6: TRIAL BALANCE
-// ============================================================================
-
-function renderTrialBalanceScreen() {
-  document.getElementById("screenTitle").textContent = "Trial Balance (Group-wise Summary)";
-  document.getElementById("screenSub").textContent = "Debit & Credit Sum Check for Financial Year";
-
-  const balMap = computeAllLedgerBalances();
-  let totDr = 0, totCr = 0;
-
-  const rows = DB.ledgers.map((l, i) => {
-    const b = balMap[l.id] || { netSigned: 0 };
-    const dr = b.netSigned > 0 ? b.netSigned : 0;
-    const cr = b.netSigned < 0 ? Math.abs(b.netSigned) : 0;
-    totDr = +(totDr + dr).toFixed(2);
-    totCr = +(totCr + cr).toFixed(2);
-
-    return `
-      <tr>
-        <td>${i + 1}</td>
-        <td><b>${l.name}</b></td>
-        <td>${l.group}</td>
-        <td class="num">${dr ? `₹${fmtINR(dr)}` : "-"}</td>
-        <td class="num">${cr ? `₹${fmtINR(cr)}` : "-"}</td>
-      </tr>
-    `;
-  }).join("");
-
-  const diff = +(totDr - totCr).toFixed(2);
-
-  document.getElementById("screenBody").innerHTML = `
-    <div class="form-card" style="padding:0; overflow:hidden;">
-      <table class="tally-tbl">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Ledger Name</th>
-            <th>Group</th>
-            <th class="num">Debit Balance (₹)</th>
-            <th class="num">Credit Balance (₹)</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-        <tfoot>
-          <tr style="background:#f1f5f9; font-weight:700; font-size:13.5px;">
-            <td colspan="3" style="text-align:right;">Grand Total:</td>
-            <td class="num">₹${fmtINR(totDr)}</td>
-            <td class="num">₹${fmtINR(totCr)}</td>
-          </tr>
-        </tfoot>
-      </table>
-      <div style="padding:10px; background:${diff===0?"#ecfdf5":"#fef2f2"}; color:${diff===0?"var(--ok)":"var(--danger)"}; font-weight:700; text-align:center; border-top:1px solid var(--border);">
-        ${diff === 0 ? "✔ Trial Balance is 100% Matched (Debit Total equals Credit Total)" : `⚠ Difference of ₹${fmtINR(Math.abs(diff))} found!`}
-      </div>
-    </div>
-  `;
-}
-
-
-// ============================================================================
-// SCREEN 7: PROFIT & LOSS A/C & BALANCE SHEET
-// ============================================================================
-
-function renderPnlScreen() {
-  document.getElementById("screenTitle").textContent = "Profit & Loss Account";
-  document.getElementById("screenSub").textContent = "Trading & P&L Statement";
-
-  const balMap = computeAllLedgerBalances();
-  let directInc = 0, directExp = 0, indirectInc = 0, indirectExp = 0;
-
-  Object.values(balMap).forEach(b => {
-    const grp = b.ledger.group;
-    const net = b.netSigned; // Positive = Dr, Negative = Cr
-    if (grp === "Sales Accounts" || grp === "Direct Incomes") directInc += Math.abs(net);
-    if (grp === "Purchase Accounts" || grp === "Direct Expenses") directExp += Math.abs(net);
-    if (grp === "Indirect Incomes") indirectInc += Math.abs(net);
-    if (grp === "Indirect Expenses") indirectExp += Math.abs(net);
-  });
-
-  const grossProfit = +(directInc - directExp).toFixed(2);
-  const netProfit = +((grossProfit + indirectInc) - indirectExp).toFixed(2);
-
-  document.getElementById("screenBody").innerHTML = `
-    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
-      <div class="form-card">
-        <h3 style="color:var(--pri-dark); border-bottom:2px solid var(--pri); padding-bottom:6px; margin-bottom:8px;">EXPENSES / DR</h3>
-        <div class="info-row"><span>Direct Expenses / Purchases</span><span class="num">₹${fmtINR(directExp)}</span></div>
-        <div class="info-row" style="font-weight:700; color:var(--ok);"><span>Gross Profit c/o</span><span class="num">₹${fmtINR(Math.max(0, grossProfit))}</span></div>
-        <div class="info-row" style="font-weight:700; margin-top:10px; border-top:1px solid var(--border);"><span>Total</span><span class="num">₹${fmtINR(Math.max(directInc, directExp))}</span></div>
-        
-        <div style="margin-top:20px;"></div>
-        <div class="info-row"><span>Indirect Expenses</span><span class="num">₹${fmtINR(indirectExp)}</span></div>
-        <div class="info-row" style="font-size:15px; font-weight:800; color:${netProfit>=0?"var(--ok)":"var(--danger)"}; border-top:2px solid var(--pri); padding-top:6px; margin-top:8px;">
-          <span>Net Profit</span>
-          <span class="num">₹${fmtINR(netProfit)}</span>
-        </div>
-      </div>
-
-      <div class="form-card">
-        <h3 style="color:var(--pri-dark); border-bottom:2px solid var(--pri); padding-bottom:6px; margin-bottom:8px;">INCOMES / CR</h3>
-        <div class="info-row"><span>Sales / Direct Incomes</span><span class="num">₹${fmtINR(directInc)}</span></div>
-        <div class="info-row" style="font-weight:700; margin-top:10px; border-top:1px solid var(--border);"><span>Total</span><span class="num">₹${fmtINR(Math.max(directInc, directExp))}</span></div>
-
-        <div style="margin-top:20px;"></div>
-        <div class="info-row"><span>Indirect Incomes</span><span class="num">₹${fmtINR(indirectInc)}</span></div>
-        <div class="info-row"><span>Gross Profit b/d</span><span class="num">₹${fmtINR(Math.max(0, grossProfit))}</span></div>
-      </div>
-    </div>
-  `;
-}
-
-function renderBalanceSheetScreen() {
-  document.getElementById("screenTitle").textContent = "Balance Sheet";
-  document.getElementById("screenSub").textContent = "Liabilities & Assets Statement";
-
-  const balMap = computeAllLedgerBalances();
-  let totalLiab = 0, totalAsset = 0;
-  let liabRows = "", assetRows = "";
-
-  Object.values(balMap).forEach(b => {
-    const grp = b.ledger.group;
-    const gObj = getGroupObj(grp);
-    if (gObj.nature === "Liabilities") {
-      totalLiab += Math.abs(b.netSigned);
-      liabRows += `<div class="info-row"><span>${b.ledger.name}</span><span class="num">₹${fmtINR(Math.abs(b.netSigned))}</span></div>`;
-    } else if (gObj.nature === "Assets") {
-      totalAsset += Math.abs(b.netSigned);
-      assetRows += `<div class="info-row"><span>${b.ledger.name}</span><span class="num">₹${fmtINR(Math.abs(b.netSigned))}</span></div>`;
-    }
-  });
-
-  document.getElementById("screenBody").innerHTML = `
-    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
-      <div class="form-card">
-        <h3 style="color:var(--pri-dark); border-bottom:2px solid var(--pri); padding-bottom:6px; margin-bottom:8px;">LIABILITIES &amp; CAPITAL</h3>
-        ${liabRows || "<div style='color:var(--muted);'>No liabilities recorded.</div>"}
-        <div class="info-row" style="font-size:15px; font-weight:800; border-top:2px solid var(--pri); margin-top:12px; padding-top:6px;">
-          <span>Total Liabilities</span><span class="num">₹${fmtINR(totalLiab)}</span>
-        </div>
-      </div>
-
-      <div class="form-card">
-        <h3 style="color:var(--pri-dark); border-bottom:2px solid var(--pri); padding-bottom:6px; margin-bottom:8px;">ASSETS</h3>
-        ${assetRows || "<div style='color:var(--muted);'>No assets recorded.</div>"}
-        <div class="info-row" style="font-size:15px; font-weight:800; border-top:2px solid var(--pri); margin-top:12px; padding-top:6px;">
-          <span>Total Assets</span><span class="num">₹${fmtINR(totalAsset)}</span>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-
-// ============================================================================
-// SCREEN 8 & 9: GSTR-1, GSTR-3B & GST TAX INVOICE PRINT
-// ============================================================================
-
-function renderGstr1Screen() {
-  document.getElementById("screenTitle").textContent = "GSTR-1 (Outward Supplies & JSON Export)";
-  document.getElementById("screenSub").textContent = "B2B, B2CL, B2CS Summary for GST Portal Upload";
-
-  const salesVouchers = DB.vouchers.filter(v => v.type === "Sales" && v.gst);
-  let totalTaxable = 0, totalTax = 0;
-
-  const rows = salesVouchers.map((v, i) => {
-    totalTaxable += v.gst.taxable;
-    totalTax += (v.gst.cgst + v.gst.sgst + v.gst.igst);
-    const party = getLedger(v.partyLedgerId);
-    return `
-      <tr>
-        <td>${i + 1}</td>
-        <td>${fmtDate(v.date)}</td>
-        <td><b>${v.vchNo}</b></td>
-        <td>${party ? party.name : "-"}</td>
-        <td><span class="kbd">${party ? party.gstin || "Unregistered" : "-"}</span></td>
-        <td><span class="kbd" style="background:#fef08a;">${v.gst.gstrCategory}</span></td>
-        <td class="num">₹${fmtINR(v.gst.taxable)}</td>
-        <td class="num">₹${fmtINR(v.gst.cgst + v.gst.sgst + v.gst.igst)}</td>
-        <td class="num"><b>₹${fmtINR(v.gst.netInvoice)}</b></td>
-        <td><button class="btn btn-sec" style="padding:2px 7px; font-size:11px;" onclick="printTaxInvoice('${v.id}')">Print Invoice</button></td>
-      </tr>
-    `;
-  }).join("");
-
-  document.getElementById("screenBody").innerHTML = `
-    <div class="form-card" style="display:flex; justify-content:space-between; align-items:center;">
-      <div>
-        <h3 style="font-size:14px; color:var(--pri-dark);">GSTR-1 Return Filing Summary</h3>
-        <p style="font-size:11.5px; color:var(--muted);">Total Taxable Outward Supplies ready for GST portal JSON generation.</p>
-      </div>
-      <button class="btn" onclick="exportGstr1JSON()">📥 Download GSTR-1 JSON</button>
-    </div>
-
-    <div class="form-card" style="padding:0; overflow:hidden;">
-      <table class="tally-tbl">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Date</th>
-            <th>Invoice No</th>
-            <th>Customer Name</th>
-            <th>GSTIN</th>
-            <th>Category</th>
-            <th class="num">Taxable Val</th>
-            <th class="num">Total Tax</th>
-            <th class="num">Invoice Total</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>${rows || `<tr><td colspan="10" style="text-align:center; padding:20px; color:var(--muted);">No Sales Vouchers with GST found.</td></tr>`}</tbody>
-      </table>
-    </div>
-  `;
-}
-
-function renderGstr3bScreen() {
-  document.getElementById("screenTitle").textContent = "GSTR-3B Summary (Tax Payable & ITC Claim)";
-  document.getElementById("screenSub").textContent = "Monthly Statutory Summary for GSTR-3B Filing";
-
-  const balMap = computeAllLedgerBalances();
-  let outCgst = 0, outSgst = 0, outIgst = 0;
-  let inCgst = 0, inSgst = 0, inIgst = 0;
-
-  Object.values(balMap).forEach(b => {
-    const id = b.ledger.id;
-    const net = b.netSigned; // Cr = negative, Dr = positive
-    if (id === "L_CGST_OUT") outCgst += Math.abs(net);
-    if (id === "L_SGST_OUT") outSgst += Math.abs(net);
-    if (id === "L_IGST_OUT") outIgst += Math.abs(net);
-    if (id === "L_CGST_IN") inCgst += net;
-    if (id === "L_SGST_IN") inSgst += net;
-    if (id === "L_IGST_IN") inIgst += net;
-  });
-
-  const netCgst = Math.max(0, outCgst - inCgst);
-  const netSgst = Math.max(0, outSgst - inSgst);
-  const netIgst = Math.max(0, outIgst - inIgst);
-  const totalPayable = +(netCgst + netSgst + netIgst).toFixed(2);
-
-  document.getElementById("screenBody").innerHTML = `
-    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
-      <div class="form-card">
-        <h3 style="color:var(--pri-dark); border-bottom:2px solid var(--pri); padding-bottom:6px; margin-bottom:8px;">OUTWARD TAX LIABILITY (Sales)</h3>
-        <div class="info-row"><span>Output CGST</span><span class="num">₹${fmtINR(outCgst)}</span></div>
-        <div class="info-row"><span>Output SGST</span><span class="num">₹${fmtINR(outSgst)}</span></div>
-        <div class="info-row"><span>Output IGST</span><span class="num">₹${fmtINR(outIgst)}</span></div>
-      </div>
-
-      <div class="form-card">
-        <h3 style="color:var(--pri-dark); border-bottom:2px solid var(--pri); padding-bottom:6px; margin-bottom:8px;">INPUT TAX CREDIT (Purchase ITC)</h3>
-        <div class="info-row"><span>Input CGST (ITC)</span><span class="num">₹${fmtINR(inCgst)}</span></div>
-        <div class="info-row"><span>Input SGST (ITC)</span><span class="num">₹${fmtINR(inSgst)}</span></div>
-        <div class="info-row"><span>Input IGST (ITC)</span><span class="num">₹${fmtINR(inIgst)}</span></div>
-      </div>
-    </div>
-
-    <div class="form-card" style="text-align:center; background:#ecfdf5; border-color:var(--pri);">
-      <h3 style="font-size:14px; color:var(--pri-dark); margin-bottom:4px;">NET TAX PAYABLE IN CASH (GSTR-3B)</h3>
-      <div style="font-size:24px; font-weight:800; color:var(--pri);">₹${fmtINR(totalPayable)}</div>
-    </div>
-  `;
-}
-
-// Tally Style GST Tax Invoice Print Modal
-function printTaxInvoice(vid) {
-  const v = DB.vouchers.find(x => x.id === vid);
-  if (!v) return;
-  const party = getLedger(v.partyLedgerId);
-  const c = DB.company;
-
-  let itemsHtml = (v.itemLines || []).map((ln, i) => `
-    <tr>
-      <td style="border:1px solid #000; padding:4px; text-align:center;">${i + 1}</td>
-      <td style="border:1px solid #000; padding:4px;"><b>${ln.itemName || ''}</b></td>
-      <td style="border:1px solid #000; padding:4px; text-align:center;">${ln.hsn || ''}</td>
-      <td style="border:1px solid #000; padding:4px; text-align:right;">${ln.qty} ${ln.uom}</td>
-      <td style="border:1px solid #000; padding:4px; text-align:right;">₹${fmtINR(ln.rate)}</td>
-      <td style="border:1px solid #000; padding:4px; text-align:right;">₹${fmtINR(ln.taxable)}</td>
-      <td style="border:1px solid #000; padding:4px; text-align:right;">${ln.gstRate}%</td>
-      <td style="border:1px solid #000; padding:4px; text-align:right;">₹${fmtINR(ln.lineTotal)}</td>
-    </tr>
-  `).join("");
-
-  const body = `
-    <div style="font-family:sans-serif; padding:10px; color:#000; background:#fff; font-size:12px;">
-      <div style="text-align:center; border-bottom:2px solid #000; padding-bottom:6px; margin-bottom:8px;">
-        <h2 style="font-size:16px; margin-bottom:2px;">TAX INVOICE</h2>
-        <div style="font-size:14px; font-weight:bold;">${c.name}</div>
-        <div>${c.address} | GSTIN: <b>${c.gstin}</b></div>
-      </div>
-      <div style="display:flex; justify-content:space-between; margin-bottom:10px; border:1px solid #000; padding:6px;">
-        <div>
-          <b>Buyer (Bill to):</b><br>
-          <b>${party ? party.name : "-"}</b><br>
-          GSTIN: ${party ? party.gstin || "Unregistered" : "-"}<br>
-          State Code: ${party ? party.stateCode : "-"}
-        </div>
-        <div style="text-align:right;">
-          Invoice No: <b>${v.vchNo}</b><br>
-          Dated: <b>${fmtDate(v.date)}</b><br>
-          Ref / Order No: ${v.refNo || "-"}
-        </div>
-      </div>
-      <table style="width:100%; border-collapse:collapse; margin-bottom:10px;">
-        <thead>
-          <tr style="background:#eee;">
-            <th style="border:1px solid #000; padding:4px;">#</th>
-            <th style="border:1px solid #000; padding:4px; text-align:left;">Item Description</th>
-            <th style="border:1px solid #000; padding:4px;">HSN/SAC</th>
-            <th style="border:1px solid #000; padding:4px;">Qty</th>
-            <th style="border:1px solid #000; padding:4px;">Rate</th>
-            <th style="border:1px solid #000; padding:4px;">Taxable</th>
-            <th style="border:1px solid #000; padding:4px;">GST%</th>
-            <th style="border:1px solid #000; padding:4px;">Total</th>
-          </tr>
-        </thead>
-        <tbody>${itemsHtml}</tbody>
-      </table>
-      <div style="text-align:right; font-size:14px; font-weight:bold; border-top:1px solid #000; padding-top:6px;">
-        Grand Total: ₹${fmtINR(v.amount)}
-      </div>
-    </div>
-  `;
-  const foot = `<button class="btn" onclick="window.print()">🖨️ Print Invoice</button>`;
-  showModal("Tally GST Tax Invoice Print Preview", body, foot);
-}
-
-function exportBackupJSON() {
-  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(DB, null, 2));
-  const dlAnchor = document.createElement('a');
-  dlAnchor.setAttribute("href", dataStr);
-  dlAnchor.setAttribute("download", `tally_backup_${new Date().toISOString().slice(0,10)}.json`);
-  document.body.appendChild(dlAnchor);
-  dlAnchor.click();
-  dlAnchor.remove();
-  toast("📥 Tally Database Backup Downloaded!");
-}
-
-function exportGstr1JSON() {
-  const salesVouchers = DB.vouchers.filter(v => v.type === "Sales" && v.gst);
-  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(salesVouchers, null, 2));
-  const dlAnchor = document.createElement('a');
-  dlAnchor.setAttribute("href", dataStr);
-  dlAnchor.setAttribute("download", `GSTR1_Export_${DB.company.gstin}.json`);
-  document.body.appendChild(dlAnchor);
-  dlAnchor.click();
-  dlAnchor.remove();
-  toast("📥 GSTR-1 JSON Exported Successfully!");
-}
-
-function openHelpModal() {
-  const body = `
-    <div style="line-height:1.8; font-size:13px;">
-      <div><b>F2:</b> Change Voucher Date</div>
-      <div><b>Alt+F2:</b> Change Financial Period</div>
-      <div><b>F3:</b> Company Alteration &amp; GSTIN Setup</div>
-      <div><b>F4 - F9:</b> Contra, Payment, Receipt, Journal, Sales, Purchase</div>
-      <div><b>Alt+D:</b> Day Book (with Keyboard Row Selection)</div>
-      <div><b>Alt+L:</b> Ledger Account Drill-down</div>
-      <div><b>Alt+C:</b> Create Ledger On-the-Spot</div>
-      <div><b>Ctrl+A:</b> Accept &amp; Save Form / Voucher</div>
-      <div><b>Esc:</b> Go Back / Close Window</div>
-    </div>
-  `;
-  showModal("❓ TallyPrime Keyboard Shortcuts Help", body, "");
-}
-
-// Universal Screen Router Renderer
-function renderScreen(screen) {
-  closeModal();
-  if (screen === "gateway") renderGateway();
-  else if (screen === "masters_ledger") renderLedgerMastersScreen();
-  else if (screen === "masters_item") renderItemMastersScreen();
-  else if (screen === "masters_groups") renderGroupsScreen();
-  else if (screen === "voucher_entry") renderVoucherEntryScreen();
-  else if (screen === "daybook") renderDayBookScreen();
-  else if (screen === "ledgers_view") renderLedgersViewScreen();
-  else if (screen === "trial_balance") renderTrialBalanceScreen();
-  else if (screen === "pnl_report") renderPnlScreen();
-  else if (screen === "balance_sheet") renderBalanceSheetScreen();
-  else if (screen === "gstr1") renderGstr1Screen();
-  else if (screen === "gstr3b") renderGstr3bScreen();
-  else renderGateway();
-}
-
-// ============================================================================
-// INITIALIZE APPLICATION ON WINDOW LOAD
-// ============================================================================
-window.onload = function() {
-  loadDB();
-  navigate("gateway", false);
-};
-// ADD THIS AT THE VERY END OF YOUR SCRIPT (BEFORE </script>)
+/* ============================================================================
+   PART 4: MULTI-ENTITY / TRUST MANAGER (F3), BACKUP, KEYBOARD & ROUTER
+   ============================================================================ */
 
 function getSavedEntitiesList() {
   let list = ["DEFAULT_ENTITY"];
   for (let i = 0; i < localStorage.length; i++) {
     let key = localStorage.key(i);
-    if (key && key.startsWith("TALLY_PRIME_GST_DB_")) {
+    if (key && key.startsWith("TALLY_PRIME_GST_DB_") && key !== "TALLY_PRIME_GST_DB_V1") {
       let entId = key.replace("TALLY_PRIME_GST_DB_", "");
       if (!list.includes(entId)) list.push(entId);
     }
@@ -2795,87 +2088,356 @@ function getSavedEntitiesList() {
   return list;
 }
 
-function openEntitySwitcherModal() {
-  let entities = getSavedEntitiesList();
-  let listHtml = entities.map(ent => {
-    let entName = ent;
+function openCompanyModal() {
+  const c = DB.company;
+  const stateOpts = Object.entries(GST_STATES).map(([k,v]) =>
+    `<option value="${k}" ${c.stateCode===k?'selected':''}>${k} - ${v}</option>`
+  ).join("");
+
+  const entities = getSavedEntitiesList();
+  const listHtml = entities.map(ent => {
+    let entName = ent === "DEFAULT_ENTITY" ? "Shree Ganesh Traders" : ent;
+    let entReg = "";
+    let entType = "Regular";
     try {
-      let raw = localStorage.getItem("TALLY_PRIME_GST_DB_" + ent);
-      if (raw) { let p = JSON.parse(raw); if (p.company && p.company.name) entName = p.company.name; }
+      let raw = localStorage.getItem("TALLY_PRIME_GST_DB_" + ent) || (ent === "DEFAULT_ENTITY" ? localStorage.getItem("TALLY_PRIME_GST_DB_V1") : null);
+      if (raw) {
+        let p = JSON.parse(raw);
+        if (p.company && p.company.name) entName = p.company.name;
+        if (p.company && p.company.gstin) entReg = p.company.gstin;
+        if (p.company && p.company.regType) entType = p.company.regType;
+      }
     } catch(e){}
-    let isActive = ent === CURRENT_ENTITY_ID;
+    let isActive = (ent === CURRENT_ENTITY_ID);
     return `
-      <div style="display:flex; justify-content:space-between; align-items:center; padding:8px; border-bottom:1px solid #e2e8f0; background:${isActive?'#ecfdf5':'#fff'};">
-        <div><b>${entName}</b> <span style="font-size:11px; color:var(--muted);">(${ent})</span></div>
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 10px; border-bottom:1px solid #e2e8f0; background:${isActive?'#ecfdf5':'#fff'};">
         <div>
-          ${isActive ? '<span style="color:var(--ok); font-weight:700; font-size:11.5px;">Active ✔</span>' : `<button class="btn" style="padding:2px 8px; font-size:11px;" onclick="switchEntity('${ent}')">Switch</button>`}
+          <b style="color:var(--pri-dark); font-size:13px;">${entName}</b>
+          <span style="font-size:11px; color:var(--muted); margin-left:6px;">[${entType}] ${entReg ? '— Reg/GSTIN: ' + entReg : ''}</span>
+        </div>
+        <div style="display:flex; gap:6px; align-items:center;">
+          ${isActive 
+            ? '<span style="background:#16a34a; color:#fff; font-weight:700; font-size:11px; padding:3px 8px; border-radius:3px;">Active ✔</span>' 
+            : `<button class="btn" style="padding:4px 10px; font-size:11.5px;" onclick="switchEntity('${ent}')">Select Company</button>`
+          }
+          ${!isActive && ent !== "DEFAULT_ENTITY" 
+            ? `<button class="btn btn-danger" style="padding:4px 8px; font-size:11.5px;" onclick="deleteEntity('${ent}')">Delete</button>` 
+            : ''
+          }
         </div>
       </div>
     `;
   }).join("");
 
   const body = `
-    <div class="form-card">
-      <h3 style="margin-bottom:8px; color:var(--pri-dark);">🏢 Switch Company / Trust</h3>
-      <div style="margin-bottom:12px; max-height:160px; overflow-y:auto; border:1px solid var(--border); border-radius:3px;">
+    <!-- SECTION 1: SELECT / SWITCH COMPANY -->
+    <div style="margin-bottom:14px;">
+      <h4 style="font-size:12px; color:var(--pri-dark); margin-bottom:6px; text-transform:uppercase;">1. Select / Switch Company or Trust (${entities.length} Saved)</h4>
+      <div style="max-height:145px; overflow-y:auto; border:1px solid var(--border); border-radius:4px;">
         ${listHtml}
       </div>
-      <hr style="border:none; border-top:1px solid var(--border); margin:12px 0;">
-      <h4 style="font-size:12px; margin-bottom:6px; color:var(--pri-dark);">➕ Create New Company or Trust (Entity)</h4>
+    </div>
+
+    <!-- SECTION 2: CREATE NEW COMPANY OR TRUST -->
+    <div style="margin-bottom:14px; background:#f0fdf4; padding:12px; border:1px solid #86efac; border-left:4px solid var(--pri); border-radius:4px;">
+      <h4 style="font-size:12px; color:var(--pri-dark); margin-bottom:8px; text-transform:uppercase;">➕ 2. Create New Company or Charitable Trust</h4>
       <div class="form-grid">
         <div class="field">
-          <label>Company / Trust Name *</label>
-          <input id="entNameInp" placeholder="e.g. Lok Kalyan Trust">
+          <label>New Company / Trust Name *</label>
+          <input id="newEntName" placeholder="e.g. Sanrakshan Charitable Trust">
         </div>
         <div class="field">
-          <label>Reg No / GSTIN / PAN</label>
-          <input id="entRegInp" placeholder="TR/2026/123 or GSTIN">
+          <label>Trust Registration No. / GSTIN / PAN</label>
+          <input id="newEntGstin" placeholder="e.g. TR/2026/001 or GSTIN" style="text-transform:uppercase;">
+        </div>
+        <div class="field">
+          <label>Entity / Registration Type</label>
+          <select id="newEntType">
+            <option value="Trust / NGO">Trust / NGO (Reg. No.)</option>
+            <option value="Regular">Regular (GST Business)</option>
+            <option value="Composition">Composition</option>
+            <option value="Unregistered">Unregistered Business</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>State</label>
+          <select id="newEntState">${stateOpts}</select>
+        </div>
+      </div>
+      <div style="margin-top:10px; display:flex; justify-content:flex-end;">
+        <button class="btn" onclick="createNewEntity()">➕ Create &amp; Switch to New Entity</button>
+      </div>
+    </div>
+
+    <!-- SECTION 3: ALTER CURRENT COMPANY -->
+    <div style="border-top:1px dashed var(--border); padding-top:10px;">
+      <h4 style="font-size:12px; color:var(--muted); margin-bottom:8px; text-transform:uppercase;">✏️ 3. Alter Current Active Entity (${c.name})</h4>
+      <div class="form-grid">
+        <div class="field" style="grid-column: span 2;">
+          <label>Company / Trust Name</label>
+          <input id="cmpNameInp" value="${c.name}">
+        </div>
+        <div class="field">
+          <label>GSTIN / Trust Reg. No.</label>
+          <input id="cmpGstinInp" value="${c.gstin || ''}" placeholder="15-digit GSTIN or Trust Reg No" style="text-transform:uppercase;">
+        </div>
+        <div class="field">
+          <label>State</label>
+          <select id="cmpStateInp">${stateOpts}</select>
+        </div>
+        <div class="field">
+          <label>Registration Type</label>
+          <select id="cmpRegInp">
+            <option ${c.regType==='Regular'?'selected':''}>Regular</option>
+            <option ${c.regType==='Trust / NGO'?'selected':''}>Trust / NGO</option>
+            <option ${c.regType==='Composition'?'selected':''}>Composition</option>
+            <option ${c.regType==='Unregistered'?'selected':''}>Unregistered</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Address / City</label>
+          <input id="cmpAddrInp" value="${c.address || ''}">
         </div>
       </div>
     </div>
   `;
   const foot = `
     <button class="btn btn-sec" onclick="closeModal()">Cancel (Esc)</button>
-    <button class="btn" onclick="createNewEntity()">Create &amp; Switch</button>
+    <button class="btn" onclick="saveCompanyModal()">Save Current Entity Changes (Ctrl+A)</button>
   `;
-  showModal("Multi-Entity & Trust Manager", body, foot);
+  showModal("Company & Trust Manager (F3) — Select / Create / Alter", body, foot);
+}
+
+function saveCompanyModal() {
+  const name = document.getElementById("cmpNameInp").value.trim();
+  const gstin = document.getElementById("cmpGstinInp").value.trim().toUpperCase();
+  let state = document.getElementById("cmpStateInp").value;
+  if (gstin.length === 15 && GST_STATES[gstin.slice(0,2)]) state = gstin.slice(0,2);
+
+  if (!name) { toast("⚠ Company/Trust Name required!"); return; }
+  DB.company.name = name;
+  DB.company.gstin = gstin;
+  DB.company.stateCode = state;
+  DB.company.regType = document.getElementById("cmpRegInp").value;
+  DB.company.address = document.getElementById("cmpAddrInp").value.trim();
+  saveDB();
+  closeModal();
+  renderScreen(CURRENT_SCREEN);
+  toast("✅ Entity details updated!");
 }
 
 function switchEntity(entId) {
   loadDB(entId);
   closeModal();
   navigate("gateway", false);
-  toast(`🏢 Switched to entity: ${DB.company.name}`);
+  toast("🏢 Switched to: " + DB.company.name);
 }
 
 function createNewEntity() {
-  const name = document.getElementById("entNameInp").value.trim();
-  const reg = document.getElementById("entRegInp").value.trim();
-  if (!name) { toast("⚠ Company ya Trust ka naam dalein!"); return; }
+  const name = document.getElementById("newEntName").value.trim();
+  const gstin = document.getElementById("newEntGstin").value.trim().toUpperCase();
+  const regType = document.getElementById("newEntType").value;
+  let state = document.getElementById("newEntState").value || "05";
+  if (gstin.length === 15 && GST_STATES[gstin.slice(0,2)]) state = gstin.slice(0,2);
 
-  const newId = "ENT_" + Date.now().toString(36);
+  if (!name) { toast("⚠ Nayi Company ya Trust ka naam dalein!"); return; }
+
+  const newId = "ENT_" + Date.now().toString(36).toUpperCase();
   CURRENT_ENTITY_ID = newId;
 
   DB.company = {
     name: name,
-    gstin: reg,
-    stateCode: "05",
-    address: "India",
-    regType: "Regular",
+    gstin: gstin,
+    stateCode: state,
+    address: "Roorkee, Uttarakhand",
+    regType: regType,
     fyFrom: "2026-04-01",
     fyTo: "2027-03-31",
     curDate: "2026-10-21"
   };
+  DB.groups = [...DEFAULT_GROUPS];
   DB.ledgers = [];
   DB.items = [];
   DB.vouchers = [];
 
-  if (typeof seedDefaultMasters === "function") seedDefaultMasters();
+  seedDefaultMasters();
   saveDB();
   closeModal();
   navigate("gateway", false);
-  toast(`✅ Nayi Entity "${name}" ban gayi!`);
+  toast("✅ Nayi Entity '" + name + "' ban gayi!");
 }
+
+function deleteEntity(entId) {
+  if (!confirm("Kya aap is Company/Trust aur iske saare Vouchers ko delete karna chahte hain?")) return;
+  localStorage.removeItem("TALLY_PRIME_GST_DB_" + entId);
+  openCompanyModal();
+  toast("🗑️ Entity deleted!");
+}
+
+function openShortcutHelpModal() {
+  const body = `
+    <table class="tally-tbl">
+      <thead><tr><th>Key</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr><td><span class="kbd">F2</span> / <span class="kbd">Alt+F2</span></td><td>Change Current Date / Financial Period</td></tr>
+        <tr><td><span class="kbd">F3</span></td><td>Select / Switch / Create Company or Trust</td></tr>
+        <tr><td><span class="kbd">F4</span> to <span class="kbd">F9</span></td><td>Contra (F4), Payment (F5), Receipt (F6), Journal (F7), Sales (F8), Purchase (F9)</td></tr>
+        <tr><td><span class="kbd">Alt+C</span></td><td>Create New Ledger on the Spot</td></tr>
+        <tr><td><span class="kbd">Ctrl+A</span></td><td>Accept / Save Current Form or Voucher</td></tr>
+        <tr><td><span class="kbd">↑</span> <span class="kbd">↓</span> &amp; <span class="kbd">Enter</span>/<span class="kbd">E</span></td><td>Navigate Table Rows &amp; Edit Selected Row</td></tr>
+        <tr><td><span class="kbd">Delete</span></td><td>Delete Selected Row in Table</td></tr>
+        <tr><td><span class="kbd">Esc</span></td><td>Close Modal or Return to Gateway of Tally</td></tr>
+      </tbody>
+    </table>
+  `;
+  showModal("TallyPrime Keyboard Shortcuts", body, `<button class="btn" onclick="closeModal()">Close</button>`);
+}
+
+function exportBackupJSON() {
+  const blob = new Blob([JSON.stringify(DB, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `TallyPrime_Backup_${DB.company.name.replace(/\s+/g,'_')}_${DB.company.curDate}.json`;
+  a.click();
+  toast("💾 Full Company Backup JSON Downloaded");
+}
+
+function renderScreen(screen) {
+  closeModal();
+  switch (screen) {
+    case "gateway": renderGateway(); break;
+    case "masters_ledger": renderMastersLedger(); break;
+    case "masters_item": renderMastersItem(); break;
+    case "masters_group": renderMastersGroup(); break;
+    case "voucher_entry": renderVoucherScreen(); break;
+    case "daybook": renderDayBookScreen(); break;
+    case "ledgers_view": renderLedgerViewScreen(); break;
+    case "trial_balance": renderTrialBalanceScreen(); break;
+    case "pnl_report": renderPnLScreen(); break;
+    case "bs_report": renderBalanceSheetScreen(); break;
+    case "gstr1": renderGSTR1Screen(); break;
+    case "gstr3b": renderGSTR3BScreen(); break;
+    default: renderGateway();
+  }
+}
+
+/* ============================================================================
+   GLOBAL KEYBOARD ENGINE (Gateway + Function Keys + Table Row Selection)
+   ============================================================================ */
+let _kbRowIdx = -1;
+let _kbScreen = '';
+
+function getKbRows() {
+  const body = document.getElementById('screenBody');
+  if (!body) return [];
+  const tbl = body.querySelector('table.tally-tbl');
+  if (!tbl) return [];
+  return Array.from(tbl.querySelectorAll('tbody tr')).filter(tr => {
+    if (tr.offsetParent === null) return false;
+    if (tr.querySelector('td[colspan]')) return false;
+    const txt = (tr.textContent || '').trim();
+    if (/^(Total|Grand Total|Opening Balance|Closing Balance)\b/i.test(txt)) return false;
+    return true;
+  });
+}
+
+function applyKbRow(idx) {
+  const rows = getKbRows();
+  rows.forEach(r => r.classList.remove('kb-sel'));
+  if (!rows.length) { _kbRowIdx = -1; return; }
+  if (idx < 0) idx = 0;
+  if (idx >= rows.length) idx = rows.length - 1;
+  _kbRowIdx = idx;
+  rows[idx].classList.add('kb-sel');
+  rows[idx].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+document.addEventListener("keydown", function(e) {
+  const tag = (e.target && e.target.tagName || "").toLowerCase();
+  const inInput = (tag === "input" || tag === "select" || tag === "textarea" || (e.target && e.target.isContentEditable));
+
+  if (e.key === "Escape") {
+    e.preventDefault();
+    goBack();
+    return;
+  }
+
+  if (e.ctrlKey && e.key.toLowerCase() === "a") {
+    e.preventDefault();
+    if (kbOverlayOpen()) {
+      const primaryBtn = document.querySelector("#modalFoot .btn:not(.btn-sec)");
+      if (primaryBtn) primaryBtn.click();
+    } else if (CURRENT_SCREEN === "voucher_entry") {
+      saveCurrentVoucher();
+    }
+    return;
+  }
+
+  if (e.altKey && e.key.toLowerCase() === "c") {
+    e.preventDefault();
+    openLedgerModal(null, true);
+    return;
+  }
+
+  // Function Keys F2 - F9 (with e.preventDefault() to block browser F7 Caret Browsing if possible)
+  if (!e.ctrlKey && !e.altKey && e.key === "F2") { e.preventDefault(); openDateModal(); return; }
+  if (e.altKey && e.key === "F2") { e.preventDefault(); openPeriodModal(); return; }
+  if (!e.ctrlKey && !e.altKey && e.key === "F3") { e.preventDefault(); openCompanyModal(); return; }
+  if (!e.ctrlKey && !e.altKey && e.key === "F4") { e.preventDefault(); openVoucherScreen("Contra"); return; }
+  if (!e.ctrlKey && !e.altKey && e.key === "F5") { e.preventDefault(); openVoucherScreen("Payment"); return; }
+  if (!e.ctrlKey && !e.altKey && e.key === "F6") { e.preventDefault(); openVoucherScreen("Receipt"); return; }
+  if (!e.ctrlKey && !e.altKey && e.key === "F7") { e.preventDefault(); openVoucherScreen("Journal"); return; }
+  if (!e.ctrlKey && !e.altKey && e.key === "F8") { e.preventDefault(); openVoucherScreen("Sales"); return; }
+  if (!e.ctrlKey && !e.altKey && e.key === "F9") { e.preventDefault(); openVoucherScreen("Purchase"); return; }
+  if (e.altKey && e.key === "F6") { e.preventDefault(); openVoucherScreen("CreditNote"); return; }
+  if (e.altKey && e.key === "F5") { e.preventDefault(); openVoucherScreen("DebitNote"); return; }
+
+  if (e.altKey && e.key.toLowerCase() === "d") { e.preventDefault(); navigate("daybook"); return; }
+  if (e.altKey && e.key.toLowerCase() === "l") { e.preventDefault(); navigate("ledgers_view"); return; }
+  if (e.altKey && e.key.toLowerCase() === "g") { e.preventDefault(); navigate("gstr1"); return; }
+  if (e.altKey && e.key === "3") { e.preventDefault(); navigate("gstr3b"); return; }
+  if (e.ctrlKey && e.key.toLowerCase() === "e") { e.preventDefault(); exportBackupJSON(); return; }
+
+  if (kbOverlayOpen() || inInput) return;
+
+  if (e.key === "?") { e.preventDefault(); openShortcutHelpModal(); return; }
+
+  if (CURRENT_SCREEN === "gateway") {
+    if (e.key === "ArrowDown") { e.preventDefault(); GW_INDEX = (GW_INDEX + 1) % GATEWAY_MENU.length; renderGateway(); return; }
+    if (e.key === "ArrowUp") { e.preventDefault(); GW_INDEX = (GW_INDEX - 1 + GATEWAY_MENU.length) % GATEWAY_MENU.length; renderGateway(); return; }
+    if (e.key === "Enter") { e.preventDefault(); navigate(GATEWAY_MENU[GW_INDEX].screen); return; }
+    const hk = e.key.toUpperCase();
+    const found = GATEWAY_MENU.findIndex(m => m.hk.toUpperCase() === hk);
+    if (found !== -1) { e.preventDefault(); GW_INDEX = found; navigate(GATEWAY_MENU[found].screen); return; }
+    return;
+  }
+
+  if (CURRENT_SCREEN !== "voucher_entry") {
+    if (_kbScreen !== CURRENT_SCREEN) { _kbScreen = CURRENT_SCREEN; _kbRowIdx = -1; }
+    const rows = getKbRows();
+    if (!rows.length) return;
+
+    if (e.key === "ArrowDown") { e.preventDefault(); applyKbRow(_kbRowIdx < 0 ? 0 : _kbRowIdx + 1); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); applyKbRow(_kbRowIdx <= 0 ? 0 : _kbRowIdx - 1); }
+    else if ((e.key === "Enter" || e.key === "e" || e.key === "E") && _kbRowIdx >= 0 && rows[_kbRowIdx]) {
+      const row = rows[_kbRowIdx];
+      const editBtn = Array.from(row.querySelectorAll("button, a")).find(b => /edit|alter|view|open/i.test(b.textContent || b.title || ""));
+      if (editBtn) { e.preventDefault(); editBtn.click(); }
+      else if (typeof row.onclick === "function") { e.preventDefault(); row.click(); }
+    }
+    else if (e.key === "Delete" && _kbRowIdx >= 0 && rows[_kbRowIdx]) {
+      const row = rows[_kbRowIdx];
+      const delBtn = Array.from(row.querySelectorAll("button")).find(b => /del|remove|✕|🗑/i.test(b.textContent || b.title || ""));
+      if (delBtn) { e.preventDefault(); delBtn.click(); }
+    }
+  }
+});
+
+// INITIALIZE APPLICATION ON PAGE LOAD
+window.onload = function() {
+  loadDB();
+  renderGateway();
+};
 </script>
 </body>
 </html>
