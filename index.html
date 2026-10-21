@@ -3260,5 +3260,878 @@ function applyRestore(mode) {
   toast(`✅ "${nm}" restore hokar nayi entity ban gayi`);
 }
 </script>
+<!-- ============================================================================ -->
+<!-- UPGRADE PATCH: LOGIN/LOGOUT + CUSTOM GROUPS + STOCK SUMMARY + INV VOUCHERS   -->
+<!-- ============================================================================ -->
+<style>
+  .login-overlay {
+    position: fixed; inset: 0; background: linear-gradient(135deg, #094d36 0%, #0f172a 100%);
+    display: none; align-items: center; justify-content: center; z-index: 5000;
+  }
+  .login-overlay.active { display: flex; }
+  .login-card {
+    background: #fff; width: 370px; border-radius: 6px; border: 2px solid #fbbf24;
+    box-shadow: 0 25px 50px rgba(0,0,0,0.45); overflow: hidden;
+  }
+  .login-head {
+    background: var(--pri); color: #fff; padding: 14px 16px; text-align: center;
+    border-bottom: 2px solid #fbbf24;
+  }
+  .login-body { padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+</style>
+
+<!-- LOGIN LOCK OVERLAY -->
+<div class="login-overlay" id="loginOverlay">
+  <div class="login-card">
+    <div class="login-head">
+      <div style="font-size:16px; font-weight:800; letter-spacing:0.5px;">🔐 TALLYPRIME ERP LOGIN</div>
+      <div style="font-size:11.5px; opacity:0.9; margin-top:3px;">Authorized User Access Only</div>
+    </div>
+    <div class="login-body">
+      <div class="field">
+        <label>Select User Role</label>
+        <select id="loginRoleInp">
+          <option value="admin">Administrator (Full Access)</option>
+          <option value="operator">Data Operator (Entry Only)</option>
+          <option value="viewer">Auditor / Viewer (Read Only)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Username</label>
+        <input id="loginUserInp" value="admin" placeholder="Enter Username">
+      </div>
+      <div class="field">
+        <label>Password / PIN</label>
+        <input type="password" id="loginPassInp" value="" placeholder="Default: 1234" onkeydown="if(event.key==='Enter') doAppLogin()">
+      </div>
+      <button class="btn" style="padding:9px; font-size:13px; margin-top:4px;" onclick="doAppLogin()">🔓 Login to Software</button>
+      <div style="font-size:11px; color:var(--muted); text-align:center;">
+        Default PIN: <b>1234</b> (Aap login ke baad PIN badal sakte hain)
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================================
+// 1. LOGIN / LOGOUT & USER AUTHENTICATION SYSTEM
+// ============================================================================
+const AUTH_KEY = "TALLY_PRIME_AUTH_CONFIG";
+const SESSION_KEY = "TALLY_PRIME_ACTIVE_SESSION";
+
+function getAuthConfig() {
+  try {
+    const raw = localStorage.getItem(AUTH_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return { user: "admin", pin: "1234", requireLogin: true };
+}
+
+function saveAuthConfig(cfg) {
+  localStorage.setItem(AUTH_KEY, JSON.stringify(cfg));
+}
+
+function checkSessionOnStartup() {
+  const sess = sessionStorage.getItem(SESSION_KEY);
+  if (!sess) {
+    document.getElementById("loginOverlay").classList.add("active");
+    setTimeout(() => {
+      const p = document.getElementById("loginPassInp");
+      if (p) p.focus();
+    }, 80);
+  } else {
+    const data = JSON.parse(sess);
+    ROLE = data.role || "admin";
+    updateTopBarUserBadge(data.user, ROLE);
+  }
+}
+
+function doAppLogin() {
+  const cfg = getAuthConfig();
+  const role = document.getElementById("loginRoleInp").value;
+  const user = document.getElementById("loginUserInp").value.trim() || "admin";
+  const pass = document.getElementById("loginPassInp").value;
+
+  if (pass !== cfg.pin) {
+    toast("🚫 Galat Password / PIN! (Default PIN: 1234)");
+    return;
+  }
+  ROLE = role;
+  sessionStorage.setItem(SESSION_KEY, JSON.stringify({ user, role, time: Date.now() }));
+  document.getElementById("loginOverlay").classList.remove("active");
+  document.getElementById("loginPassInp").value = "";
+  updateTopBarUserBadge(user, role);
+  toast(`✅ Welcome ${user.toUpperCase()} (${role})`);
+}
+
+function doAppLogout() {
+  sessionStorage.removeItem(SESSION_KEY);
+  document.getElementById("loginOverlay").classList.add("active");
+  toast("🔒 Logged Out Successfully");
+}
+
+function openSecuritySettingsModal() {
+  const cfg = getAuthConfig();
+  const body = `
+    <div class="form-card">
+      <div class="form-grid">
+        <div class="field">
+          <label>Admin Username</label>
+          <input id="secUserInp" value="${escHtml(cfg.user)}">
+        </div>
+        <div class="field">
+          <label>New Login PIN / Password *</label>
+          <input type="password" id="secPinInp" value="${escHtml(cfg.pin)}">
+        </div>
+      </div>
+    </div>
+  `;
+  const foot = `
+    <button class="btn btn-danger" onclick="closeModal(); doAppLogout();">🔒 Logout Now</button>
+    <button class="btn" onclick="saveSecuritySettings()">💾 Save PIN</button>
+  `;
+  showModal("🔐 User Login & Password Settings", body, foot);
+}
+
+function saveSecuritySettings() {
+  const user = document.getElementById("secUserInp").value.trim() || "admin";
+  const pin = document.getElementById("secPinInp").value.trim();
+  if (!pin) { toast("⚠ PIN khali nahi ho sakta!"); return; }
+  saveAuthConfig({ user, pin, requireLogin: true });
+  closeModal();
+  toast("✅ Login Username & PIN Updated!");
+}
+
+function updateTopBarUserBadge(user, role) {
+  const meta = document.querySelector(".top-meta");
+  if (!meta) return;
+  let badge = document.getElementById("topUserBadge");
+  if (!badge) {
+    badge = document.createElement("span");
+    badge.id = "topUserBadge";
+    badge.style.background = "#dc2626";
+    badge.style.fontWeight = "700";
+    meta.appendChild(badge);
+  }
+  badge.innerHTML = `👤 ${escHtml(user)} (${escHtml(role)}) | <u onclick="event.stopPropagation(); doAppLogout();">Logout</u>`;
+  badge.onclick = () => openSecuritySettingsModal();
+}
+
+// ============================================================================
+// 2. UPGRADED GROUPS MASTER: CREATE / ALTER / DELETE CUSTOM SUB-GROUPS
+// ============================================================================
+function renderGroupsScreen() {
+  document.getElementById("screenTitle").textContent = "Chart of Accounts (Create / Alter Accounting Groups)";
+  document.getElementById("screenSub").textContent = "28 Standard Groups + Create Your Own Custom Sub-Groups";
+
+  const parentOpts = DB.groups.map(g => `<option value="${escHtml(g.name)}">${escHtml(g.name)} (${escHtml(g.nature)})</option>`).join("");
+
+  const rows = DB.groups.map((g, i) => {
+    const count = DB.ledgers.filter(l => l.group === g.name).length;
+    const isCustom = Boolean(g.custom);
+    return `
+      <tr onclick="populateGroupForm(${i})" style="cursor:pointer;">
+        <td>${i + 1}</td>
+        <td><b>${escHtml(g.name)}</b> ${isCustom ? '<span class="kbd" style="background:#fef08a;">Custom</span>' : ''}</td>
+        <td>${g.parent ? escHtml(g.parent) : "<span style='color:var(--pri-dark);font-weight:700;'>Primary</span>"}</td>
+        <td><span class="kbd">${escHtml(g.nature)}</span></td>
+        <td>${g.affectsGP ? "Yes (Trading A/c)" : "No (P&L / B/S)"}</td>
+        <td class="num"><b>${count}</b> Ledgers</td>
+        <td>
+          ${isCustom ? `<button class="btn btn-danger" style="padding:2px 7px; font-size:11px;" onclick="event.stopPropagation(); deleteCustomGroup('${escHtml(g.name)}')">Del</button>` : `<span style="color:var(--muted);font-size:11px;">System</span>`}
+        </td>
+      </tr>
+    `;
+  }).join("");
+
+  document.getElementById("screenBody").innerHTML = `
+    <div class="form-card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <h3 style="font-size:14px; color:var(--pri-dark);" id="grpFormTitle">➕ Create New Accounting Sub-Group</h3>
+        <button class="btn btn-sec" onclick="resetGroupForm()">Clear Form</button>
+      </div>
+      <input type="hidden" id="grpEditIdx" value="">
+      <div class="form-grid">
+        <div class="field">
+          <label>Group Name *</label>
+          <input id="grpNameInp" placeholder="e.g. Uttarkashi Debtors / Project Expenses">
+        </div>
+        <div class="field">
+          <label>Under Parent Group *</label>
+          <select id="grpParentInp" onchange="syncGroupNatureFromParent()">${parentOpts}</select>
+        </div>
+        <div class="field">
+          <label>Nature of Group</label>
+          <select id="grpNatureInp">
+            <option value="Assets">Assets</option>
+            <option value="Liabilities">Liabilities</option>
+            <option value="Income">Income</option>
+            <option value="Expenses">Expenses</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Affects Gross Profit (Trading A/c)?</label>
+          <select id="grpGpInp">
+            <option value="no">No (P&L / Balance Sheet)</option>
+            <option value="yes">Yes (Trading A/c)</option>
+          </select>
+        </div>
+      </div>
+      <div style="margin-top:10px; display:flex; justify-content:flex-end;">
+        <button class="btn" onclick="saveGroupFromForm()">💾 Save Group</button>
+      </div>
+    </div>
+
+    <div class="form-card" style="padding:0; overflow:hidden;">
+      <table class="tally-tbl">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Group Name</th>
+            <th>Under (Parent)</th>
+            <th>Nature</th>
+            <th>Affects Gross Profit?</th>
+            <th class="num">Active Ledgers</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function syncGroupNatureFromParent() {
+  const pName = document.getElementById("grpParentInp").value;
+  const pObj = DB.groups.find(g => g.name === pName);
+  if (pObj) {
+    document.getElementById("grpNatureInp").value = pObj.nature;
+    document.getElementById("grpGpInp").value = pObj.affectsGP ? "yes" : "no";
+  }
+}
+
+function populateGroupForm(idx) {
+  const g = DB.groups[idx];
+  if (!g) return;
+  document.getElementById("grpFormTitle").textContent = `✏️ Alter Group: ${g.name}`;
+  document.getElementById("grpEditIdx").value = idx;
+  document.getElementById("grpNameInp").value = g.name;
+  if (g.parent) document.getElementById("grpParentInp").value = g.parent;
+  document.getElementById("grpNatureInp").value = g.nature;
+  document.getElementById("grpGpInp").value = g.affectsGP ? "yes" : "no";
+}
+
+function resetGroupForm() {
+  document.getElementById("grpFormTitle").textContent = "➕ Create New Accounting Sub-Group";
+  document.getElementById("grpEditIdx").value = "";
+  document.getElementById("grpNameInp").value = "";
+}
+
+function saveGroupFromForm() {
+  const idx = document.getElementById("grpEditIdx").value;
+  const name = document.getElementById("grpNameInp").value.trim();
+  const parent = document.getElementById("grpParentInp").value;
+  const nature = document.getElementById("grpNatureInp").value;
+  const affectsGP = document.getElementById("grpGpInp").value === "yes";
+
+  if (!name) { toast("⚠ Group ka naam dalein!"); return; }
+
+  if (idx !== "") {
+    const g = DB.groups[Number(idx)];
+    const oldName = g.name;
+    g.name = name; g.parent = parent; g.nature = nature; g.affectsGP = affectsGP;
+    DB.ledgers.forEach(l => { if (l.group === oldName) l.group = name; });
+    toast(`✅ Group "${name}" Updated!`);
+  } else {
+    if (DB.groups.some(g => g.name.toLowerCase() === name.toLowerCase())) {
+      toast("⚠ Is naam ka Group pehle se maujood hai!");
+      return;
+    }
+    DB.groups.push({ name, parent, nature, affectsGP, custom: true });
+    toast(`✅ Custom Group "${name}" Created!`);
+  }
+  saveDB();
+  renderGroupsScreen();
+}
+
+function deleteCustomGroup(name) {
+  if (DB.ledgers.some(l => l.group === name)) {
+    toast("🚫 Is Group me Ledgers bane hue hain, pehle unhe badlein!");
+    return;
+  }
+  DB.groups = DB.groups.filter(g => g.name !== name);
+  saveDB();
+  renderGroupsScreen();
+  toast("🗑️ Custom Group Deleted");
+}
+
+// ============================================================================
+// 3. INVENTORY ENGINE: LIVE STOCK SUMMARY & INVENTORY VOUCHERS
+// ============================================================================
+
+// Extend Voucher Types to include Inventory Vouchers
+function isItemCapableVoucher(type) {
+  return [
+    "Sales", "Purchase", "Credit Note", "Debit Note",
+    "Stock Journal", "Delivery Note", "Receipt Note", "Physical Stock"
+  ].includes(type);
+}
+
+// Calculate Opening, Inward, Outward & Closing Stock for every Item
+function computeInventoryStockSummary() {
+  const stockMap = {};
+  DB.items.forEach(it => {
+    const opQty = Number(it.opQty) || 0;
+    const opRate = Number(it.opRate) || Number(it.rate) || 0;
+    stockMap[it.id] = {
+      item: it,
+      opQty,
+      opVal: +(opQty * opRate).toFixed(2),
+      inQty: 0,
+      inVal: 0,
+      outQty: 0,
+      outVal: 0,
+      closeQty: opQty,
+      closeVal: 0
+    };
+  });
+
+  DB.vouchers.forEach(v => {
+    if (!Array.isArray(v.itemLines) || !v.itemLines.length) return;
+    v.itemLines.forEach(ln => {
+      const st = stockMap[ln.itemId];
+      if (!st) return;
+      const qty = Number(ln.qty) || 0;
+      const val = Number(ln.taxable) || (qty * (Number(ln.rate) || 0));
+
+      // Inward Movements
+      if (["Purchase", "Receipt Note", "Credit Note"].includes(v.type)) {
+        st.inQty = +(st.inQty + qty).toFixed(3);
+        st.inVal = +(st.inVal + val).toFixed(2);
+      }
+      // Outward Movements
+      else if (["Sales", "Delivery Note", "Debit Note"].includes(v.type)) {
+        st.outQty = +(st.outQty + qty).toFixed(3);
+        st.outVal = +(st.outVal + val).toFixed(2);
+      }
+      // Stock Journal (+ve qty = Inward/Production, -ve qty = Consumption/Outward)
+      else if (v.type === "Stock Journal") {
+        if (qty >= 0) {
+          st.inQty = +(st.inQty + qty).toFixed(3);
+          st.inVal = +(st.inVal + Math.abs(val)).toFixed(2);
+        } else {
+          st.outQty = +(st.outQty + Math.abs(qty)).toFixed(3);
+          st.outVal = +(st.outVal + Math.abs(val)).toFixed(2);
+        }
+      }
+      // Physical Stock resets/adjusts closing stock
+      else if (v.type === "Physical Stock") {
+        const diff = qty - (st.opQty + st.inQty - st.outQty);
+        if (diff >= 0) st.inQty = +(st.inQty + diff).toFixed(3);
+        else st.outQty = +(st.outQty + Math.abs(diff)).toFixed(3);
+      }
+    });
+  });
+
+  Object.values(stockMap).forEach(st => {
+    st.closeQty = +(st.opQty + st.inQty - st.outQty).toFixed(3);
+    const avgRate = (st.opQty + st.inQty) > 0
+      ? ((st.opVal + st.inVal) / (st.opQty + st.inQty))
+      : (Number(st.item.opRate) || Number(st.item.rate) || 0);
+    st.avgRate = +avgRate.toFixed(2);
+    st.closeVal = +(st.closeQty * avgRate).toFixed(2);
+  });
+
+  return stockMap;
+}
+
+function renderStockSummaryScreen() {
+  document.getElementById("screenTitle").textContent = "Inventory Stock Summary (Opening + Inward - Outward = Closing)";
+  document.getElementById("screenSub").textContent = "Real-time Inventory Register | Click any item to Alter or press Alt+F7 for Stock Journal";
+
+  const stockMap = computeInventoryStockSummary();
+  let totOpVal = 0, totInVal = 0, totOutVal = 0, totCloseVal = 0;
+
+  const rows = Object.values(stockMap).map((st, idx) => {
+    totOpVal += st.opVal;
+    totInVal += st.inVal;
+    totOutVal += st.outVal;
+    totCloseVal += st.closeVal;
+
+    return `
+      <tr>
+        <td>${idx + 1}</td>
+        <td><b>${escHtml(st.item.name)}</b></td>
+        <td><span class="kbd">${escHtml(st.item.hsn || "-")}</span></td>
+        <td>${escHtml(st.item.uom)}</td>
+        <td class="num">${st.opQty}</td>
+        <td class="num" style="color:var(--ok);">+${st.inQty}</td>
+        <td class="num" style="color:var(--danger);">-${st.outQty}</td>
+        <td class="num"><b>${st.closeQty} ${escHtml(st.item.uom)}</b></td>
+        <td class="num">₹${fmtINR(st.avgRate)}</td>
+        <td class="num"><b>₹${fmtINR(st.closeVal)}</b></td>
+      </tr>
+    `;
+  }).join("");
+
+  document.getElementById("screenBody").innerHTML = `
+    <div class="form-card" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+      <div>
+        <h3 style="font-size:14px; color:var(--pri-dark);">📦 Live Stock-in-Hand &amp; Valuation</h3>
+        <div style="font-size:11.5px; color:var(--muted);">Purchase/Receipt Note se stock badhta hai, Sales/Delivery Note se ghat-ta hai.</div>
+      </div>
+      <div style="display:flex; gap:6px;">
+        <button class="btn btn-sec" onclick="navigate('masters_item')">➕ Add New Stock Item</button>
+        <button class="btn" onclick="openInventoryVoucherModal('Stock Journal')">🛠️ Stock Journal (Alt+F7)</button>
+        <button class="btn btn-sec" onclick="openInventoryVoucherModal('Physical Stock')">📋 Physical Stock</button>
+        <button class="btn btn-sec" onclick="openInventoryVoucherModal('Delivery Note')">🚚 Delivery Note</button>
+        <button class="btn btn-sec" onclick="openInventoryVoucherModal('Receipt Note')">📥 Receipt Note</button>
+      </div>
+    </div>
+
+    <div class="form-card" style="padding:0; overflow:hidden;">
+      <table class="tally-tbl">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Stock Item Name</th>
+            <th>HSN</th>
+            <th>UOM</th>
+            <th class="num">Opening Qty</th>
+            <th class="num">Inward Qty</th>
+            <th class="num">Outward Qty</th>
+            <th class="num">Closing Stock</th>
+            <th class="num">Avg Cost</th>
+            <th class="num">Closing Value (₹)</th>
+          </tr>
+        </thead>
+        <tbody>${rows || `<tr><td colspan="10" style="text-align:center; padding:18px;">Koi Stock Item nahi hai.</td></tr>`}</tbody>
+        <tfoot>
+          <tr style="background:#f1f5f9; font-weight:800;">
+            <td colspan="9" style="text-align:right;">Total Closing Inventory Valuation:</td>
+            <td class="num">₹${fmtINR(totCloseVal)}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  `;
+}
+
+// Pure Inventory Voucher Modal (Stock Journal, Physical Stock, Delivery Note, Receipt Note)
+let INV_VCH_LINES = [];
+function openInventoryVoucherModal(vType = "Stock Journal") {
+  if (!DB.items.length) {
+    toast("⚠ Pehle Stock Item Master me kam se kam 1 item banayein!");
+    navigate("masters_item");
+    return;
+  }
+  INV_VCH_LINES = [{
+    itemId: DB.items[0].id,
+    itemName: DB.items[0].name,
+    uom: DB.items[0].uom || "NOS",
+    qty: 1,
+    rate: DB.items[0].opRate || DB.items[0].rate || 0
+  }];
+  renderInventoryVoucherModal(vType);
+}
+
+function renderInventoryVoucherModal(vType) {
+  const vNo = "INV-VCH/" + String(DB.vouchers.length + 1).padStart(4, "0");
+  const rowsHtml = INV_VCH_LINES.map((ln, idx) => {
+    const itmOpts = DB.items.map(it => `<option value="${it.id}" ${it.id === ln.itemId ? "selected" : ""}>${escHtml(it.name)} (${escHtml(it.uom)})</option>`).join("");
+    return `
+      <tr>
+        <td>${idx + 1}</td>
+        <td><select style="width:100%;padding:4px;" onchange="onInvModalItemChange(${idx}, this.value, '${vType}')">${itmOpts}</select></td>
+        <td><input type="number" step="0.01" class="num" style="width:90px;padding:4px;" value="${ln.qty}" oninput="INV_VCH_LINES[${idx}].qty=Number(this.value)||0"></td>
+        <td><input type="number" step="0.01" class="num" style="width:100px;padding:4px;" value="${ln.rate}" oninput="INV_VCH_LINES[${idx}].rate=Number(this.value)||0"></td>
+        <td><button class="btn btn-danger" style="padding:2px 6px;" onclick="INV_VCH_LINES.splice(${idx},1); renderInventoryVoucherModal('${vType}')">✕</button></td>
+      </tr>
+    `;
+  }).join("");
+
+  const helpNote = vType === "Stock Journal"
+    ? "Tip: Stock badhane (Inward/Production) ke liye +Qty dalein, aur Stock ghatane (Consumption/Damage) ke liye -Qty (minus) dalein."
+    : vType === "Physical Stock"
+    ? "Tip: Godown me ginti ke baad jo asli Physical Quantity mili hai woh Qty me dalein."
+    : `${vType} se keval Inventory Stock update hoga (Ledger balance par bina invoice ke asar nahi padega).`;
+
+  const body = `
+    <div class="form-card">
+      <div style="font-size:12px; background:var(--pri-light); border:1px solid var(--pri); padding:6px 10px; border-radius:4px; margin-bottom:10px;">
+        <b>${vType}:</b> ${helpNote}
+      </div>
+      <div class="form-grid">
+        <div class="field"><label>Voucher Type</label><input id="invVchType" value="${vType}" readonly></div>
+        <div class="field"><label>Voucher No</label><input id="invVchNo" value="${vNo}"></div>
+        <div class="field"><label>Date</label><input type="date" id="invVchDate" value="${DB.company.curDate}"></div>
+      </div>
+      <table class="tally-tbl" style="margin-top:10px;">
+        <thead>
+          <tr><th>#</th><th>Stock Item</th><th class="num">Qty (+/-)</th><th class="num">Cost Rate (₹)</th><th></th></tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+      <div style="margin-top:8px;">
+        <button class="btn btn-sec" onclick="INV_VCH_LINES.push({itemId:DB.items[0].id,itemName:DB.items[0].name,uom:DB.items[0].uom,qty:1,rate:DB.items[0].rate||0}); renderInventoryVoucherModal('${vType}')">➕ Add Item Line</button>
+      </div>
+      <div class="field" style="margin-top:10px;">
+        <label>Narration / Godown Note</label>
+        <input id="invVchNarr" placeholder="Being stock adjusted / physical verification...">
+      </div>
+    </div>
+  `;
+  const foot = `
+    <button class="btn btn-sec" onclick="closeModal()">Cancel</button>
+    <button class="btn" onclick="saveInventoryVoucherModal()">💾 Save ${vType}</button>
+  `;
+  showModal(`📦 Inventory Voucher: ${vType}`, body, foot);
+}
+
+function onInvModalItemChange(idx, itemId, vType) {
+  const it = getItem(itemId);
+  if (!it) return;
+  INV_VCH_LINES[idx].itemId = it.id;
+  INV_VCH_LINES[idx].itemName = it.name;
+  INV_VCH_LINES[idx].uom = it.uom;
+  INV_VCH_LINES[idx].rate = it.opRate || it.rate || 0;
+  renderInventoryVoucherModal(vType);
+}
+
+function saveInventoryVoucherModal() {
+  const vType = document.getElementById("invVchType").value;
+  const vNo = document.getElementById("invVchNo").value.trim() || "INV/01";
+  const vDate = document.getElementById("invVchDate").value || DB.company.curDate;
+  const narr = document.getElementById("invVchNarr").value.trim();
+
+  if (!INV_VCH_LINES.length) { toast("⚠ Kam se kam 1 item jodein!"); return; }
+
+  let totVal = 0;
+  const lines = INV_VCH_LINES.map(l => {
+    const taxable = +((Number(l.qty) || 0) * (Number(l.rate) || 0)).toFixed(2);
+    totVal += Math.abs(taxable);
+    return { ...l, taxable, gstRate: 0, lineTotal: taxable };
+  });
+
+  DB.vouchers.push({
+    id: uid("V"),
+    vchNo: vNo,
+    date: vDate,
+    type: vType,
+    mode: "item",
+    narration: narr || `${vType} Entry`,
+    amount: +totVal.toFixed(2),
+    entries: [],
+    itemLines: lines
+  });
+
+  saveDB();
+  closeModal();
+  navigate("stock_summary");
+  toast(`✅ ${vType} Saved & Stock Updated!`);
+}
+
+// ============================================================================
+// 4. HOOK STOCK SUMMARY & INVENTORY VOUCHERS INTO GATEWAY & RIGHT BAR
+// ============================================================================
+(function injectGatewayAndButtons() {
+  if (!GATEWAY_MENU.some(m => m.screen === "stock_summary")) {
+    GATEWAY_MENU.splice(3, 0, {
+      section: "Masters",
+      label: "Stock Summary & Inventory Vouchers",
+      hk: "S",
+      screen: "stock_summary"
+    });
+  }
+
+  const origRenderScreen = window.renderScreen;
+  window.renderScreen = function(screen) {
+    if (screen === "stock_summary") {
+      closeModal();
+      renderStockSummaryScreen();
+    } else {
+      origRenderScreen(screen);
+    }
+  };
+
+  // Add Stock Summary & Logout buttons to Right Bar
+  const rb = document.querySelector(".right-bar");
+  if (rb) {
+    const stkBtn = document.createElement("button");
+    stkBtn.className = "fn-btn";
+    stkBtn.innerHTML = `<span class="fn-key">Alt+S</span><span>Stock Sum</span>`;
+    stkBtn.onclick = () => navigate("stock_summary");
+    rb.appendChild(stkBtn);
+
+    const invBtn = document.createElement("button");
+    invBtn.className = "fn-btn";
+    invBtn.innerHTML = `<span class="fn-key">A+F7</span><span>Stk Jrnl</span>`;
+    invBtn.onclick = () => openInventoryVoucherModal("Stock Journal");
+    rb.appendChild(invBtn);
+
+    const outBtn = document.createElement("button");
+    outBtn.className = "fn-btn";
+    outBtn.style.borderLeftColor = "#dc2626";
+    outBtn.innerHTML = `<span class="fn-key">Lock</span><span>Logout</span>`;
+    outBtn.onclick = () => doAppLogout();
+    rb.appendChild(outBtn);
+  }
+
+  checkSessionOnStartup();
+  if (CURRENT_SCREEN === "gateway") renderGateway();
+})();
+</script>
+<!-- ============================================================================ -->
+<!-- UPGRADE PATCH 2: STOCK GROUPS (RAW, PACKING, FINISHED GOODS) + GST CATEGORY  -->
+<!-- ============================================================================ -->
+<script>
+// Default Standard Stock Groups with GST & ITC Categories
+const DEFAULT_STOCK_GROUPS = [
+  { id: "SG_RAW", name: "Raw Material", parent: "Primary", gstCategory: "Taxable", itcCategory: "Inputs", defaultHsn: "", defaultGst: 18, custom: false },
+  { id: "SG_PACK", name: "Packing Material", parent: "Primary", gstCategory: "Taxable", itcCategory: "Inputs", defaultHsn: "4819", defaultGst: 18, custom: false },
+  { id: "SG_FIN", name: "Finished Goods", parent: "Primary", gstCategory: "Taxable", itcCategory: "Inputs", defaultHsn: "", defaultGst: 18, custom: false },
+  { id: "SG_SEMI", name: "Semi-Finished / WIP", parent: "Primary", gstCategory: "Taxable", itcCategory: "Inputs", defaultHsn: "", defaultGst: 18, custom: false },
+  { id: "SG_CONS", name: "Consumables & Spares", parent: "Primary", gstCategory: "Taxable", itcCategory: "Inputs", defaultHsn: "", defaultGst: 18, custom: false },
+  { id: "SG_CAP", name: "Capital Goods / Machinery", parent: "Primary", gstCategory: "Taxable", itcCategory: "Capital Goods", defaultHsn: "8479", defaultGst: 18, custom: false },
+  { id: "SG_SCRAP", name: "Scrap / By-Products", parent: "Primary", gstCategory: "Taxable", itcCategory: "Inputs", defaultHsn: "7204", defaultGst: 18, custom: false },
+  { id: "SG_EXEMPT", name: "Exempt / Agricultural Goods", parent: "Primary", gstCategory: "Exempt", itcCategory: "Ineligible", defaultHsn: "", defaultGst: 0, custom: false }
+];
+
+function ensureStockGroupsInitialized() {
+  if (!Array.isArray(DB.stockGroups) || DB.stockGroups.length === 0) {
+    DB.stockGroups = JSON.parse(JSON.stringify(DEFAULT_STOCK_GROUPS));
+  }
+  // Ensure existing items have a default stockGroup & gstCategory
+  if (Array.isArray(DB.items)) {
+    DB.items.forEach(it => {
+      if (!it.stockGroup) it.stockGroup = "Finished Goods";
+      if (!it.gstCategory) it.gstCategory = "Taxable";
+      if (!it.itcCategory) it.itcCategory = "Inputs";
+    });
+  }
+}
+
+// ============================================================================
+// SCREEN: STOCK GROUPS MASTER (CREATE / ALTER / DELETE WITH GST CATEGORY)
+// ============================================================================
+function renderStockGroupsScreen() {
+  ensureStockGroupsInitialized();
+  document.getElementById("screenTitle").textContent = "Stock Groups Master (Raw Material, Packing, Finished Goods & GST Setup)";
+  document.getElementById("screenSub").textContent = "Create/Alter Inventory Groups with Default HSN, GST Taxability & ITC Category";
+
+  const parentOpts = `<option value="Primary">Primary (Main Stock Group)</option>` +
+    DB.stockGroups.map(sg => `<option value="${escHtml(sg.name)}">${escHtml(sg.name)}</option>`).join("");
+
+  const slabOpts = GST_SLABS.map(s => `<option value="${s}" ${s===18?"selected":""}>${s}% GST</option>`).join("");
+
+  const rows = DB.stockGroups.map((sg, idx) => {
+    const itemCount = DB.items.filter(it => (it.stockGroup || "Finished Goods") === sg.name).length;
+    return `
+      <tr onclick="populateStockGroupForm('${sg.id}')" style="cursor:pointer;">
+        <td>${idx + 1}</td>
+        <td><b>${escHtml(sg.name)}</b>${sg.custom ? '<span class="kbd" style="background:#fef08a;">Custom</span>' : ''}</td>
+        <td>${escHtml(sg.parent || "Primary")}</td>
+        <td><span class="kbd">${escHtml(sg.gstCategory || "Taxable")}</span></td>
+        <td>${escHtml(sg.itcCategory || "Inputs")}</td>
+        <td>${escHtml(sg.defaultHsn || "-")}</td>
+        <td class="num"><b>${sg.defaultGst ?? 18}%</b></td>
+        <td class="num"><b>${itemCount}</b> Items</td>
+        <td>
+          <button class="btn btn-sec" style="padding:2px 7px; font-size:11px;" onclick="event.stopPropagation(); populateStockGroupForm('${sg.id}')">Alter</button>
+          ${sg.custom ? `<button class="btn btn-danger" style="padding:2px 7px; font-size:11px;" onclick="event.stopPropagation(); deleteStockGroup('${sg.id}')">Del</button>` : ''}
+        </td>
+      </tr>
+    `;
+  }).join("");
+
+  document.getElementById("screenBody").innerHTML = `
+    <div class="form-card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <h3 style="font-size:14px; color:var(--pri-dark);" id="sgFormHeading">🏭 Create / Alter Stock Group (with GST Category)</h3>
+        <div style="display:flex; gap:6px;">
+          <button class="btn btn-sec" onclick="resetStockGroupForm()">New / Clear</button>
+          <button class="btn btn-sec" onclick="navigate('masters_item')">📦 Go to Stock Items →</button>
+        </div>
+      </div>
+      <input type="hidden" id="sgIdInp" value="">
+      <div class="form-grid">
+        <div class="field">
+          <label>Stock Group Name *</label>
+          <input id="sgNameInp" placeholder="e.g. Raw Material - Plastic / Corrugated Boxes">
+        </div>
+        <div class="field">
+          <label>Under (Parent Stock Group)</label>
+          <select id="sgParentInp">${parentOpts}</select>
+        </div>
+        <div class="field">
+          <label>GST Taxability Category *</label>
+          <select id="sgGstCatInp" onchange="onSgGstCatChange()">
+            <option value="Taxable">Taxable (GST Applicable)</option>
+            <option value="Nil Rated">Nil Rated (0% Tax)</option>
+            <option value="Exempt">Exempt (Tax Free)</option>
+            <option value="Non-GST">Non-GST Supply</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>GSTR-3B Input Tax Credit (ITC) Type</label>
+          <select id="sgItcCatInp">
+            <option value="Inputs">Inputs (Raw / Packing / Trading Goods)</option>
+            <option value="Capital Goods">Capital Goods (Machinery / Fixed Assets)</option>
+            <option value="Input Services">Input Services (Job Work / Freight)</option>
+            <option value="Ineligible">Ineligible / Blocked Credit (Sec 17(5))</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Default HSN / SAC Code (Optional)</label>
+          <input id="sgHsnInp" placeholder="e.g. 4819 for Packing Boxes">
+        </div>
+        <div class="field">
+          <label>Default GST Rate (%) *</label>
+          <select id="sgGstRateInp">${slabOpts}</select>
+        </div>
+      </div>
+      <div style="margin-top:10px; display:flex; justify-content:flex-end;">
+        <button class="btn" onclick="saveStockGroupFromForm()">💾 Save Stock Group (Ctrl+A)</button>
+      </div>
+    </div>
+
+    <div class="form-card" style="padding:0; overflow:hidden;">
+      <table class="tally-tbl">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Stock Group Name</th>
+            <th>Under</th>
+            <th>GST Category</th>
+            <th>ITC Eligibility</th>
+            <th>Def. HSN</th>
+            <th class="num">Def. GST%</th>
+            <th class="num">Linked Items</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function onSgGstCatChange() {
+  const cat = document.getElementById("sgGstCatInp").value;
+  const rateSel = document.getElementById("sgGstRateInp");
+  if (cat !== "Taxable" && rateSel) {
+    rateSel.value = "0";
+  }
+}
+
+function populateStockGroupForm(id) {
+  ensureStockGroupsInitialized();
+  const sg = DB.stockGroups.find(x => x.id === id);
+  if (!sg) return;
+  document.getElementById("sgFormHeading").textContent = `✏️ Alter Stock Group: ${sg.name}`;
+  document.getElementById("sgIdInp").value = sg.id;
+  document.getElementById("sgNameInp").value = sg.name;
+  document.getElementById("sgParentInp").value = sg.parent || "Primary";
+  document.getElementById("sgGstCatInp").value = sg.gstCategory || "Taxable";
+  document.getElementById("sgItcCatInp").value = sg.itcCategory || "Inputs";
+  document.getElementById("sgHsnInp").value = sg.defaultHsn || "";
+  document.getElementById("sgGstRateInp").value = sg.defaultGst ?? 18;
+  document.getElementById("sgNameInp").focus();
+}
+
+function resetStockGroupForm() {
+  if (!document.getElementById("sgIdInp")) return;
+  document.getElementById("sgFormHeading").textContent = "🏭 Create / Alter Stock Group (with GST Category)";
+  document.getElementById("sgIdInp").value = "";
+  document.getElementById("sgNameInp").value = "";
+  document.getElementById("sgParentInp").value = "Primary";
+  document.getElementById("sgGstCatInp").value = "Taxable";
+  document.getElementById("sgItcCatInp").value = "Inputs";
+  document.getElementById("sgHsnInp").value = "";
+  document.getElementById("sgGstRateInp").value = "18";
+  document.getElementById("sgNameInp").focus();
+}
+
+function saveStockGroupFromForm() {
+  ensureStockGroupsInitialized();
+  const id = document.getElementById("sgIdInp").value;
+  const name = document.getElementById("sgNameInp").value.trim();
+  const parent = document.getElementById("sgParentInp").value;
+  const gstCategory = document.getElementById("sgGstCatInp").value;
+  const itcCategory = document.getElementById("sgItcCatInp").value;
+  const defaultHsn = document.getElementById("sgHsnInp").value.trim();
+  const defaultGst = gstCategory === "Taxable" ? (Number(document.getElementById("sgGstRateInp").value) || 0) : 0;
+
+  if (!name) { toast("⚠ Stock Group ka naam dalein!"); return; }
+
+  const dup = DB.stockGroups.find(x => x.name.toLowerCase() === name.toLowerCase() && x.id !== id);
+  if (dup) { toast("⚠ Is naam ka Stock Group pehle se maujood hai!"); return; }
+
+  if (id) {
+    const sg = DB.stockGroups.find(x => x.id === id);
+    if (sg) {
+      const oldName = sg.name;
+      Object.assign(sg, { name, parent, gstCategory, itcCategory, defaultHsn, defaultGst });
+      DB.items.forEach(it => { if (it.stockGroup === oldName) it.stockGroup = name; });
+      toast(`✅ Stock Group "${name}" Updated!`);
+    }
+  } else {
+    DB.stockGroups.push({
+      id: uid("SG"),
+      name, parent, gstCategory, itcCategory, defaultHsn, defaultGst, custom: true
+    });
+    toast(`✅ Stock Group "${name}" Created!`);
+  }
+  saveDB();
+  renderStockGroupsScreen();
+}
+
+function deleteStockGroup(id) {
+  ensureStockGroupsInitialized();
+  const sg = DB.stockGroups.find(x => x.id === id);
+  if (!sg) return;
+  if (DB.items.some(it => it.stockGroup === sg.name)) {
+    toast("🚫 Is Stock Group me Stock Items jude hain, pehle unka group badlein!");
+    return;
+  }
+  DB.stockGroups = DB.stockGroups.filter(x => x.id !== id);
+  saveDB();
+  renderStockGroupsScreen();
+  toast("🗑️ Stock Group Deleted");
+}
+
+// ============================================================================
+// UPGRADED STOCK ITEM MASTER (NOW INCLUDES STOCK GROUP & GST CATEGORY)
+// ============================================================================
+function renderItemMastersScreen() {
+  ensureStockGroupsInitialized();
+  document.getElementById("screenTitle").textContent = "Stock Items & HSN Master (with Stock Group & GST Category)";
+  document.getElementById("screenSub").textContent = "Assign Items to Raw Material, Packing Material, Finished Goods etc.";
+
+  const sgOpts = DB.stockGroups.map(sg =>
+    `<option value="${escHtml(sg.name)}" ${sg.name==="Finished Goods"?"selected":""}>${escHtml(sg.name)} [${escHtml(sg.gstCategory)} -${sg.defaultGst}%]</option>`
+  ).join("");
+  const uomOpts = UOM_LIST.map(u => `<option value="${u}">${u}</option>`).join("");
+  const slabOpts = GST_SLABS.map(s => `<option value="${s}" ${s===18?"selected":""}>${s}\% GST (${s/2}% CGST + ${s/2}\% SGST / ${s}% IGST)</option>`).join("");
+
+  const rowsHtml = DB.items.map((it, idx) => {
+    const opVal = +((Number(it.opQty) || 0) * (Number(it.opRate) || 0)).toFixed(2);
+    const badgeColor = it.stockGroup === "Raw Material" ? "#dbeafe"
+      : it.stockGroup === "Packing Material" ? "#fef3c7"
+      : it.stockGroup === "Finished Goods" ? "#dcfce7" : "#f1f5f9";
+    return `
+      <tr onclick="populateItemForm('${it.id}')" style="cursor:pointer;">
+        <td>${idx + 1}</td>
+        <td><b>${escHtml(it.name)}</b></td>
+        <td><span class="kbd" style="background:${badgeColor};">${escHtml(it.stockGroup || "Finished Goods")}</span></td>
+        <td><span class="kbd">${escHtml(it.gstCategory || "Taxable")}</span> <small style="color:var(--muted);">(${escHtml(it.itcCategory || "Inputs")})</small></td>
+        <td><span class="kbd">${escHtml(it.hsn || "-")}</span></td>
+        <td>${escHtml(it.uom)}</td>
+        <td class="num"><b>${it.gstRate}%</b></td>
+        <td class="num">₹${fmtINR(it.rate)}</td>
+        <td class="num">${it.opQty \vert{}\vert{} 0}${escHtml(it.uom)}</td>
+        <td class="num">₹${fmtINR(opVal)}</td>
+        <td>
+          <button class="btn btn-sec" style="padding:2px 7px; font-size:11px;" onclick="event.stopPropagation(); populateItemForm('${it.id
 </body>
 </html>
