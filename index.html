@@ -3881,7 +3881,7 @@ function saveInventoryVoucherModal() {
   if (CURRENT_SCREEN === "gateway") renderGateway();
 })();
 </script>
-<!-- ============================================================================ -->
+  <!-- ============================================================================ -->
 <!-- UPGRADE PATCH 2: STOCK GROUPS (RAW, PACKING, FINISHED GOODS) + GST CATEGORY  -->
 <!-- ============================================================================ -->
 <script>
@@ -3929,7 +3929,7 @@ function renderStockGroupsScreen() {
     return `
       <tr onclick="populateStockGroupForm('${sg.id}')" style="cursor:pointer;">
         <td>${idx + 1}</td>
-        <td><b>${escHtml(sg.name)}</b>${sg.custom ? '<span class="kbd" style="background:#fef08a;">Custom</span>' : ''}</td>
+        <td><b>${escHtml(sg.name)}</b> ${sg.custom ? '<span class="kbd" style="background:#fef08a;">Custom</span>' : ''}</td>
         <td>${escHtml(sg.parent || "Primary")}</td>
         <td><span class="kbd">${escHtml(sg.gstCategory || "Taxable")}</span></td>
         <td>${escHtml(sg.itcCategory || "Inputs")}</td>
@@ -4109,10 +4109,10 @@ function renderItemMastersScreen() {
   document.getElementById("screenSub").textContent = "Assign Items to Raw Material, Packing Material, Finished Goods etc.";
 
   const sgOpts = DB.stockGroups.map(sg =>
-    `<option value="${escHtml(sg.name)}" ${sg.name==="Finished Goods"?"selected":""}>${escHtml(sg.name)} [${escHtml(sg.gstCategory)} -${sg.defaultGst}%]</option>`
+    `<option value="${escHtml(sg.name)}" ${sg.name==="Finished Goods"?"selected":""}>${escHtml(sg.name)} [${escHtml(sg.gstCategory)} - ${sg.defaultGst}%]</option>`
   ).join("");
   const uomOpts = UOM_LIST.map(u => `<option value="${u}">${u}</option>`).join("");
-  const slabOpts = GST_SLABS.map(s => `<option value="${s}" ${s===18?"selected":""}>${s}\% GST (${s/2}% CGST + ${s/2}\% SGST / ${s}% IGST)</option>`).join("");
+  const slabOpts = GST_SLABS.map(s => `<option value="${s}" ${s===18?"selected":""}>${s}% GST (${s/2}% CGST + ${s/2}% SGST / ${s}% IGST)</option>`).join("");
 
   const rowsHtml = DB.items.map((it, idx) => {
     const opVal = +((Number(it.opQty) || 0) * (Number(it.opRate) || 0)).toFixed(2);
@@ -4129,9 +4129,280 @@ function renderItemMastersScreen() {
         <td>${escHtml(it.uom)}</td>
         <td class="num"><b>${it.gstRate}%</b></td>
         <td class="num">₹${fmtINR(it.rate)}</td>
-        <td class="num">${it.opQty \vert{}\vert{} 0}${escHtml(it.uom)}</td>
+        <td class="num">${it.opQty || 0} ${escHtml(it.uom)}</td>
         <td class="num">₹${fmtINR(opVal)}</td>
         <td>
-          <button class="btn btn-sec" style="padding:2px 7px; font-size:11px;" onclick="event.stopPropagation(); populateItemForm('${it.id
+          <button class="btn btn-sec" style="padding:2px 7px; font-size:11px;" onclick="event.stopPropagation(); populateItemForm('${it.id}')">Alter</button>
+          <button class="btn btn-danger" style="padding:2px 7px; font-size:11px;" onclick="event.stopPropagation(); deleteStockItem('${it.id}')">Del</button>
+        </td>
+      </tr>
+    `;
+  }).join("");
+
+  document.getElementById("screenBody").innerHTML = `
+    <div class="form-card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <h3 style="font-size:14px; color:var(--pri-dark);" id="itmFormHeading">📦 Create Stock Item (Under Raw / Packing / Finished Group)</h3>
+        <div style="display:flex; gap:6px;">
+          <button class="btn btn-sec" onclick="navigate('masters_stock_groups')">🏭 + Manage Stock Groups</button>
+          <button class="btn btn-sec" onclick="resetItemForm()">New / Clear</button>
+        </div>
+      </div>
+      <input type="hidden" id="itmIdInp" value="">
+      <div class="form-grid">
+        <div class="field" style="grid-column: span 2;">
+          <label>Stock Item / Material Name *</label>
+          <input id="itmNameInp" placeholder="e.g. Copper Winding Wire (Raw Material) / 5-Ply Carton Box (Packing)">
+        </div>
+        <div class="field">
+          <label>Under Stock Group (Auto-fills GST/HSN) *</label>
+          <select id="itmSgInp" onchange="onItemStockGroupSelect(this.value)">${sgOpts}</select>
+        </div>
+        <div class="field">
+          <label>GST Taxability Category *</label>
+          <select id="itmGstCatInp" onchange="if(this.value!=='Taxable') document.getElementById('itmGstInp').value='0';">
+            <option value="Taxable">Taxable</option>
+            <option value="Nil Rated">Nil Rated (0%)</option>
+            <option value="Exempt">Exempt</option>
+            <option value="Non-GST">Non-GST</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>GST ITC Eligibility (For Purchase)</label>
+          <select id="itmItcCatInp">
+            <option value="Inputs">Inputs (Raw / Packing / Goods)</option>
+            <option value="Capital Goods">Capital Goods</option>
+            <option value="Input Services">Input Services</option>
+            <option value="Ineligible">Ineligible</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>HSN / SAC Code *</label>
+          <input id="itmHsnInp" placeholder="8507">
+        </div>
+        <div class="field">
+          <label>Unit of Measure (UOM)</label>
+          <select id="itmUomInp">${uomOpts}</select>
+        </div>
+        <div class="field">
+          <label>GST Rate Slab (%) *</label>
+          <select id="itmGstInp">${slabOpts}</select>
+        </div>
+        <div class="field">
+          <label>Std Selling / Issue Rate (₹)</label>
+          <input type="number" step="0.01" id="itmRateInp" value="0">
+        </div>
+        <div class="field">
+          <label>Opening Stock Qty</label>
+          <input type="number" step="0.01" id="itmOpQtyInp" value="0">
+        </div>
+        <div class="field">
+          <label>Opening Cost Rate (₹)</label>
+          <input type="number" step="0.01" id="itmOpRateInp" value="0">
+        </div>
+      </div>
+      <div style="margin-top:10px; display:flex; justify-content:flex-end;">
+        <button class="btn" onclick="saveItemFromForm()">💾 Save Stock Item (Ctrl+A)</button>
+      </div>
+    </div>
+
+    <div class="form-card" style="padding:0; overflow:hidden;">
+      <table class="tally-tbl">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Item Name</th>
+            <th>Stock Group</th>
+            <th>GST / ITC Category</th>
+            <th>HSN</th>
+            <th>UOM</th>
+            <th class="num">GST %</th>
+            <th class="num">Std Rate</th>
+            <th class="num">Opening Qty</th>
+            <th class="num">Opening Value</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+// Auto-inherit HSN, GST Rate & GST Category when Stock Group is chosen
+function onItemStockGroupSelect(sgName) {
+  ensureStockGroupsInitialized();
+  const sg = DB.stockGroups.find(x => x.name === sgName);
+  if (!sg) return;
+  const catEl = document.getElementById("itmGstCatInp");
+  const itcEl = document.getElementById("itmItcCatInp");
+  const hsnEl = document.getElementById("itmHsnInp");
+  const gstEl = document.getElementById("itmGstInp");
+
+  if (catEl) catEl.value = sg.gstCategory || "Taxable";
+  if (itcEl) itcEl.value = sg.itcCategory || "Inputs";
+  if (hsnEl && !hsnEl.value && sg.defaultHsn) hsnEl.value = sg.defaultHsn;
+  if (gstEl) gstEl.value = String(sg.defaultGst ?? 18);
+}
+
+function populateItemForm(id) {
+  const it = getItem(id);
+  if (!it) return;
+  document.getElementById("itmFormHeading").textContent = `✏️ Alter Stock Item: ${it.name}`;
+  document.getElementById("itmIdInp").value = it.id;
+  document.getElementById("itmNameInp").value = it.name;
+  if (document.getElementById("itmSgInp")) document.getElementById("itmSgInp").value = it.stockGroup || "Finished Goods";
+  if (document.getElementById("itmGstCatInp")) document.getElementById("itmGstCatInp").value = it.gstCategory || "Taxable";
+  if (document.getElementById("itmItcCatInp")) document.getElementById("itmItcCatInp").value = it.itcCategory || "Inputs";
+  document.getElementById("itmHsnInp").value = it.hsn || "";
+  document.getElementById("itmUomInp").value = it.uom || "NOS";
+  document.getElementById("itmGstInp").value = it.gstRate ?? 18;
+  document.getElementById("itmRateInp").value = it.rate || 0;
+  document.getElementById("itmOpQtyInp").value = it.opQty || 0;
+  document.getElementById("itmOpRateInp").value = it.opRate || 0;
+  document.getElementById("itmNameInp").focus();
+}
+
+function saveItemFromForm() {
+  const id = document.getElementById("itmIdInp").value;
+  const name = document.getElementById("itmNameInp").value.trim();
+  const stockGroup = document.getElementById("itmSgInp") ? document.getElementById("itmSgInp").value : "Finished Goods";
+  const gstCategory = document.getElementById("itmGstCatInp") ? document.getElementById("itmGstCatInp").value : "Taxable";
+  const itcCategory = document.getElementById("itmItcCatInp") ? document.getElementById("itmItcCatInp").value : "Inputs";
+  const hsn = document.getElementById("itmHsnInp").value.trim();
+  const uom = document.getElementById("itmUomInp").value;
+  const gstRate = gstCategory === "Taxable" ? (Number(document.getElementById("itmGstInp").value) || 0) : 0;
+  const rate = Number(document.getElementById("itmRateInp").value) || 0;
+  const opQty = Number(document.getElementById("itmOpQtyInp").value) || 0;
+  const opRate = Number(document.getElementById("itmOpRateInp").value) || 0;
+
+  if (!name) { toast("⚠ Stock Item Name dalein!"); return; }
+  if (id) {
+    const it = getItem(id);
+    if (it) Object.assign(it, { name, stockGroup, gstCategory, itcCategory, hsn, uom, gstRate, rate, opQty, opRate });
+    toast(`✅ Stock Item "${name}" Updated under ${stockGroup}!`);
+  } else {
+    DB.items.push({ id: uid("I"), name, stockGroup, gstCategory, itcCategory, hsn, uom, gstRate, rate, opQty, opRate });
+    toast(`✅ Stock Item "${name}" Created under ${stockGroup}!`);
+  }
+  saveDB();
+  renderItemMastersScreen();
+}
+
+// ============================================================================
+// UPGRADE STOCK SUMMARY WITH GROUP-WISE FILTER (RAW / PACKING / FINISHED)
+// ============================================================================
+let SELECTED_STOCK_GROUP_FILTER = "ALL";
+
+const _origRenderStockSummary = window.renderStockSummaryScreen;
+window.renderStockSummaryScreen = function() {
+  ensureStockGroupsInitialized();
+  document.getElementById("screenTitle").textContent = "Inventory Stock Summary (Group-wise: Raw, Packing, Finished Goods)";
+  document.getElementById("screenSub").textContent = "Filter by Stock Group | Enter Production / Consumption via Stock Journal";
+
+  const stockMap = computeInventoryStockSummary();
+  let totCloseVal = 0;
+
+  const filterOpts = `<option value="ALL" ${SELECTED_STOCK_GROUP_FILTER==="ALL"?"selected":""}>All Stock Groups (${DB.items.length} Items)</option>` +
+    DB.stockGroups.map(sg => `<option value="${escHtml(sg.name)}" ${SELECTED_STOCK_GROUP_FILTER===sg.name?"selected":""}>${escHtml(sg.name)} (${escHtml(sg.gstCategory)})</option>`).join("");
+
+  const filteredList = Object.values(stockMap).filter(st =>
+    SELECTED_STOCK_GROUP_FILTER === "ALL" || (st.item.stockGroup || "Finished Goods") === SELECTED_STOCK_GROUP_FILTER
+  );
+
+  const rows = filteredList.map((st, idx) => {
+    totCloseVal += st.closeVal;
+    return `
+      <tr>
+        <td>${idx + 1}</td>
+        <td><b>${escHtml(st.item.name)}</b></td>
+        <td><span class="kbd">${escHtml(st.item.stockGroup || "Finished Goods")}</span></td>
+        <td>${escHtml(st.item.gstCategory || "Taxable")} (${st.item.gstRate}%)</td>
+        <td>${escHtml(st.item.hsn || "-")}</td>
+        <td class="num">${st.opQty} ${escHtml(st.item.uom)}</td>
+        <td class="num" style="color:var(--ok);">+${st.inQty}</td>
+        <td class="num" style="color:var(--danger);">-${st.outQty}</td>
+        <td class="num"><b>${st.closeQty} ${escHtml(st.item.uom)}</b></td>
+        <td class="num">₹${fmtINR(st.avgRate)}</td>
+        <td class="num"><b>₹${fmtINR(st.closeVal)}</b></td>
+      </tr>
+    `;
+  }).join("");
+
+  document.getElementById("screenBody").innerHTML = `
+    <div class="form-card" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <label style="font-weight:700; color:var(--pri-dark);">🏭 Filter Stock Group:</label>
+        <select style="padding:6px 10px; font-weight:700; border:2px solid var(--pri); border-radius:4px;" onchange="SELECTED_STOCK_GROUP_FILTER=this.value; renderStockSummaryScreen();">
+          ${filterOpts}
+        </select>
+      </div>
+      <div style="display:flex; gap:6px; flex-wrap:wrap;">
+        <button class="btn btn-sec" onclick="navigate('masters_stock_groups')">🏭 Stock Groups</button>
+        <button class="btn btn-sec" onclick="navigate('masters_item')">📦 +Stock Item</button>
+        <button class="btn" onclick="openInventoryVoucherModal('Stock Journal')">🛠️ Stock Journal / Production</button>
+        <button class="btn btn-sec" onclick="openInventoryVoucherModal('Physical Stock')">📋 Physical Stock</button>
+        <button class="btn btn-sec" onclick="openInventoryVoucherModal('Delivery Note')">🚚 Delivery Note</button>
+        <button class="btn btn-sec" onclick="openInventoryVoucherModal('Receipt Note')">📥 Receipt Note</button>
+      </div>
+    </div>
+
+    <div class="form-card" style="padding:0; overflow:hidden;">
+      <table class="tally-tbl">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Stock Item Name</th>
+            <th>Stock Group</th>
+            <th>GST Category</th>
+            <th>HSN</th>
+            <th class="num">Opening</th>
+            <th class="num">Inward</th>
+            <th class="num">Outward</th>
+            <th class="num">Closing Stock</th>
+            <th class="num">Avg Cost</th>
+            <th class="num">Closing Value (₹)</th>
+          </tr>
+        </thead>
+        <tbody>${rows || `<tr><td colspan="11" style="text-align:center; padding:18px; color:var(--muted);">Is Stock Group me abhi koi item nahi hai.</td></tr>`}</tbody>
+        <tfoot>
+          <tr style="background:#f1f5f9; font-weight:800;">
+            <td colspan="10" style="text-align:right;">Total Closing Valuation (${escHtml(SELECTED_STOCK_GROUP_FILTER)}):</td>
+            <td class="num">₹${fmtINR(totCloseVal)}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  `;
+};
+
+// ============================================================================
+// REGISTER STOCK GROUPS IN GATEWAY MENU & ROUTER
+// ============================================================================
+(function registerStockGroupsMenu() {
+  ensureStockGroupsInitialized();
+
+  if (!GATEWAY_MENU.some(m => m.screen === "masters_stock_groups")) {
+    GATEWAY_MENU.splice(2, 0, {
+      section: "Masters",
+      label: "Stock Groups (Raw, Packing, Finished & GST)",
+      hk: "K",
+      screen: "masters_stock_groups"
+    });
+  }
+
+  const prevRouter = window.renderScreen;
+  window.renderScreen = function(screen) {
+    if (screen === "masters_stock_groups") {
+      closeModal();
+      renderStockGroupsScreen();
+    } else {
+      prevRouter(screen);
+    }
+  };
+
+  if (CURRENT_SCREEN === "gateway") renderGateway();
+})();
+</script>
 </body>
 </html>
