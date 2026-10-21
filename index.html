@@ -4410,23 +4410,37 @@ window.renderStockSummaryScreen = function() {
 <script>
 (function() {
   const SUPABASE_URL = 'https://supabase.co';
-  const SUPABASE_KEY = 'sb_publishable_H5kdG7Ija7gOqu4H7CPiAQ_htNE2QOX';
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlsa29rcHlwb25hdW1scnNnc2plIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE3OTEyOTEsImV4cCI6MjEwNzM2NzI5MX0.XGAEwfDoldI5CvOQ0Q34aQIx8BSsoVayLe_c42aluJU';
   const supaClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
   let isLoadingFromCloud = false;
-  let currentUserRole = 'Administrator';
+
+  // स्क्रीन पर क्लाउड स्टेटस दिखाने के लिए छोटा बैज
+  function showCloudStatus(msg, color = '#16a34a') {
+    let badge = document.getElementById('supa-cloud-badge');
+    if (!badge) {
+      badge = document.createElement('div');
+      badge.id = 'supa-cloud-badge';
+      badge.style.cssText = 'position:fixed;bottom:28px;right:15px;z-index:99999;padding:5px 12px;border-radius:20px;color:#fff;font-size:12px;font-family:sans-serif;font-weight:bold;box-shadow:0 2px 6px rgba(0,0,0,0.3);cursor:pointer;';
+      badge.title = 'Click to manually sync to Cloud';
+      badge.onclick = () => syncToSupabase(true);
+      document.body.appendChild(badge);
+    }
+    badge.style.backgroundColor = color;
+    badge.textContent = msg;
+  }
 
   // 1. लॉगिन करते समय User Role (Admin / Viewer) की पहचान करना
   document.addEventListener('change', (e) => {
     if (e.target.tagName === 'SELECT' && e.target.innerText.includes('Auditor')) {
-      currentUserRole = e.target.value || e.target.options[e.target.selectedIndex].text;
-      sessionStorage.setItem('erp_active_role', currentUserRole);
+      const role = e.target.value || e.target.options[e.target.selectedIndex].text;
+      sessionStorage.setItem('erp_active_role', role);
     }
   });
 
   function isReadOnlyUser() {
-    const role = sessionStorage.getItem('erp_active_role') || '';
-    return role.toLowerCase().includes('auditor') || role.toLowerCase().includes('viewer');
+    const role = (sessionStorage.getItem('erp_active_role') || '').toLowerCase();
+    return role.includes('auditor') || role.includes('viewer');
   }
 
   // 2. LocalStorage में कुछ भी सेव होते ही अपने-आप Supabase Cloud पर भेजना
@@ -4443,24 +4457,38 @@ window.renderStockSummaryScreen = function() {
   };
 
   let syncTimeout;
-  function syncToSupabase() {
+  function syncToSupabase(forceNow = false) {
+    if (isReadOnlyUser()) return;
     clearTimeout(syncTimeout);
+    showCloudStatus('⏳ Syncing to Cloud...', '#d97706');
+
     syncTimeout = setTimeout(async () => {
-      const allData = { ...localStorage };
+      const allData = { ...localStorage, _lastUpdated: new Date().toISOString() };
       const { error } = await supaClient
         .from('AccountsExperse')
         .upsert({ id: 'tally_main_data', content: allData });
 
       if (error) {
         console.error('Cloud Sync Error:', error.message);
+        showCloudStatus('❌ Cloud Error: ' + error.message, '#dc2626');
       } else {
         console.log('☁️ सारा डेटा Supabase क्लाउड पर सेव हो गया!');
+        showCloudStatus('☁️ Cloud Synced', '#16a34a');
       }
-    }, 800);
+    }, forceNow ? 50 : 600);
   }
+
+  // जब भी कोई Save Ledger बटन दबाए, तुरंत क्लाउड पर सिंक हो
+  document.addEventListener('click', (e) => {
+    const txt = (e.target.innerText || '').toLowerCase();
+    if (txt.includes('save') || txt.includes('accept') || txt.includes('del')) {
+      setTimeout(() => syncToSupabase(true), 300);
+    }
+  });
 
   // 3. किसी भी कंप्यूटर पर सॉफ्टवेयर खुलते ही क्लाउड से डेटा लाना
   async function loadFromSupabase() {
+    showCloudStatus('🔄 Checking Cloud...', '#2563eb');
     try {
       const { data, error } = await supaClient
         .from('AccountsExperse')
@@ -4474,50 +4502,46 @@ window.renderStockSummaryScreen = function() {
         let hasChanges = false;
 
         Object.keys(cloudData).forEach(k => {
-          if (localStorage.getItem(k) !== cloudData[k]) {
+          if (k !== '_lastUpdated' && localStorage.getItem(k) !== cloudData[k]) {
             originalSetItem.call(localStorage, k, cloudData[k]);
             hasChanges = true;
           }
         });
         isLoadingFromCloud = false;
+        showCloudStatus('☁️ Cloud Connected', '#16a34a');
 
-        // अगर नया डेटा मिला है तो स्क्रीन को एक बार रिफ्रेश करें ताकि डेटा दिखने लगे
         if (hasChanges && !sessionStorage.getItem('cloud_loaded_once')) {
           sessionStorage.setItem('cloud_loaded_once', 'true');
           location.reload();
         }
       } else {
-        // अगर क्लाउड अभी खाली है, तो इस कंप्यूटर का मौजूदा डेटा क्लाउड पर अपलोड कर दें
-        if (localStorage.length > 0) syncToSupabase();
+        // पहली बार खुलने पर तुरंत क्लाउड में पहली एंट्री बना दे
+        syncToSupabase(true);
       }
     } catch (err) {
       console.error('Cloud Load Error:', err);
+      syncToSupabase(true);
     }
   }
 
-  // 4. Registration Type में 'Not Applicable' जोड़ना और Bank चुनने पर ऑटो-सेलेक्ट करना
+  // 4. Registration Type में 'Not Applicable' जोड़ना
   function addNotApplicableOption() {
     const selects = document.querySelectorAll('select');
     selects.forEach(sel => {
       const html = sel.innerHTML;
-      // Registration Type वाले ड्रॉपडाउन की पहचान
       if (html.includes('Regular') && html.includes('Unregistered') && !html.includes('Not Applicable')) {
         const opt = document.createElement('option');
         opt.value = 'Not Applicable';
-        opt.textContent = 'Not Applicable (Non-GST / Bank)';
+        opt.textContent = 'Not Applicable / Non-GST';
         sel.insertBefore(opt, sel.firstChild);
       }
-
-      // जब कोई Bank Accounts चुने तो अपने आप Not Applicable सेट हो जाए
       if (html.includes('Bank Accounts') && !sel.dataset.watched) {
         sel.dataset.watched = 'true';
         sel.addEventListener('change', () => {
           const val = sel.value || sel.options[sel.selectedIndex].text;
           if (val.includes('Bank') || val.includes('Cash')) {
             selects.forEach(s => {
-              if (s.innerHTML.includes('Not Applicable')) {
-                s.value = 'Not Applicable';
-              }
+              if (s.innerHTML.includes('Not Applicable')) s.value = 'Not Applicable';
             });
           }
         });
@@ -4528,7 +4552,6 @@ window.renderStockSummaryScreen = function() {
   window.addEventListener('DOMContentLoaded', () => {
     loadFromSupabase();
     addNotApplicableOption();
-    // अगर मॉडल बाद में खुलता है तो उस पर भी निगरानी रखें
     const observer = new MutationObserver(addNotApplicableOption);
     observer.observe(document.body, { childList: true, subtree: true });
   });
