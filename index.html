@@ -270,6 +270,7 @@
     <button class="fn-btn" onclick="navigate('gstr1')"><span class="fn-key">Alt+G</span><span>GSTR-1</span></button>
     <button class="fn-btn" onclick="navigate('gstr3b')"><span class="fn-key">Alt+3</span><span>GSTR-3B</span></button>
     <button class="fn-btn" onclick="exportBackupJSON()"><span class="fn-key">Ctrl+E</span><span>Backup</span></button>
+    <button class="fn-btn" onclick="openRestoreModal()"><span class="fn-key">Upload</span><span>Restore</span></button>
   </aside>
 </div>
 
@@ -524,40 +525,13 @@ function renderGateway() {
   document.getElementById("screenBody").innerHTML = html;
 }
 
-// Company Alteration Modal (opened from the "Alter Current" button in F3 manager)
+// Company Alteration Modal (opened from the "Alter Current" button in F3 manager) - ab saari details ke saath
 function openCompanyAlterModal() {
   const c = DB.company;
-  let stateOpts = Object.entries(GST_STATES).map(([code, nm]) =>
-    `<option value="${code}" ${c.stateCode === code ? "selected" : ""}>${code} - ${nm}</option>`
-  ).join("");
-
+  const type = c.entityType || "Company";
   const body = `
-    <div class="form-grid">
-      <div class="field" style="grid-column: span 2;">
-        <label>Company Name</label>
-        <input id="cmpNameInp" value="${c.name}">
-      </div>
-      <div class="field">
-        <label>GSTIN (15 Digits)</label>
-        <input id="cmpGstinInp" value="${c.gstin}" maxlength="15" oninput="autoDetectStateFromGstin(this.value, 'cmpStateInp')">
-      </div>
-      <div class="field">
-        <label>State (Auto from GSTIN)</label>
-        <select id="cmpStateInp">${stateOpts}</select>
-      </div>
-      <div class="field">
-        <label>Registration Type</label>
-        <select id="cmpRegInp">
-          <option ${c.regType==="Regular"?"selected":""}>Regular</option>
-          <option ${c.regType==="Composition"?"selected":""}>Composition</option>
-          <option ${c.regType==="Unregistered"?"selected":""}>Unregistered</option>
-        </select>
-      </div>
-      <div class="field">
-        <label>Address / City</label>
-        <input id="cmpAddrInp" value="${c.address || ''}">
-      </div>
-    </div>
+    <div style="font-size:11.5px; color:var(--muted); margin-bottom:4px;">Type: <b>${escHtml(type)}</b></div>
+    ${entityDetailsFormHtml("cmp", c, type)}
   `;
   const foot = `
     <button class="btn btn-sec" onclick="closeModal()">Cancel (Esc)</button>
@@ -578,14 +552,16 @@ function autoDetectStateFromGstin(gstin, selectId) {
 }
 
 function saveCompanyModal() {
-  DB.company.name = document.getElementById("cmpNameInp").value.trim() || "My Company";
-  DB.company.gstin = document.getElementById("cmpGstinInp").value.trim().toUpperCase();
-  DB.company.stateCode = document.getElementById("cmpStateInp").value;
-  DB.company.regType = document.getElementById("cmpRegInp").value;
-  DB.company.address = document.getElementById("cmpAddrInp").value.trim();
+  const type = DB.company.entityType || "Company";
+  const d = readEntityDetails("cmp");
+  const err = validateEntityDetails(d, type, false);
+  if (err) { toast("⚠ " + err); return; }
+  if (entityNameExists(d.name, CURRENT_ENTITY_ID)) { toast("⚠ Is naam ki doosri Company/Trust pehle se maujood hai!"); return; }
+  if (!d.booksFrom) d.booksFrom = d.fyFrom;
+  Object.assign(DB.company, d);
   saveDB();
   closeModal();
-  toast("✅ Company & GST Settings Saved");
+  toast("✅ Company Details Saved");
 }
 
 function openDateModal() {
@@ -2188,6 +2164,7 @@ document.addEventListener('keydown', (e)=>{
       e.preventDefault();
       if (document.getElementById("appModal").classList.contains("open")) {
         if (typeof saveCompanyModal === 'function' && document.getElementById("cmpNameInp")) saveCompanyModal();
+        else if (document.getElementById("entNameInp")) createNewEntity();
       } else if (CURRENT_SCREEN === 'voucher_entry') {
         saveCurrentVoucher();
       }
@@ -2780,18 +2757,24 @@ function renderScreen(screen) {
 window.onload = function() {
   let lastEnt = "DEFAULT_ENTITY";
   try {
+    const avail = getSavedEntitiesList();
     const l = localStorage.getItem("TALLY_PRIME_LAST_ENTITY");
-    if (l && (l === "DEFAULT_ENTITY" || localStorage.getItem("TALLY_PRIME_GST_DB_" + l))) lastEnt = l;
+    lastEnt = (l && avail.includes(l)) ? l : (avail[0] || "DEFAULT_ENTITY");
   } catch (e) {}
   loadDB(lastEnt);
   navigate("gateway", false);
 };
 // ============================================================================
-// MULTI-ENTITY MANAGER (F3): CREATE COMPANY / TRUST + SELECT COMPANY / TRUST
+// MULTI-ENTITY MANAGER (F3): CREATE / SELECT / DELETE COMPANY OR TRUST
 // ============================================================================
 
+const DELETED_ENT_KEY = "TALLY_PRIME_DELETED_ENTITIES";
+function getDeletedEntities() {
+  try { return JSON.parse(localStorage.getItem(DELETED_ENT_KEY) || "[]"); } catch (e) { return []; }
+}
+
 function getSavedEntitiesList() {
-  let list = ["DEFAULT_ENTITY"];
+  let list = getDeletedEntities().includes("DEFAULT_ENTITY") ? [] : ["DEFAULT_ENTITY"];
   for (let i = 0; i < localStorage.length; i++) {
     let key = localStorage.key(i);
     if (key && key.startsWith("TALLY_PRIME_GST_DB_")) {
@@ -2800,6 +2783,25 @@ function getSavedEntitiesList() {
     }
   }
   return list;
+}
+
+function getEntityData(ent) {
+  if (ent === CURRENT_ENTITY_ID) return DB;
+  try {
+    const raw = localStorage.getItem("TALLY_PRIME_GST_DB_" + ent);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+
+function entityLabel(ent) {
+  const d = getEntityData(ent);
+  const c = (d && d.company) || {};
+  return { name: c.name || (ent === "DEFAULT_ENTITY" ? "Shree Ganesh Traders" : ent), type: c.entityType || "Company" };
+}
+
+function entityNameExists(name, exceptId) {
+  const n = (name || "").trim().toLowerCase();
+  return getSavedEntitiesList().some(ent => ent !== exceptId && entityLabel(ent).name.trim().toLowerCase() === n);
 }
 
 // Current entity ka data switch/create se pehle chup-chaap save (toast ke bina)
@@ -2811,49 +2813,157 @@ function escHtml(t) {
   return String(t == null ? "" : t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+function defaultFY() {
+  const now = new Date();
+  const yr = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+  return { from: `${yr}-04-01`, to: `${yr + 1}-03-31` };
+}
+
+// ---------- Shared full-details form (Create + Alter dono me) ----------
+function entityDetailsFormHtml(p, c, type) {
+  const v = k => escHtml(c[k] || "");
+  const isTrust = type === "Trust";
+  const hideCo = isTrust ? 'style="display:none;"' : "";
+  const hideTr = isTrust ? "" : 'style="display:none;"';
+  const sec = t => `<div style="font-size:11px; font-weight:700; color:var(--pri-dark); text-transform:uppercase; letter-spacing:0.5px; margin:14px 0 6px; border-bottom:1px solid #e2e8f0; padding-bottom:3px;">${t}</div>`;
+  const stateOpts = Object.entries(GST_STATES).map(([code, nm]) =>
+    `<option value="${code}" ${(c.stateCode || "05") === code ? "selected" : ""}>${code} - ${nm}</option>`
+  ).join("");
+  const reg = c.regType || "Regular";
+
+  return `
+    ${sec("Basic Details")}
+    <div class="form-grid">
+      <div class="field" style="grid-column: 1 / -1;"><label id="${p}NameLbl">${isTrust ? "Trust Name" : "Company Name"} *</label><input id="${p}NameInp" value="${v("name")}" placeholder="${isTrust ? "e.g. Sanrakshan Trust" : "e.g. Shree Ganesh Traders"}"></div>
+      <div class="field"><label>Print / Mailing Name</label><input id="${p}MailInp" value="${v("mailName")}" placeholder="Invoice / receipt par naam"></div>
+      <div class="field"><label>Contact Person</label><input id="${p}ContactInp" value="${v("contact")}"></div>
+    </div>
+
+    ${sec("Address & Contact")}
+    <div class="form-grid">
+      <div class="field" style="grid-column: 1 / -1;"><label>Address</label><input id="${p}AddrInp" value="${v("address")}" placeholder="Building / Street / Area"></div>
+      <div class="field"><label>City</label><input id="${p}CityInp" value="${v("city")}"></div>
+      <div class="field"><label>Pincode</label><input id="${p}PinInp" value="${v("pin")}" maxlength="6" inputmode="numeric"></div>
+      <div class="field"><label>State (Auto from GSTIN)</label><select id="${p}StateInp">${stateOpts}</select></div>
+      <div class="field"><label>Country</label><input id="${p}CountryInp" value="${escHtml(c.country || "India")}"></div>
+      <div class="field"><label>Phone</label><input id="${p}PhoneInp" value="${v("phone")}"></div>
+      <div class="field"><label>Mobile</label><input id="${p}MobileInp" value="${v("mobile")}" maxlength="15"></div>
+      <div class="field"><label>Email</label><input id="${p}EmailInp" value="${v("email")}"></div>
+      <div class="field"><label>Website</label><input id="${p}WebInp" value="${v("website")}"></div>
+    </div>
+
+    ${sec("Tax & Registration")}
+    <div class="form-grid">
+      <div class="field"><label>Registration Type</label>
+        <select id="${p}RegInp">
+          <option ${reg === "Regular" ? "selected" : ""}>Regular</option>
+          <option ${reg === "Composition" ? "selected" : ""}>Composition</option>
+          <option ${reg === "Unregistered" ? "selected" : ""}>Unregistered</option>
+        </select>
+      </div>
+      <div class="field"><label>GSTIN (15 Digits)</label><input id="${p}GstinInp" value="${v("gstin")}" maxlength="15" oninput="autoDetectStateFromGstin(this.value, '${p}StateInp'); autoRegFromGstin('${p}')"></div>
+      <div class="field"><label>PAN</label><input id="${p}PanInp" value="${v("pan")}" maxlength="10"></div>
+      <div class="field ent-co" ${hideCo}><label>CIN / Udyam No.</label><input id="${p}CinInp" value="${v("cin")}"></div>
+      <div class="field ent-tr" ${hideTr}><label>Trust Reg. No.</label><input id="${p}RegNoInp" value="${v("regNo")}"></div>
+      <div class="field ent-tr" ${hideTr}><label>12A Reg. No.</label><input id="${p}N12AInp" value="${v("reg12A")}"></div>
+      <div class="field ent-tr" ${hideTr}><label>80G Reg. No.</label><input id="${p}N80GInp" value="${v("reg80G")}"></div>
+    </div>
+
+    ${sec("Financial Year")}
+    <div class="form-grid">
+      <div class="field"><label>Financial Year From *</label><input type="date" id="${p}FyFromInp" value="${v("fyFrom")}"></div>
+      <div class="field"><label>Financial Year To *</label><input type="date" id="${p}FyToInp" value="${v("fyTo")}"></div>
+      <div class="field"><label>Books Beginning From</label><input type="date" id="${p}BooksFromInp" value="${v("booksFrom")}"></div>
+    </div>
+
+    ${sec("Bank Details (receipt / print ke liye)")}
+    <div class="form-grid">
+      <div class="field"><label>Bank Name</label><input id="${p}BankNameInp" value="${v("bankName")}"></div>
+      <div class="field"><label>Account No.</label><input id="${p}BankAccInp" value="${v("bankAcc")}"></div>
+      <div class="field"><label>IFSC Code</label><input id="${p}BankIfscInp" value="${v("bankIfsc")}" maxlength="11"></div>
+    </div>
+  `;
+}
+
+// GSTIN poora (15 char) bharte hi Registration Type 'Unregistered' se 'Regular' ho jaye
+function autoRegFromGstin(p) {
+  const g = document.getElementById(p + "GstinInp"), r = document.getElementById(p + "RegInp");
+  if (g && r && g.value.trim().length === 15 && r.value === "Unregistered") r.value = "Regular";
+}
+
+function readEntityDetails(p) {
+  const g = id => { const e = document.getElementById(p + id + "Inp"); return e ? e.value.trim() : ""; };
+  return {
+    name: g("Name"), mailName: g("Mail"), contact: g("Contact"),
+    address: g("Addr"), city: g("City"), pin: g("Pin"), stateCode: g("State"), country: g("Country") || "India",
+    phone: g("Phone"), mobile: g("Mobile"), email: g("Email"), website: g("Web"),
+    regType: g("Reg") || "Unregistered", gstin: g("Gstin").toUpperCase(), pan: g("Pan").toUpperCase(),
+    cin: g("Cin").toUpperCase(), regNo: g("RegNo"), reg12A: g("N12A"), reg80G: g("N80G"),
+    fyFrom: g("FyFrom"), fyTo: g("FyTo"), booksFrom: g("BooksFrom"),
+    bankName: g("BankName"), bankAcc: g("BankAcc"), bankIfsc: g("BankIfsc").toUpperCase()
+  };
+}
+
+// strictReg = true (nayi entity): GSTIN aur Registration Type ka mel zaroori
+function validateEntityDetails(d, type, strictReg) {
+  if (!d.name) return `${type === "Trust" ? "Trust" : "Company"} ka naam dalein!`;
+  if (d.gstin && !GSTIN_REGEX.test(d.gstin)) return "GSTIN galat hai (15 character ka sahi format dalein ya khali chhodein)";
+  if (d.gstin && d.gstin.slice(0, 2) !== d.stateCode) return "GSTIN ke pehle 2 digit aur chuna hua State alag hain";
+  if (strictReg && d.regType !== "Unregistered" && !d.gstin) return "Regular/Composition ke liye GSTIN dalein, ya Registration Type 'Unregistered' chunein";
+  if (strictReg && d.gstin && d.regType === "Unregistered") return "GSTIN bhara hai to Registration Type Regular ya Composition chunein";
+  if (d.pan && !/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(d.pan)) return "PAN galat hai (format: ABCDE1234F)";
+  if (d.pin && !/^[0-9]{6}$/.test(d.pin)) return "Pincode 6 digit ka hona chahiye";
+  if (d.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email)) return "Email galat hai";
+  if (d.bankIfsc && !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(d.bankIfsc)) return "IFSC code galat hai (format: SBIN0001234)";
+  if (!d.fyFrom || !d.fyTo) return "Financial Year ki From aur To date zaroori hain";
+  if (d.fyTo <= d.fyFrom) return "Financial Year 'To' date 'From' ke baad ki honi chahiye";
+  return "";
+}
+
+// ---------- Manager: Select + Delete list ----------
 function openEntitySwitcherModal() {
-  let entities = getSavedEntitiesList();
-  let listHtml = entities.map(ent => {
-    let entName = ent, entType = "Company";
-    if (ent === CURRENT_ENTITY_ID) {
-      entName = DB.company.name || ent;
-      entType = DB.company.entityType || "Company";
-    } else {
-      try {
-        let raw = localStorage.getItem("TALLY_PRIME_GST_DB_" + ent);
-        if (raw) {
-          let p = JSON.parse(raw);
-          if (p.company && p.company.name) entName = p.company.name;
-          if (p.company && p.company.entityType) entType = p.company.entityType;
-        }
-      } catch (e) {}
-    }
-    let isActive = ent === CURRENT_ENTITY_ID;
-    let badgeBg = entType === "Trust" ? "#dbeafe" : "#fef08a";
+  const entities = getSavedEntitiesList();
+  const listHtml = entities.map(ent => {
+    const lb = entityLabel(ent);
+    const isActive = ent === CURRENT_ENTITY_ID;
+    const badgeBg = lb.type === "Trust" ? "#dbeafe" : "#fef08a";
     return `
       <div style="display:flex; justify-content:space-between; align-items:center; padding:8px; border-bottom:1px solid #e2e8f0; background:${isActive ? '#ecfdf5' : '#fff'};">
-        <div><b>${escHtml(entName)}</b>
-          <span style="font-size:10.5px; font-weight:700; background:${badgeBg}; padding:1px 6px; border-radius:3px; margin-left:4px;">${escHtml(entType)}</span>
+        <div><b>${escHtml(lb.name)}</b>
+          <span style="font-size:10.5px; font-weight:700; background:${badgeBg}; padding:1px 6px; border-radius:3px; margin-left:4px;">${escHtml(lb.type)}</span>
         </div>
-        <div>
+        <div style="display:flex; align-items:center; gap:6px;">
           ${isActive ? '<span style="color:var(--ok); font-weight:700; font-size:11.5px;">Active ✔</span>' : `<button class="btn" style="padding:2px 8px; font-size:11px;" onclick="switchEntity('${ent}')">Select</button>`}
+          <button class="btn btn-danger" style="padding:2px 8px; font-size:11px;" onclick="openDeleteEntityModal('${ent}')">Delete</button>
         </div>
       </div>
     `;
   }).join("");
 
-  let stateOpts = Object.entries(GST_STATES).map(([code, nm]) =>
-    `<option value="${code}" ${code === "05" ? "selected" : ""}>${code} - ${nm}</option>`
-  ).join("");
-
   const body = `
     <div class="form-card">
       <h3 style="margin-bottom:8px; color:var(--pri-dark);">🏢 Select Company / Trust</h3>
-      <div style="margin-bottom:12px; max-height:160px; overflow-y:auto; border:1px solid var(--border); border-radius:3px;">
+      <div style="max-height:300px; overflow-y:auto; border:1px solid var(--border); border-radius:3px;">
         ${listHtml}
       </div>
-      <hr style="border:none; border-top:1px solid var(--border); margin:12px 0;">
-      <h4 style="font-size:12px; margin-bottom:6px; color:var(--pri-dark);">➕ Create New Company / Trust</h4>
+      <div style="font-size:11.5px; color:var(--muted); margin-top:8px;">Nayi Company ya Trust banane ke liye neeche "Create New" dabayein.</div>
+    </div>
+  `;
+  const foot = `
+    <button class="btn btn-sec" onclick="closeModal()">Cancel (Esc)</button>
+    <button class="btn btn-sec" onclick="openCompanyAlterModal()">Alter Current Company</button>
+    <button class="btn btn-sec" onclick="openRestoreModal()">📤 Restore Backup</button>
+    <button class="btn" onclick="openCreateEntityModal()">➕ Create New Company / Trust</button>
+  `;
+  showModal("Company / Trust Manager (F3)", body, foot);
+}
+
+// ---------- Create (full details) ----------
+function openCreateEntityModal() {
+  const fy = defaultFY();
+  const c = { stateCode: "05", country: "India", regType: "Unregistered", fyFrom: fy.from, fyTo: fy.to, booksFrom: fy.from };
+  const body = `
+    <div class="form-card">
       <div class="form-grid">
         <div class="field">
           <label>Type *</label>
@@ -2862,47 +2972,28 @@ function openEntitySwitcherModal() {
             <option value="Trust">Trust / NGO</option>
           </select>
         </div>
-        <div class="field">
-          <label id="entNameLbl">Company Name *</label>
-          <input id="entNameInp" placeholder="e.g. Shree Ganesh Traders">
-        </div>
-        <div class="field">
-          <label>GSTIN (optional)</label>
-          <input id="entGstinInp" maxlength="15" placeholder="15 digit GSTIN" oninput="autoDetectStateFromGstin(this.value, 'entStateInp')">
-        </div>
-        <div class="field">
-          <label>State</label>
-          <select id="entStateInp">${stateOpts}</select>
-        </div>
-        <div class="field">
-          <label>Address / City</label>
-          <input id="entAddrInp" placeholder="e.g. Roorkee">
-        </div>
-        <div class="field">
-          <label id="entRegLbl">PAN</label>
-          <input id="entRegInp" maxlength="20" placeholder="PAN number">
-        </div>
       </div>
-      <div id="entHint" style="font-size:11.5px; color:var(--muted); margin-top:8px;">Company ke liye standard ledgers (Cash, Bank, Sales, Purchase, GST) ban jayenge.</div>
+      ${entityDetailsFormHtml("ent", c, "Company")}
+      <div id="entHint" style="font-size:11.5px; color:var(--muted); margin-top:10px;">Company ke liye standard ledgers (Cash, Bank, Sales, Purchase, GST) ban jayenge.</div>
     </div>
   `;
   const foot = `
-    <button class="btn btn-sec" onclick="closeModal()">Cancel (Esc)</button>
-    <button class="btn btn-sec" onclick="openCompanyAlterModal()">Alter Current Company</button>
-    <button class="btn" onclick="createNewEntity()">Create &amp; Switch</button>
+    <button class="btn btn-sec" onclick="openEntitySwitcherModal()">← Back</button>
+    <button class="btn" onclick="createNewEntity()">Create &amp; Switch (Ctrl+A)</button>
   `;
-  showModal("Company / Trust Manager (F3)", body, foot);
+  showModal("Create New Company / Trust", body, foot);
 }
 
 function entTypeChanged() {
-  const t = document.getElementById("entTypeInp").value;
-  const isTrust = t === "Trust";
-  document.getElementById("entNameLbl").textContent = isTrust ? "Trust Name *" : "Company Name *";
+  const isTrust = document.getElementById("entTypeInp").value === "Trust";
+  document.getElementById("entNameLbl").textContent = (isTrust ? "Trust Name" : "Company Name") + " *";
   document.getElementById("entNameInp").placeholder = isTrust ? "e.g. Sanrakshan Trust" : "e.g. Shree Ganesh Traders";
-  document.getElementById("entRegLbl").textContent = isTrust ? "Trust Reg. No." : "PAN";
-  document.getElementById("entRegInp").placeholder = isTrust ? "Registration number" : "PAN number";
+  document.querySelectorAll("#modalBody .ent-co").forEach(e => e.style.display = isTrust ? "none" : "");
+  document.querySelectorAll("#modalBody .ent-tr").forEach(e => e.style.display = isTrust ? "" : "none");
+  const reg = document.getElementById("entRegInp");
+  if (reg && !document.getElementById("entGstinInp").value.trim()) reg.value = "Unregistered";
   document.getElementById("entHint").textContent = isTrust
-    ? "Trust ke liye GSTIN khali chhod sakte hain. Corpus Fund, Donations, Member Contributions aur kharche ke ledgers ban jayenge."
+    ? "Trust ke liye GSTIN khali chhod sakte hain (Registration Type: Unregistered). Corpus Fund, Donations, Member Contributions aur kharche ke ledgers ban jayenge."
     : "Company ke liye standard ledgers (Cash, Bank, Sales, Purchase, GST) ban jayenge.";
 }
 
@@ -2915,7 +3006,7 @@ function switchEntity(entId) {
   toast(`🏢 Selected: ${DB.company.name}`);
 }
 
-// Nayi entity ke liye ledgers (zero opening balance). Voucher screens jin fixed IDs par chalti hain wo yahan bhi rakhi gayi hain.
+// Nayi entity ke ledgers (zero opening balance). Voucher screens jin fixed IDs par chalti hain wo yahan bhi rakhi gayi hain.
 function seedNewEntityMasters(entityType) {
   const sc = DB.company.stateCode;
   DB.ledgers = [
@@ -2954,48 +3045,25 @@ function seedNewEntityMasters(entityType) {
 
 function createNewEntity() {
   const entityType = document.getElementById("entTypeInp").value === "Trust" ? "Trust" : "Company";
-  const name = document.getElementById("entNameInp").value.trim();
-  const gstin = document.getElementById("entGstinInp").value.trim().toUpperCase();
-  const stateCode = document.getElementById("entStateInp").value;
-  const address = document.getElementById("entAddrInp").value.trim();
-  const regVal = document.getElementById("entRegInp").value.trim();
-
-  if (!name) { toast(`⚠ ${entityType === "Trust" ? "Trust" : "Company"} ka naam dalein!`); return; }
-  if (gstin && !GSTIN_REGEX.test(gstin)) { toast("⚠ GSTIN galat hai (15 character ka sahi format dalein ya khali chhodein)"); return; }
-
-  // Same naam ki entity dobara na bane
-  const dup = getSavedEntitiesList().some(ent => {
-    let nm = "";
-    if (ent === CURRENT_ENTITY_ID) nm = DB.company.name;
-    else { try { const raw = localStorage.getItem("TALLY_PRIME_GST_DB_" + ent); if (raw) nm = (JSON.parse(raw).company || {}).name || ""; } catch (e) {} }
-    return nm.trim().toLowerCase() === name.toLowerCase();
-  });
-  if (dup) { toast("⚠ Is naam ki Company/Trust pehle se maujood hai!"); return; }
+  const d = readEntityDetails("ent");
+  const err = validateEntityDetails(d, entityType, true);
+  if (err) { toast("⚠ " + err); return; }
+  if (entityNameExists(d.name, null)) { toast("⚠ Is naam ki Company/Trust pehle se maujood hai!"); return; }
+  if (!d.booksFrom) d.booksFrom = d.fyFrom;
 
   // Purani entity ka data surakshit karke hi nayi banayein
   persistCurrentEntitySilently();
 
   const now = new Date();
-  const yr = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
   const pad = n => String(n).padStart(2, "0");
-  const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  let today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  if (today < d.fyFrom) today = d.fyFrom;
+  if (today > d.fyTo) today = d.fyTo;
 
   const newId = "ENT_" + Date.now().toString(36);
   CURRENT_ENTITY_ID = newId;
 
-  DB.company = {
-    name: name,
-    gstin: gstin,
-    stateCode: stateCode,
-    address: address || "India",
-    regType: gstin ? "Regular" : "Unregistered",
-    fyFrom: `${yr}-04-01`,
-    fyTo: `${yr + 1}-03-31`,
-    curDate: today,
-    entityType: entityType
-  };
-  if (entityType === "Trust") DB.company.regNo = regVal; else DB.company.pan = regVal.toUpperCase();
-
+  DB.company = Object.assign({ entityType: entityType, curDate: today }, d);
   DB.groups = [...DEFAULT_GROUPS];
   DB.vouchers = [];
   seedNewEntityMasters(entityType);
@@ -3004,7 +3072,192 @@ function createNewEntity() {
   try { localStorage.setItem("TALLY_PRIME_LAST_ENTITY", newId); } catch (e) {}
   closeModal();
   navigate("gateway", false);
-  toast(`✅ Nayi ${entityType === "Trust" ? "Trust" : "Company"} "${name}" ban gayi!`);
+  toast(`✅ Nayi ${entityType === "Trust" ? "Trust" : "Company"} "${d.name}" ban gayi!`);
+}
+
+// ---------- Delete ----------
+function downloadEntityBackup(ent) {
+  const data = getEntityData(ent);
+  if (!data) { toast("ℹ Is entity me abhi koi saved data nahi hai"); return; }
+  const lb = entityLabel(ent);
+  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data, null, 2));
+  const a = document.createElement("a");
+  a.setAttribute("href", dataStr);
+  a.setAttribute("download", `backup_${lb.name.replace(/[^A-Za-z0-9]+/g, "_")}_${new Date().toISOString().slice(0, 10)}.json`);
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  toast("📥 Backup Downloaded!");
+}
+
+function openDeleteEntityModal(ent) {
+  if (getSavedEntitiesList().length <= 1) {
+    toast("⚠ Kam se kam ek Company/Trust rehni zaroori hai. Pehle nayi bana lein, phir purani delete karein.");
+    return;
+  }
+  const lb = entityLabel(ent);
+  const data = getEntityData(ent) || {};
+  const vCount = (data.vouchers || []).length;
+  const lCount = (data.ledgers || []).length;
+  const body = `
+    <div class="form-card">
+      <div style="background:#fef2f2; border:1px solid var(--danger); border-radius:4px; padding:10px; font-size:12.5px; color:#7f1d1d; line-height:1.6;">
+        <b>⚠ "${escHtml(lb.name)}" (${escHtml(lb.type)}) delete ho jayegi.</b><br>
+        Iska saara data — <b>${vCount}</b> vouchers aur <b>${lCount}</b> ledgers — hamesha ke liye hat jayega. Ise wapas nahi laya ja sakta.
+        ${ent === CURRENT_ENTITY_ID ? "<br><b>Yeh abhi Active hai</b> — delete hone par dusri Company/Trust khul jayegi." : ""}
+      </div>
+      <div style="margin-top:10px;">
+        <button class="btn btn-sec" onclick="downloadEntityBackup('${ent}')">📥 Pehle Backup Download Karein</button>
+      </div>
+      <div class="field" style="margin-top:12px;">
+        <label>Confirm karne ke liye naam type karein: <b>${escHtml(lb.name)}</b></label>
+        <input id="delConfirmInp" placeholder="Naam yahan likhein" autocomplete="off">
+      </div>
+    </div>
+  `;
+  const foot = `
+    <button class="btn btn-sec" onclick="openEntitySwitcherModal()">← Back</button>
+    <button class="btn btn-danger" onclick="confirmDeleteEntity('${ent}')">Delete Permanently</button>
+  `;
+  showModal("Delete Company / Trust", body, foot);
+}
+
+function confirmDeleteEntity(ent) {
+  const list = getSavedEntitiesList();
+  if (list.length <= 1) { toast("⚠ Kam se kam ek Company/Trust rehni zaroori hai"); return; }
+  const lb = entityLabel(ent);
+  const typed = (document.getElementById("delConfirmInp").value || "").trim().toLowerCase();
+  if (typed !== lb.name.trim().toLowerCase()) { toast("⚠ Naam match nahi hua — sahi naam likhein"); return; }
+
+  if (ent === CURRENT_ENTITY_ID) {
+    const next = list.find(e => e !== ent);
+    loadDB(next);                       // pehle dusri entity khol lein
+  }
+  try { localStorage.removeItem("TALLY_PRIME_GST_DB_" + ent); } catch (e) {}
+  if (ent === "DEFAULT_ENTITY") {
+    const del = getDeletedEntities();
+    if (!del.includes(ent)) del.push(ent);
+    try { localStorage.setItem(DELETED_ENT_KEY, JSON.stringify(del)); } catch (e) {}
+  }
+  try { localStorage.setItem("TALLY_PRIME_LAST_ENTITY", CURRENT_ENTITY_ID); } catch (e) {}
+
+  navigate("gateway", false);
+  openEntitySwitcherModal();
+  toast(`🗑 "${lb.name}" delete ho gayi. Active: ${DB.company.name}`);
+}
+
+// ============================================================================
+// RESTORE BACKUP (JSON upload) - Backup / Ctrl+E se bani file wapas load karein
+// ============================================================================
+let RESTORE_DATA = null;
+
+function openRestoreModal() {
+  RESTORE_DATA = null;
+  const body = `
+    <div class="form-card">
+      <div class="field">
+        <label>Backup file (.json) chunein</label>
+        <input type="file" id="restoreFileInp" accept=".json,application/json" onchange="restoreFileChosen(this)">
+      </div>
+      <div id="restorePreview" style="margin-top:12px; font-size:12.5px; color:var(--muted);">Backup ya Ctrl+E se download hui file yahan chunein.</div>
+    </div>
+  `;
+  const foot = `
+    <button class="btn btn-sec" onclick="closeModal()">Cancel (Esc)</button>
+    <button class="btn btn-sec" id="restoreReplaceBtn" disabled onclick="applyRestore('replace')">Replace Current</button>
+    <button class="btn" id="restoreNewBtn" disabled onclick="applyRestore('new')">Restore as New (Safe)</button>
+  `;
+  showModal("Restore Backup (Upload)", body, foot);
+}
+
+function restoreFileChosen(inp) {
+  const f = inp.files && inp.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => restorePreview(String(reader.result || ""), f.name);
+  reader.onerror = () => toast("⚠ File padh nahi paye");
+  reader.readAsText(f);
+}
+
+// Backup file ki jaanch; sirf jaane-pehchane hisse hi liye jaate hain
+function restorePreview(text, fileName) {
+  const box = document.getElementById("restorePreview");
+  const setBtns = on => {
+    const a = document.getElementById("restoreNewBtn"), b = document.getElementById("restoreReplaceBtn");
+    if (a) a.disabled = !on;
+    if (b) b.disabled = !on;
+  };
+  RESTORE_DATA = null; setBtns(false);
+  let data;
+  try { data = JSON.parse(text); } catch (e) { box.innerHTML = '<span style="color:var(--danger);">⚠ Yeh sahi JSON backup file nahi hai.</span>'; return false; }
+  if (!data || typeof data !== "object" || !data.company || typeof data.company !== "object" ||
+      !Array.isArray(data.ledgers) || !Array.isArray(data.vouchers)) {
+    box.innerHTML = '<span style="color:var(--danger);">⚠ Is file me Company, Ledgers ya Vouchers ka data nahi mila — yeh is software ka backup nahi lagta.</span>';
+    return false;
+  }
+  const fy = defaultFY();
+  const c = Object.assign({ entityType: "Company", stateCode: "05", regType: "Unregistered", fyFrom: fy.from, fyTo: fy.to, curDate: fy.from }, data.company);
+  c.name = String(c.name || "Restored Company").trim() || "Restored Company";
+  RESTORE_DATA = {
+    company: c,
+    groups: Array.isArray(data.groups) && data.groups.length ? data.groups : [...DEFAULT_GROUPS],
+    ledgers: data.ledgers,
+    items: Array.isArray(data.items) ? data.items : [],
+    vouchers: data.vouchers
+  };
+  box.innerHTML = `
+    <div style="background:#ecfdf5; border:1px solid var(--pri); border-radius:4px; padding:10px; line-height:1.7; color:var(--text);">
+      <b>✔ Valid backup:</b> ${escHtml(fileName || "")}<br>
+      Naam: <b>${escHtml(c.name)}</b> (${escHtml(c.entityType || "Company")})<br>
+      Vouchers: <b>${RESTORE_DATA.vouchers.length}</b> &nbsp;|&nbsp; Ledgers: <b>${RESTORE_DATA.ledgers.length}</b> &nbsp;|&nbsp; Items: <b>${RESTORE_DATA.items.length}</b><br>
+      Period: ${escHtml(fmtDate(c.fyFrom))} to ${escHtml(fmtDate(c.fyTo))}
+    </div>
+    <div style="margin-top:8px; font-size:11.5px; color:var(--muted);">
+      <b>Restore as New:</b> nayi Company/Trust ban jayegi, abhi ka data jas-ka-tas rahega.<br>
+      <b>Replace Current:</b> abhi khuli "${escHtml(DB.company.name)}" ka poora data is backup se badal jayega.
+    </div>
+  `;
+  setBtns(true);
+  return true;
+}
+
+function applyRestore(mode) {
+  if (!RESTORE_DATA) { toast("⚠ Pehle backup file chunein"); return; }
+  const R = RESTORE_DATA;
+
+  if (mode === "replace") {
+    if (!confirm(`"${DB.company.name}" ka abhi ka saara data is backup se badal jayega.\n\nReplace karein? (Replace se pehle abhi ka backup apne-aap download ho jayega.)`)) return;
+    downloadEntityBackup(CURRENT_ENTITY_ID);   // safety copy
+    const keepType = DB.company.entityType;
+    DB.company = R.company;
+    if (!DB.company.entityType) DB.company.entityType = keepType || "Company";
+    DB.groups = R.groups; DB.ledgers = R.ledgers; DB.items = R.items; DB.vouchers = R.vouchers;
+    saveDB();
+    RESTORE_DATA = null;
+    closeModal();
+    navigate("gateway", false);
+    toast(`✅ Backup restore ho gaya: ${DB.company.name}`);
+    return;
+  }
+
+  // mode === "new": nayi entity
+  persistCurrentEntitySilently();
+  let nm = R.company.name, n = 1;
+  if (entityNameExists(nm, null)) {
+    nm = R.company.name + " (Restored)";
+    while (entityNameExists(nm, null)) { n++; nm = `${R.company.name} (Restored ${n})`; }
+  }
+  const newId = "ENT_" + Date.now().toString(36);
+  CURRENT_ENTITY_ID = newId;
+  DB.company = Object.assign({}, R.company, { name: nm });
+  if (!DB.company.entityType) DB.company.entityType = "Company";
+  DB.groups = R.groups; DB.ledgers = R.ledgers; DB.items = R.items; DB.vouchers = R.vouchers;
+  saveDB();
+  try { localStorage.setItem("TALLY_PRIME_LAST_ENTITY", newId); } catch (e) {}
+  RESTORE_DATA = null;
+  closeModal();
+  navigate("gateway", false);
+  toast(`✅ "${nm}" restore hokar nayi entity ban gayi`);
 }
 </script>
 </body>
