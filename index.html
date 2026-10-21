@@ -4405,5 +4405,136 @@ window.renderStockSummaryScreen = function() {
   if (CURRENT_SCREEN === "gateway") renderGateway();
 })();
 </script>
+  <!-- ================= SUPABASE AUTO-SYNC & ERP ENHANCEMENT ================= -->
+<script src="https://jsdelivr.net"></script>
+<script>
+(function() {
+  const SUPABASE_URL = 'https://supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_H5kdG7Ija7gOqu4H7CPiAQ_htNE2QOX';
+  const supaClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  let isLoadingFromCloud = false;
+  let currentUserRole = 'Administrator';
+
+  // 1. लॉगिन करते समय User Role (Admin / Viewer) की पहचान करना
+  document.addEventListener('change', (e) => {
+    if (e.target.tagName === 'SELECT' && e.target.innerText.includes('Auditor')) {
+      currentUserRole = e.target.value || e.target.options[e.target.selectedIndex].text;
+      sessionStorage.setItem('erp_active_role', currentUserRole);
+    }
+  });
+
+  function isReadOnlyUser() {
+    const role = sessionStorage.getItem('erp_active_role') || '';
+    return role.toLowerCase().includes('auditor') || role.toLowerCase().includes('viewer');
+  }
+
+  // 2. LocalStorage में कुछ भी सेव होते ही अपने-आप Supabase Cloud पर भेजना
+  const originalSetItem = localStorage.setItem;
+  localStorage.setItem = function(key, value) {
+    if (isReadOnlyUser() && !isLoadingFromCloud) {
+      alert('🔒 Read-Only Mode: आप केवल डेटा देख सकते हैं, बदलाव नहीं कर सकते!');
+      return;
+    }
+    originalSetItem.apply(this, arguments);
+    if (!isLoadingFromCloud) {
+      syncToSupabase();
+    }
+  };
+
+  let syncTimeout;
+  function syncToSupabase() {
+    clearTimeout(syncTimeout);
+    syncTimeout = setTimeout(async () => {
+      const allData = { ...localStorage };
+      const { error } = await supaClient
+        .from('AccountsExperse')
+        .upsert({ id: 'tally_main_data', content: allData });
+
+      if (error) {
+        console.error('Cloud Sync Error:', error.message);
+      } else {
+        console.log('☁️ सारा डेटा Supabase क्लाउड पर सेव हो गया!');
+      }
+    }, 800);
+  }
+
+  // 3. किसी भी कंप्यूटर पर सॉफ्टवेयर खुलते ही क्लाउड से डेटा लाना
+  async function loadFromSupabase() {
+    try {
+      const { data, error } = await supaClient
+        .from('AccountsExperse')
+        .select('content')
+        .eq('id', 'tally_main_data')
+        .single();
+
+      if (data && data.content) {
+        isLoadingFromCloud = true;
+        const cloudData = data.content;
+        let hasChanges = false;
+
+        Object.keys(cloudData).forEach(k => {
+          if (localStorage.getItem(k) !== cloudData[k]) {
+            originalSetItem.call(localStorage, k, cloudData[k]);
+            hasChanges = true;
+          }
+        });
+        isLoadingFromCloud = false;
+
+        // अगर नया डेटा मिला है तो स्क्रीन को एक बार रिफ्रेश करें ताकि डेटा दिखने लगे
+        if (hasChanges && !sessionStorage.getItem('cloud_loaded_once')) {
+          sessionStorage.setItem('cloud_loaded_once', 'true');
+          location.reload();
+        }
+      } else {
+        // अगर क्लाउड अभी खाली है, तो इस कंप्यूटर का मौजूदा डेटा क्लाउड पर अपलोड कर दें
+        if (localStorage.length > 0) syncToSupabase();
+      }
+    } catch (err) {
+      console.error('Cloud Load Error:', err);
+    }
+  }
+
+  // 4. Registration Type में 'Not Applicable' जोड़ना और Bank चुनने पर ऑटो-सेलेक्ट करना
+  function addNotApplicableOption() {
+    const selects = document.querySelectorAll('select');
+    selects.forEach(sel => {
+      const html = sel.innerHTML;
+      // Registration Type वाले ड्रॉपडाउन की पहचान
+      if (html.includes('Regular') && html.includes('Unregistered') && !html.includes('Not Applicable')) {
+        const opt = document.createElement('option');
+        opt.value = 'Not Applicable';
+        opt.textContent = 'Not Applicable (Non-GST / Bank)';
+        sel.insertBefore(opt, sel.firstChild);
+      }
+
+      // जब कोई Bank Accounts चुने तो अपने आप Not Applicable सेट हो जाए
+      if (html.includes('Bank Accounts') && !sel.dataset.watched) {
+        sel.dataset.watched = 'true';
+        sel.addEventListener('change', () => {
+          const val = sel.value || sel.options[sel.selectedIndex].text;
+          if (val.includes('Bank') || val.includes('Cash')) {
+            selects.forEach(s => {
+              if (s.innerHTML.includes('Not Applicable')) {
+                s.value = 'Not Applicable';
+              }
+            });
+          }
+        });
+      }
+    });
+  }
+
+  window.addEventListener('DOMContentLoaded', () => {
+    loadFromSupabase();
+    addNotApplicableOption();
+    // अगर मॉडल बाद में खुलता है तो उस पर भी निगरानी रखें
+    const observer = new MutationObserver(addNotApplicableOption);
+    observer.observe(document.body, { childList: true, subtree: true });
+  });
+})();
+</script>
+<!-- ======================================================================== -->
+
 </body>
 </html>
