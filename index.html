@@ -201,7 +201,7 @@
   <div class="top-meta">
     <span onclick="openPeriodModal()" title="Alt+F2: Change Period">📅 Period: <b id="topPeriod">01-Apr-2026 to 31-Mar-2027</b></span>
     <span onclick="openDateModal()" title="F2: Current Date">🕒 Date: <b id="topCurDate">21-Oct-2026</b></span>
-    <span onclick="openCompanyModal()" title="F3: Company Info">🏢 Company (<kbd class="kbd">F3</kbd>)</span>
+    <span onclick="openEntitySwitcherModal()" title="F3: Company Info">🏢 Company (<kbd class="kbd">F3</kbd>)</span>
     <span onclick="openHelpModal()" title="Shortcut Help">❓ Help (<kbd class="kbd">?</kbd>)</span>
   </div>
 </div>
@@ -254,7 +254,7 @@
     <button class="fn-btn" onclick="navigate('gateway')"><span class="fn-key">Esc</span><span>Gateway</span></button>
     <button class="fn-btn" onclick="openDateModal()"><span class="fn-key">F2</span><span>Date</span></button>
     <button class="fn-btn" onclick="openPeriodModal()"><span class="fn-key">A+F2</span><span>Period</span></button>
-    <button class="fn-btn" onclick="openCompanyModal()"><span class="fn-key">F3</span><span>Company</span></button>
+    <button class="fn-btn" onclick="openEntitySwitcherModal()"><span class="fn-key">F3</span><span>Company</span></button>
     <hr style="border:none; border-top:1px solid #cbd5e1; margin:2px 0;">
     <button class="fn-btn" onclick="openVoucherScreen('Contra')"><span class="fn-key">F4</span><span>Contra</span></button>
     <button class="fn-btn" onclick="openVoucherScreen('Payment')"><span class="fn-key">F5</span><span>Payment</span></button>
@@ -349,6 +349,7 @@ let NAV_STACK = [];
 let GW_INDEX = 0;
 
 // Global Data Store
+let CURRENT_ENTITY_ID = "DEFAULT_ENTITY"; // Current active company/trust ID
 let DB = {
   company: {
     name: "Shree Ganesh Traders Pvt. Ltd.",
@@ -418,25 +419,36 @@ function seedDefaultMasters() {
   ];
 }
 
-function loadDB() {
+// REPLACE OLD loadDB WITH THIS:
+function loadDB(entityId = "DEFAULT_ENTITY") {
+  CURRENT_ENTITY_ID = entityId;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const storageKey = "TALLY_PRIME_GST_DB_" + CURRENT_ENTITY_ID;
+    const raw = localStorage.getItem(storageKey);
     if (raw) {
       const parsed = JSON.parse(raw);
       DB = Object.assign(DB, parsed);
+    } else {
+      // Agar nayi entity hai toh default masters seed karein
+      DB.company = { name: CURRENT_ENTITY_ID === "DEFAULT_ENTITY" ? "Shree Ganesh Traders" : "Charitable Trust", gstin: "", stateCode: "05", address: "Roorkee", regType: "Regular", fyFrom: "2026-04-01", fyTo: "2027-03-31", curDate: "2026-10-21" };
+      DB.ledgers = [];
+      DB.items = [];
+      DB.vouchers = [];
+      if (typeof seedDefaultMasters === "function") seedDefaultMasters();
     }
   } catch (e) { console.error("DB load failed:", e); }
-  seedDefaultMasters();
   vouchers = DB.vouchers;
-  refreshHeaderAndSidebar();
+  if (typeof refreshHeaderAndSidebar === "function") refreshHeaderAndSidebar();
 }
 
+// REPLACE OLD saveDB WITH THIS:
 function saveDB() {
   vouchers = DB.vouchers;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
-  refreshHeaderAndSidebar();
+  const storageKey = "TALLY_PRIME_GST_DB_" + CURRENT_ENTITY_ID;
+  localStorage.setItem(storageKey, JSON.stringify(DB));
+  if (typeof refreshHeaderAndSidebar === "function") refreshHeaderAndSidebar();
+  toast("💾 Saved Locally!");
 }
-
 function refreshHeaderAndSidebar() {
   const c = DB.company;
   document.getElementById("topCmpName").textContent = c.name;
@@ -513,7 +525,7 @@ function renderGateway() {
 }
 
 // Company Modal (F3)
-function openCompanyModal() {
+function openEntitySwitcherModal() {
   const c = DB.company;
   let stateOpts = Object.entries(GST_STATES).map(([code, nm]) =>
     `<option value="${code}" ${c.stateCode === code ? "selected" : ""}>${code} - ${nm}</option>`
@@ -2192,7 +2204,7 @@ document.addEventListener('keydown', (e)=>{
     return;
   }
   if (key === 'F2') { e.preventDefault(); openDateModal(); return; }
-  if (key === 'F3') { e.preventDefault(); openCompanyModal(); return; }
+  if (key === 'F3') { e.preventDefault(); openEntitySwitcherModal(); return; }
   if (key === '?') { e.preventDefault(); openHelpModal(); return; }
 
   // Table row navigation
@@ -2769,6 +2781,101 @@ window.onload = function() {
   loadDB();
   navigate("gateway", false);
 };
+// ADD THIS AT THE VERY END OF YOUR SCRIPT (BEFORE </script>)
+
+function getSavedEntitiesList() {
+  let list = ["DEFAULT_ENTITY"];
+  for (let i = 0; i < localStorage.length; i++) {
+    let key = localStorage.key(i);
+    if (key && key.startsWith("TALLY_PRIME_GST_DB_")) {
+      let entId = key.replace("TALLY_PRIME_GST_DB_", "");
+      if (!list.includes(entId)) list.push(entId);
+    }
+  }
+  return list;
+}
+
+function openEntitySwitcherModal() {
+  let entities = getSavedEntitiesList();
+  let listHtml = entities.map(ent => {
+    let entName = ent;
+    try {
+      let raw = localStorage.getItem("TALLY_PRIME_GST_DB_" + ent);
+      if (raw) { let p = JSON.parse(raw); if (p.company && p.company.name) entName = p.company.name; }
+    } catch(e){}
+    let isActive = ent === CURRENT_ENTITY_ID;
+    return `
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:8px; border-bottom:1px solid #e2e8f0; background:${isActive?'#ecfdf5':'#fff'};">
+        <div><b>${entName}</b> <span style="font-size:11px; color:var(--muted);">(${ent})</span></div>
+        <div>
+          ${isActive ? '<span style="color:var(--ok); font-weight:700; font-size:11.5px;">Active ✔</span>' : `<button class="btn" style="padding:2px 8px; font-size:11px;" onclick="switchEntity('${ent}')">Switch</button>`}
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  const body = `
+    <div class="form-card">
+      <h3 style="margin-bottom:8px; color:var(--pri-dark);">🏢 Switch Company / Trust</h3>
+      <div style="margin-bottom:12px; max-height:160px; overflow-y:auto; border:1px solid var(--border); border-radius:3px;">
+        ${listHtml}
+      </div>
+      <hr style="border:none; border-top:1px solid var(--border); margin:12px 0;">
+      <h4 style="font-size:12px; margin-bottom:6px; color:var(--pri-dark);">➕ Create New Company or Trust (Entity)</h4>
+      <div class="form-grid">
+        <div class="field">
+          <label>Company / Trust Name *</label>
+          <input id="entNameInp" placeholder="e.g. Lok Kalyan Trust">
+        </div>
+        <div class="field">
+          <label>Reg No / GSTIN / PAN</label>
+          <input id="entRegInp" placeholder="TR/2026/123 or GSTIN">
+        </div>
+      </div>
+    </div>
+  `;
+  const foot = `
+    <button class="btn btn-sec" onclick="closeModal()">Cancel (Esc)</button>
+    <button class="btn" onclick="createNewEntity()">Create &amp; Switch</button>
+  `;
+  showModal("Multi-Entity & Trust Manager", body, foot);
+}
+
+function switchEntity(entId) {
+  loadDB(entId);
+  closeModal();
+  navigate("gateway", false);
+  toast(`🏢 Switched to entity: ${DB.company.name}`);
+}
+
+function createNewEntity() {
+  const name = document.getElementById("entNameInp").value.trim();
+  const reg = document.getElementById("entRegInp").value.trim();
+  if (!name) { toast("⚠ Company ya Trust ka naam dalein!"); return; }
+
+  const newId = "ENT_" + Date.now().toString(36);
+  CURRENT_ENTITY_ID = newId;
+
+  DB.company = {
+    name: name,
+    gstin: reg,
+    stateCode: "05",
+    address: "India",
+    regType: "Regular",
+    fyFrom: "2026-04-01",
+    fyTo: "2027-03-31",
+    curDate: "2026-10-21"
+  };
+  DB.ledgers = [];
+  DB.items = [];
+  DB.vouchers = [];
+
+  if (typeof seedDefaultMasters === "function") seedDefaultMasters();
+  saveDB();
+  closeModal();
+  navigate("gateway", false);
+  toast(`✅ Nayi Entity "${name}" ban gayi!`);
+}
 </script>
 </body>
 </html>
