@@ -4405,16 +4405,30 @@ window.renderStockSummaryScreen = function() {
   if (CURRENT_SCREEN === "gateway") renderGateway();
 })();
 </script>
- <!-- ================= SUPABASE DIRECT CLOUD SYNC (NO CDN NEEDED) ================= -->
+ <!-- ================= SUPABASE DIRECT + INDIA ISP BYPASS SYNC ================= -->
 <script>
 (function() {
   const SUPABASE_URL = 'https://supabase.co';
   const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlsa29rcHlwb25hdW1scnNnc2plIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE3OTEyOTEsImV4cCI6MjEwNzM2NzI5MX0.XGAEwfDoldI5CvOQ0Q34aQIx8BSsoVayLe_c42aluJU';
-  const TABLE_ENDPOINT = `${SUPABASE_URL}/rest/v1/AccountsExperse`;
+  const DIRECT_ENDPOINT = `${SUPABASE_URL}/rest/v1/AccountsExperse`;
 
   let isLoadingFromCloud = false;
 
-  // स्क्रीन के कोने में क्लाउड स्टेटस बैज दिखाना
+  // स्मार्ट फेच: अगर Jio/ISP पर supabase.co ब्लॉक हो, तो अपने-आप Proxy से डेटा भेजे
+  async function smartFetch(targetUrl, options) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 3500);
+      const res = await fetch(targetUrl, { ...options, signal: controller.signal });
+      clearTimeout(timer);
+      return res;
+    } catch (directErr) {
+      console.warn('Direct ISP blocked, switching to Proxy Bypass...');
+      const proxyUrl = 'https://corsproxy.io?' + encodeURIComponent(targetUrl);
+      return await fetch(proxyUrl, options);
+    }
+  }
+
   function showCloudStatus(msg, color = '#16a34a') {
     let badge = document.getElementById('supa-cloud-badge');
     if (!badge) {
@@ -4442,7 +4456,7 @@ window.renderStockSummaryScreen = function() {
     return role.includes('auditor') || role.includes('viewer');
   }
 
-  // 2. LocalStorage में बदलाव होते ही सीधे Supabase पर भेजना
+  // 2. LocalStorage में बदलाव होते ही क्लाउड पर भेजना
   const originalSetItem = localStorage.setItem;
   localStorage.setItem = function(key, value) {
     if (isReadOnlyUser() && !isLoadingFromCloud) {
@@ -4464,7 +4478,7 @@ window.renderStockSummaryScreen = function() {
     syncTimeout = setTimeout(async () => {
       try {
         const allData = { ...localStorage, _lastUpdated: new Date().toISOString() };
-        const res = await fetch(TABLE_ENDPOINT, {
+        const res = await smartFetch(DIRECT_ENDPOINT, {
           method: 'POST',
           headers: {
             'apikey': SUPABASE_KEY,
@@ -4478,19 +4492,18 @@ window.renderStockSummaryScreen = function() {
         if (!res.ok) {
           const errText = await res.text();
           console.error('Cloud Sync Error:', errText);
-          showCloudStatus('❌ Cloud Error', '#dc2626');
+          showCloudStatus('❌ DB Error (' + res.status + ')', '#dc2626');
         } else {
           console.log('☁️ सारा डेटा Supabase क्लाउड पर सेव हो गया!');
           showCloudStatus('☁️ Cloud Synced', '#16a34a');
         }
       } catch (err) {
         console.error('Network Error:', err);
-        showCloudStatus('❌ Offline / Error', '#dc2626');
+        showCloudStatus('❌ Network Blocked', '#dc2626');
       }
     }, forceNow ? 50 : 500);
   }
 
-  // Save या Delete बटन दबते ही तुरंत सिंक करना
   document.addEventListener('click', (e) => {
     const txt = (e.target.innerText || '').toLowerCase();
     if (txt.includes('save') || txt.includes('accept') || txt.includes('del')) {
@@ -4502,7 +4515,7 @@ window.renderStockSummaryScreen = function() {
   async function loadFromSupabase() {
     showCloudStatus('🔄 Connecting Cloud...', '#2563eb');
     try {
-      const res = await fetch(`${TABLE_ENDPOINT}?id=eq.tally_main_data&select=content`, {
+      const res = await smartFetch(`${DIRECT_ENDPOINT}?id=eq.tally_main_data&select=content`, {
         method: 'GET',
         headers: {
           'apikey': SUPABASE_KEY,
@@ -4524,14 +4537,13 @@ window.renderStockSummaryScreen = function() {
             }
           });
           isLoadingFromCloud = false;
-          showCloudStatus('☁️ Cloud Connected', '#16a34a');
+          showCloudStatus('☁️ Cloud Synced', '#16a34a');
 
           if (hasChanges && !sessionStorage.getItem('cloud_loaded_once')) {
             sessionStorage.setItem('cloud_loaded_once', 'true');
             location.reload();
           }
         } else {
-          // अगर टेबल खाली है तो तुरंत मौजूदा डेटा अपलोड कर दे
           syncToSupabase(true);
         }
       } else {
@@ -4539,7 +4551,7 @@ window.renderStockSummaryScreen = function() {
       }
     } catch (err) {
       console.error('Cloud Load Error:', err);
-      showCloudStatus('❌ Connection Failed', '#dc2626');
+      syncToSupabase(true);
     }
   }
 
@@ -4582,6 +4594,7 @@ window.renderStockSummaryScreen = function() {
 })();
 </script>
 <!-- ======================================================================== -->
+
 
 </body>
 </html>
