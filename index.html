@@ -4405,6 +4405,261 @@ window.renderStockSummaryScreen = function() {
   if (CURRENT_SCREEN === "gateway") renderGateway();
 })();
 </script>
- 
+ <!-- ================= SUPABASE EMAIL LOGIN & ADMIN/VIEWER CLOUD SYNC ================= -->
+<script>
+(function() {
+  const SUPABASE_URL = 'https://supabase.co';
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1qbnFibW15YXB1c2VqeW1qY2hwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI2MTQ4MjMsImV4cCI6MjEwODE5MDgyM30.196QHOcQ-bzbhgXGDwXZ6LXo6wpSh4yHNwIsJ4MuGJU';
+  const ADMIN_EMAIL = 'tradingtrainerakki@gmail.com';
+  const TABLE_URL = `${SUPABASE_URL}/rest/v1/erp_cloud_data`;
+  const AUTH_URL = `${SUPABASE_URL}/auth/v1/token?grant_type=password`;
+
+  let isLoadingFromCloud = false;
+
+  // नेटवर्क बाईपास फेच (ताकि किसी भी इंटरनेट पर ब्लॉक न हो)
+  async function reliableFetch(url, options) {
+    const routes = [
+      url,
+      'https://corsproxy.io' + encodeURIComponent(url),
+      'https://codetabs.com' + encodeURIComponent(url)
+    ];
+    let lastErr;
+    for (let i = 0; i < routes.length; i++) {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 6000);
+        const res = await fetch(routes[i], { ...options, signal: controller.signal });
+        clearTimeout(timer);
+        if (res.ok || res.status < 500) return res;
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    throw lastErr || new Error('Network error');
+  }
+
+  function getAuthSession() {
+    try {
+      return JSON.parse(sessionStorage.getItem('supa_erp_session') || 'null');
+    } catch { return null; }
+  }
+
+  function isAdminUser() {
+    const sess = getAuthSession();
+    return sess && sess.email && sess.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+  }
+
+  // 1. Supabase Email & Password लॉगिन स्क्रीन बनाना
+  function showEmailLoginLock() {
+    if (getAuthSession()) {
+      loadFromSupabase();
+      return;
+    }
+
+    const overlay = document.createElement('div');
+    overlay.id = 'supa-auth-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(10,25,47,0.96);z-index:999999;display:flex;align-items:center;justify-content:center;font-family:sans-serif;';
+    overlay.innerHTML = `
+      <div style="background:#fff;width:360px;padding:28px;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,0.5);border-top:5px solid #0d9488;">
+        <h2 style="margin:0 0 6px;color:#0f172a;font-size:20px;">🔐 Cloud ERP Login</h2>
+        <p style="margin:0 0 18px;color:#64748b;font-size:12px;">Authorized Supabase Users Only</p>
+        <label style="display:block;font-size:12px;font-weight:bold;color:#334155;margin-bottom:4px;">Email ID</label>
+        <input id="supa-email" type="email" placeholder="Enter your email" style="width:100%;padding:10px;margin-bottom:14px;border:1px solid #cbd5e1;border-radius:6px;box-sizing:border-box;font-size:14px;" />
+        <label style="display:block;font-size:12px;font-weight:bold;color:#334155;margin-bottom:4px;">Password</label>
+        <input id="supa-pass" type="password" placeholder="Enter password" style="width:100%;padding:10px;margin-bottom:16px;border:1px solid #cbd5e1;border-radius:6px;box-sizing:border-box;font-size:14px;" />
+        <div id="supa-err" style="color:#dc2626;font-size:12px;margin-bottom:12px;display:none;"></div>
+        <button id="supa-login-btn" style="width:100%;padding:11px;background:#0d9488;color:#fff;border:none;border-radius:6px;font-size:14px;font-weight:bold;cursor:pointer;">Login to Software</button>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    document.getElementById('supa-login-btn').onclick = async () => {
+      const email = document.getElementById('supa-email').value.trim();
+      const password = document.getElementById('supa-pass').value;
+      const errBox = document.getElementById('supa-err');
+      const btn = document.getElementById('supa-login-btn');
+
+      if (!email || !password) {
+        errBox.style.display = 'block';
+        errBox.textContent = 'कृपया Email और Password दोनों डालें!';
+        return;
+      }
+
+      btn.textContent = 'Verifying with Supabase...';
+      btn.disabled = true;
+      errBox.style.display = 'none';
+
+      try {
+        const res = await reliableFetch(AUTH_URL, {
+          method: 'POST',
+          headers: {
+            'apikey': SUPABASE_KEY,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ email, password })
+        });
+
+        const data = await res.json();
+        if (!res.ok || !data.access_token) {
+          errBox.style.display = 'block';
+          errBox.textContent = '❌ गलत Email या Password! (केवल Admin द्वारा बनाए यूज़र ही लॉगिन कर सकते हैं)';
+          btn.textContent = 'Login to Software';
+          btn.disabled = false;
+          return;
+        }
+
+        // सेशन सेव करें
+        sessionStorage.setItem('supa_erp_session', JSON.stringify({
+          token: data.access_token,
+          email: data.user.email
+        }));
+
+        overlay.remove();
+        loadFromSupabase();
+      } catch (e) {
+        errBox.style.display = 'block';
+        errBox.textContent = '❌ नेटवर्क एरर, कृपया दोबारा प्रयास करें।';
+        btn.textContent = 'Login to Software';
+        btn.disabled = false;
+      }
+    };
+  }
+
+  // 2. कोने में स्टेटस और लॉगआउट बैज
+  function showCloudStatus(msg, color = '#16a34a') {
+    let badge = document.getElementById('supa-cloud-badge');
+    if (!badge) {
+      badge = document.createElement('div');
+      badge.id = 'supa-cloud-badge';
+      badge.style.cssText = 'position:fixed;bottom:28px;right:15px;z-index:99999;padding:6px 14px;border-radius:20px;color:#fff;font-size:12px;font-family:sans-serif;font-weight:bold;box-shadow:0 2px 8px rgba(0,0,0,0.35);cursor:pointer;user-select:none;';
+      badge.title = 'Click to Sync (Double-click to Logout)';
+      badge.onclick = () => {
+        if (!isAdminUser()) {
+          alert('👁️ View-Only Account (' + (getAuthSession()?.email || '') + '): आप केवल डेटा देख सकते हैं।');
+        } else {
+          syncToSupabase(true);
+        }
+      };
+      badge.ondblclick = () => {
+        if (confirm('क्या आप Cloud Account से Logout करना चाहते हैं?')) {
+          sessionStorage.removeItem('supa_erp_session');
+          location.reload();
+        }
+      };
+      document.body.appendChild(badge);
+    }
+    badge.style.backgroundColor = color;
+    badge.textContent = msg;
+  }
+
+  // 3. डेटा सेव होने पर क्लाउड में भेजना (सिर्फ Admin के लिए)
+  const originalSetItem = localStorage.setItem;
+  localStorage.setItem = function(key, value) {
+    if (getAuthSession() && !isAdminUser() && !isLoadingFromCloud) {
+      alert('🔒 View-Only Access: केवल Admin (' + ADMIN_EMAIL + ') ही डेटा में बदलाव कर सकते हैं!');
+      return;
+    }
+    originalSetItem.apply(this, arguments);
+    if (!isLoadingFromCloud && isAdminUser()) {
+      syncToSupabase();
+    }
+  };
+
+  let syncTimeout;
+  function syncToSupabase(forceNow = false) {
+    const sess = getAuthSession();
+    if (!sess || !isAdminUser()) return;
+    clearTimeout(syncTimeout);
+    showCloudStatus('⏳ Saving to Cloud...', '#d97706');
+
+    syncTimeout = setTimeout(async () => {
+      try {
+        const allData = { ...localStorage };
+        const res = await reliableFetch(TABLE_URL, {
+          method: 'POST',
+          headers: {
+            'apikey': SUPABASE_KEY,
+            'Authorization': `Bearer ${sess.token}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'resolution=merge-duplicates'
+          },
+          body: JSON.stringify({
+            id: 'tally_main_data',
+            content: allData,
+            updated_at: new Date().toISOString()
+          })
+        });
+
+        if (res.ok) {
+          showCloudStatus('☁️ Admin Synced (' + sess.email.split('@')[0] + ')', '#16a34a');
+        } else {
+          showCloudStatus('❌ Sync Error (' + res.status + ')', '#dc2626');
+        }
+      } catch (err) {
+        showCloudStatus('⚠️ Retry Sync (Click)', '#dc2626');
+      }
+    }, forceNow ? 50 : 500);
+  }
+
+  document.addEventListener('click', (e) => {
+    const txt = (e.target.innerText || '').toLowerCase();
+    if (txt.includes('save') || txt.includes('accept') || txt.includes('del')) {
+      setTimeout(() => syncToSupabase(true), 300);
+    }
+  });
+
+  // 4. क्लाउड से डेटा लोड करना
+  async function loadFromSupabase() {
+    const sess = getAuthSession();
+    if (!sess) return;
+    showCloudStatus('🔄 Loading Cloud Data...', '#2563eb');
+    try {
+      const res = await reliableFetch(`${TABLE_URL}?id=eq.tally_main_data&select=content`, {
+        method: 'GET',
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${sess.token}`
+        }
+      });
+
+      if (res.ok) {
+        const rows = await res.json();
+        if (Array.isArray(rows) && rows.length > 0 && rows[0].content) {
+          isLoadingFromCloud = true;
+          const cloudData = rows[0].content;
+          let hasChanges = false;
+
+          Object.keys(cloudData).forEach(k => {
+            if (localStorage.getItem(k) !== cloudData[k]) {
+              originalSetItem.call(localStorage, k, cloudData[k]);
+              hasChanges = true;
+            }
+          });
+          isLoadingFromCloud = false;
+
+          showCloudStatus(
+            isAdminUser() ? '☁️ Admin Synced' : '👁️ View-Only (' + sess.email.split('@')[0] + ')',
+            isAdminUser() ? '#16a34a' : '#2563eb'
+          );
+
+          if (hasChanges && !sessionStorage.getItem('cloud_loaded_once')) {
+            sessionStorage.setItem('cloud_loaded_once', 'true');
+            location.reload();
+          }
+        } else if (isAdminUser()) {
+          syncToSupabase(true);
+        }
+      }
+    } catch (err) {
+      showCloudStatus('⚠️ Retry Sync (Click)', '#d97706');
+    }
+  }
+
+  // 5. Registration Type में 'Not Applicable / Non-GST' जोड़ना
+  function addNotApplicableOption() {
+    const selects = document.querySelectorAll('select');
+    selects.forEach(sel => {
+      const html = sel.innerHTML;
+
 </body>
 </html>
