@@ -2081,27 +2081,41 @@ function saveCurrentVoucher() {
   }
 }
 
+// Helper: Voucher ID se uska asli Type (Sales/Payment/Receipt etc.) nikalne ke liye
+function getVchTypeById(vid) {
+  const v = DB.vouchers.find(x => x.id === vid);
+  return v && v.vchType ? v.vchType : "Sales";
+}
+
 // Compatibility Helpers for your existing keyboard Row-Edit snippet!
 function isMulti(v) {
   return Boolean(v && ((v.entries && v.entries.length > 2) || (v.itemLines && v.itemLines.length > 0)));
 }
+
 function editMultiVoucher(vid) {
-  openVoucherScreen("Sales", vid);
-}
-function startEditVoucher(vid) {
-  openVoucherScreen("Sales", vid);
-}
-function startEditFromLedger(vid) {
-  openVoucherScreen("Sales", vid);
-}
-function saveEditVoucher(vid) {
-  openVoucherScreen("Sales", vid);
-}
-function cancelEditVoucher() {
-  renderScreen(CURRENT_SCREEN);
+  openVoucherScreen(getVchTypeById(vid), vid);
 }
 
-// ============================================================================
+function startEditVoucher(vid) {
+  openVoucherScreen(getVchTypeById(vid), vid);
+}
+
+function startEditFromLedger(vid) {
+  openVoucherScreen(getVchTypeById(vid), vid);
+}
+
+function saveEditVoucher(vid) {
+  // Agar ab saari editing Voucher Screen ke andar hi ho rahi hai:
+  if (typeof saveVoucherFromScreen === "function") {
+    saveVoucherFromScreen(); 
+  } else {
+    openVoucherScreen(getVchTypeById(vid), vid);
+  }
+}
+
+function cancelEditVoucher() {
+  renderScreen(CURRENT_SCREEN);
+}// ============================================================================
 // CONTINUE INSERTING PART 4 BELOW THIS LINE
 // ============================================================================
 
