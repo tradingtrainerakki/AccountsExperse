@@ -5578,7 +5578,8 @@ window.renderStockSummaryScreen = function() {
   if (CURRENT_SCREEN === "gateway") renderGateway();
 })();
 </script>
-  <!-- ===== PRINT BUTTON + ARROW-KEY DROPDOWN (सबसे आख़िर में </body> से ठीक पहले paste करें) ===== -->
+
+<!-- ===== PRINT BUTTON + ARROW-KEY DROPDOWN (सबसे आख़िर में </body> से ठीक पहले paste करें) ===== -->
 <style>
   #printArea{display:none;}
   @media print{
@@ -5801,7 +5802,8 @@ window.renderStockSummaryScreen = function() {
   window.addEventListener("resize",()=>{ if(popOpen()) closePop(true); });
 })();
 </script>
-  <!-- ===== TALLY STYLE ESC -> QUIT POPUP (पिछले कोड के बाद, </body> से पहले paste करें) ===== -->
+
+<!-- ===== TALLY STYLE ESC -> QUIT POPUP (पिछले कोड के बाद, </body> से पहले paste करें) ===== -->
 <style>
   #quitBox{position:fixed;inset:0;z-index:1000000;background:rgba(15,23,42,.45);display:none;align-items:center;justify-content:center;}
   #quitBox .qcard{background:#fff;border:2px solid #0f6e4e;border-radius:4px;width:300px;box-shadow:0 12px 30px rgba(0,0,0,.3);overflow:hidden;}
@@ -5859,5 +5861,49 @@ window.renderStockSummaryScreen = function() {
   }, true);
 })();
 </script>
+
+<!-- ===== GATEWAY: ↑ ↓ Enter + HOTKEY (Tally style) ===== -->
+<script>
+(function(){
+  function gwActive(){
+    if(typeof CURRENT_SCREEN === "undefined" || CURRENT_SCREEN !== "gateway") return false;
+    const m = document.getElementById("appModal");
+    if(m && m.classList.contains("open")) return false;
+    const lg = document.getElementById("loginOverlay");
+    if(lg && lg.classList.contains("active")) return false;
+    const kd = document.getElementById("kdPop");
+    if(kd && kd.style.display === "flex") return false;
+    const q = document.getElementById("quitBox");
+    if(q && q.style.display === "flex") return false;
+    return true;
+  }
+  function paint(){
+    const els = document.querySelectorAll(".gateway-box .gw-item");
+    els.forEach((el,i)=>el.classList.toggle("active", i===GW_INDEX));
+    if(els[GW_INDEX]) els[GW_INDEX].scrollIntoView({block:"nearest"});
+  }
+  window.addEventListener("keydown", function(e){
+    if(e.ctrlKey || e.altKey || e.metaKey || e.isComposing) return;
+    if(!gwActive()) return;
+    const t = e.target;
+    if(t && ["INPUT","SELECT","TEXTAREA"].includes(t.tagName)) return;
+    const n = GATEWAY_MENU.length, k = e.key;
+    if(k==="ArrowDown"){ e.preventDefault(); e.stopImmediatePropagation(); GW_INDEX=(GW_INDEX+1)%n; paint(); return; }
+    if(k==="ArrowUp"){   e.preventDefault(); e.stopImmediatePropagation(); GW_INDEX=(GW_INDEX-1+n)%n; paint(); return; }
+    if(k==="Home"){ e.preventDefault(); e.stopImmediatePropagation(); GW_INDEX=0; paint(); return; }
+    if(k==="End"){  e.preventDefault(); e.stopImmediatePropagation(); GW_INDEX=n-1; paint(); return; }
+    if(k==="Enter"){
+      e.preventDefault(); e.stopImmediatePropagation();
+      const m = GATEWAY_MENU[GW_INDEX]; if(m) navigate(m.screen);
+      return;
+    }
+    if(k.length===1){
+      const i = GATEWAY_MENU.findIndex(m=>String(m.hk).toLowerCase()===k.toLowerCase());
+      if(i>=0){ e.preventDefault(); e.stopImmediatePropagation(); GW_INDEX=i; navigate(GATEWAY_MENU[i].screen); }
+    }
+  }, true);
+})();
+</script>
+
 </body>
 </html>
