@@ -4405,92 +4405,144 @@ window.renderStockSummaryScreen = function() {
   if (CURRENT_SCREEN === "gateway") renderGateway();
 })();
 </script>
- <!-- ================= SUPABASE EMAIL LOGIN & ADMIN/VIEWER CLOUD SYNC ================= -->
+<!-- ================= SUPABASE EMAIL LOGIN & ADMIN USER ACCESS MANAGER ================= -->
 <script>
 (function() {
-  const SUPABASE_URL = 'https://supabase.co';
+  // Aapka Asli Supabase Project URL & Anon Key (Screenshot aur Token se verified)
+  const SUPABASE_URL = 'https://mjnqbmmyapusejymjchp.supabase.co';
   const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1qbnFibW15YXB1c2VqeW1qY2hwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI2MTQ4MjMsImV4cCI6MjEwODE5MDgyM30.196QHOcQ-bzbhgXGDwXZ6LXo6wpSh4yHNwIsJ4MuGJU';
-  const ADMIN_EMAIL = 'tradingtrainerakki@gmail.com';
+  const SUPER_ADMIN_EMAIL = 'tradingtrainerakki@gmail.com';
+
   const TABLE_URL = `${SUPABASE_URL}/rest/v1/erp_cloud_data`;
-  const AUTH_URL = `${SUPABASE_URL}/auth/v1/token?grant_type=password`;
+  const AUTH_TOKEN_URL = `${SUPABASE_URL}/auth/v1/token?grant_type=password`;
+  const AUTH_SIGNUP_URL = `${SUPABASE_URL}/auth/v1/signup`;
+
+  const SUPA_SESSION_KEY = 'SUPA_TALLY_AUTH_SESSION_V2';
+  const ACCESS_LIST_KEY = 'TALLY_PRIME_USER_PERMISSIONS';
 
   let isLoadingFromCloud = false;
 
-  // नेटवर्क बाईपास फेच (ताकि किसी भी इंटरनेट पर ब्लॉक न हो)
-  async function reliableFetch(url, options) {
-    const routes = [
-      url,
-      'https://corsproxy.io' + encodeURIComponent(url),
-      'https://codetabs.com' + encodeURIComponent(url)
-    ];
-    let lastErr;
-    for (let i = 0; i < routes.length; i++) {
-      try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 6000);
-        const res = await fetch(routes[i], { ...options, signal: controller.signal });
-        clearTimeout(timer);
-        if (res.ok || res.status < 500) return res;
-      } catch (err) {
-        lastErr = err;
-      }
-    }
-    throw lastErr || new Error('Network error');
+  // 1. Purane 1234 PIN Login Overlay ko hamesha ke liye band karein
+  const oldPinOverlay = document.getElementById('loginOverlay');
+  if (oldPinOverlay) {
+    oldPinOverlay.classList.remove('active');
+    oldPinOverlay.style.display = 'none';
   }
+  sessionStorage.setItem('TALLY_PRIME_ACTIVE_SESSION', JSON.stringify({
+    user: 'CloudUser',
+    role: 'admin',
+    time: Date.now()
+  }));
 
-  function getAuthSession() {
+  function getSupaSession() {
     try {
-      return JSON.parse(sessionStorage.getItem('supa_erp_session') || 'null');
-    } catch { return null; }
+      return JSON.parse(sessionStorage.getItem(SUPA_SESSION_KEY) || 'null');
+    } catch (e) {
+      return null;
+    }
   }
 
-  function isAdminUser() {
-    const sess = getAuthSession();
-    return sess && sess.email && sess.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+  function getPermissionsMap() {
+    try {
+      const raw = localStorage.getItem(ACCESS_LIST_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return {
+      [SUPER_ADMIN_EMAIL]: { role: 'admin', active: true, addedAt: 'Owner' }
+    };
   }
 
-  // 1. Supabase Email & Password लॉगिन स्क्रीन बनाना
-  function showEmailLoginLock() {
-    if (getAuthSession()) {
+  function savePermissionsMap(map) {
+    map[SUPER_ADMIN_EMAIL] = { role: 'admin', active: true, addedAt: 'Owner' };
+    originalSetItem.call(localStorage, ACCESS_LIST_KEY, JSON.stringify(map));
+    syncToSupabase(true);
+  }
+
+  function isSuperAdmin() {
+    const s = getSupaSession();
+    return s && s.email && s.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
+  }
+
+  function getCurrentUserRole() {
+    const s = getSupaSession();
+    if (!s || !s.email) return 'viewer';
+    const email = s.email.toLowerCase();
+    if (email === SUPER_ADMIN_EMAIL.toLowerCase()) return 'admin';
+    const map = getPermissionsMap();
+    const entry = map[email];
+    if (entry && entry.active === false) return 'blocked';
+    if (entry && entry.role) return entry.role;
+    return 'viewer'; // Default role agar list me set nahi hai
+  }
+
+  function canWriteData() {
+    const r = getCurrentUserRole();
+    return r === 'admin' || r === 'operator';
+  }
+
+  // 2. Supabase Email Login Screen
+  function showSupabaseLoginScreen() {
+    const existing = document.getElementById('supa-auth-overlay');
+    if (existing) existing.remove();
+
+    const sess = getSupaSession();
+    if (sess && sess.token) {
+      applyRoleToApp();
       loadFromSupabase();
       return;
     }
 
     const overlay = document.createElement('div');
     overlay.id = 'supa-auth-overlay';
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(10,25,47,0.96);z-index:999999;display:flex;align-items:center;justify-content:center;font-family:sans-serif;';
+    overlay.style.cssText = 'position:fixed;inset:0;background:linear-gradient(135deg,#094d36 0%,#0f172a 100%);z-index:999999;display:flex;align-items:center;justify-content:center;font-family:Segoe UI,sans-serif;';
     overlay.innerHTML = `
-      <div style="background:#fff;width:360px;padding:28px;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,0.5);border-top:5px solid #0d9488;">
-        <h2 style="margin:0 0 6px;color:#0f172a;font-size:20px;">🔐 Cloud ERP Login</h2>
-        <p style="margin:0 0 18px;color:#64748b;font-size:12px;">Authorized Supabase Users Only</p>
-        <label style="display:block;font-size:12px;font-weight:bold;color:#334155;margin-bottom:4px;">Email ID</label>
-        <input id="supa-email" type="email" placeholder="Enter your email" style="width:100%;padding:10px;margin-bottom:14px;border:1px solid #cbd5e1;border-radius:6px;box-sizing:border-box;font-size:14px;" />
-        <label style="display:block;font-size:12px;font-weight:bold;color:#334155;margin-bottom:4px;">Password</label>
-        <input id="supa-pass" type="password" placeholder="Enter password" style="width:100%;padding:10px;margin-bottom:16px;border:1px solid #cbd5e1;border-radius:6px;box-sizing:border-box;font-size:14px;" />
-        <div id="supa-err" style="color:#dc2626;font-size:12px;margin-bottom:12px;display:none;"></div>
-        <button id="supa-login-btn" style="width:100%;padding:11px;background:#0d9488;color:#fff;border:none;border-radius:6px;font-size:14px;font-weight:bold;cursor:pointer;">Login to Software</button>
+      <div style="background:#fff;width:390px;border-radius:8px;box-shadow:0 20px 45px rgba(0,0,0,0.55);border:2px solid #fbbf24;overflow:hidden;">
+        <div style="background:#0f6e4e;color:#fff;padding:16px;text-align:center;border-bottom:2px solid #fbbf24;">
+          <div style="font-size:17px;font-weight:800;letter-spacing:0.5px;">🔐 TALLYPRIME CLOUD LOGIN</div>
+          <div style="font-size:11.5px;opacity:0.9;margin-top:4px;">Login with Authorized Email ID &amp; Password</div>
+        </div>
+        <div style="padding:22px;">
+          <label style="display:block;font-size:12px;font-weight:700;color:#334155;margin-bottom:5px;">Email ID *</label>
+          <input id="supa-email" type="email" placeholder="example@gmail.com" style="width:100%;padding:10px;margin-bottom:14px;border:1px solid #94a3b8;border-radius:4px;font-size:13.5px;" />
+          
+          <label style="display:block;font-size:12px;font-weight:700;color:#334155;margin-bottom:5px;">Password *</label>
+          <input id="supa-pass" type="password" placeholder="Enter your password" style="width:100%;padding:10px;margin-bottom:16px;border:1px solid #94a3b8;border-radius:4px;font-size:13.5px;" />
+          
+          <div id="supa-err" style="color:#dc2626;background:#fef2f2;border:1px solid #fecaca;padding:8px 10px;border-radius:4px;font-size:12px;margin-bottom:12px;display:none;"></div>
+          
+          <button id="supa-login-btn" style="width:100%;padding:11px;background:#0f6e4e;color:#fff;border:none;border-radius:4px;font-size:14px;font-weight:700;cursor:pointer;">🔓 Sign In with Supabase</button>
+          
+          <div style="margin-top:12px;font-size:11px;color:#64748b;text-align:center;">
+            Admin: <b>${SUPER_ADMIN_EMAIL}</b><br>Dusre users ko login keval Admin de sakte hain.
+          </div>
+        </div>
       </div>
     `;
     document.body.appendChild(overlay);
 
+    const passInp = document.getElementById('supa-pass');
+    passInp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') document.getElementById('supa-login-btn').click();
+    });
+
     document.getElementById('supa-login-btn').onclick = async () => {
-      const email = document.getElementById('supa-email').value.trim();
+      const email = document.getElementById('supa-email').value.trim().toLowerCase();
       const password = document.getElementById('supa-pass').value;
       const errBox = document.getElementById('supa-err');
       const btn = document.getElementById('supa-login-btn');
 
       if (!email || !password) {
         errBox.style.display = 'block';
-        errBox.textContent = 'कृपया Email और Password दोनों डालें!';
+        errBox.textContent = '⚠ Kripya Email ID aur Password dono dalein!';
         return;
       }
 
-      btn.textContent = 'Verifying with Supabase...';
+      btn.textContent = '⏳ Verifying from Supabase...';
       btn.disabled = true;
       errBox.style.display = 'none';
 
       try {
-        const res = await reliableFetch(AUTH_URL, {
+        const res = await fetch(AUTH_TOKEN_URL, {
           method: 'POST',
           headers: {
             'apikey': SUPABASE_KEY,
@@ -4502,49 +4554,219 @@ window.renderStockSummaryScreen = function() {
         const data = await res.json();
         if (!res.ok || !data.access_token) {
           errBox.style.display = 'block';
-          errBox.textContent = '❌ गलत Email या Password! (केवल Admin द्वारा बनाए यूज़र ही लॉगिन कर सकते हैं)';
-          btn.textContent = 'Login to Software';
+          errBox.textContent = '❌ ' + (data.error_description || data.msg || 'Galat Email ya Password! Ya Email Confirm nahi hai.');
+          btn.textContent = '🔓 Sign In with Supabase';
           btn.disabled = false;
           return;
         }
 
-        // सेशन सेव करें
-        sessionStorage.setItem('supa_erp_session', JSON.stringify({
+        sessionStorage.setItem(SUPA_SESSION_KEY, JSON.stringify({
           token: data.access_token,
-          email: data.user.email
+          email: data.user.email.toLowerCase()
         }));
 
         overlay.remove();
-        loadFromSupabase();
-      } catch (e) {
+        await loadFromSupabase();
+        applyRoleToApp();
+        toast('✅ Welcome ' + data.user.email);
+      } catch (err) {
         errBox.style.display = 'block';
-        errBox.textContent = '❌ नेटवर्क एरर, कृपया दोबारा प्रयास करें।';
-        btn.textContent = 'Login to Software';
+        errBox.textContent = '❌ Network Error: Supabase se connect nahi ho paya.';
+        btn.textContent = '🔓 Sign In with Supabase';
         btn.disabled = false;
       }
     };
   }
 
-  // 2. कोने में स्टेटस और लॉगआउट बैज
+  // 3. User Role Apply Karna & Top Bar me "Manage Users" Button Jorna
+  function applyRoleToApp() {
+    const sess = getSupaSession();
+    if (!sess) return;
+
+    const uRole = getCurrentUserRole();
+    if (uRole === 'blocked') {
+      alert('🚫 Aapka login access Admin dwara band (Blocked) kar diya gaya hai.');
+      sessionStorage.removeItem(SUPA_SESSION_KEY);
+      location.reload();
+      return;
+    }
+
+    window.ROLE = uRole;
+
+    const meta = document.querySelector('.top-meta');
+    if (meta) {
+      let badge = document.getElementById('topUserBadge');
+      if (!badge) {
+        badge = document.createElement('span');
+        badge.id = 'topUserBadge';
+        meta.appendChild(badge);
+      }
+      badge.style.background = isSuperAdmin() ? '#047857' : '#1d4ed8';
+      badge.style.fontWeight = '700';
+
+      if (isSuperAdmin()) {
+        badge.innerHTML = `👑 ${sess.email.split('@')[0]} (Owner) | <u onclick="event.stopPropagation(); window.openSupaUserManager();">👥 Give Login</u> | <u onclick="event.stopPropagation(); window.supaLogout();">Logout</u>`;
+        badge.onclick = () => window.openSupaUserManager();
+      } else {
+        badge.innerHTML = `👤 ${sess.email} (${uRole.toUpperCase()}) | <u onclick="event.stopPropagation(); window.supaLogout();">Logout</u>`;
+        badge.onclick = null;
+      }
+    }
+  }
+
+  window.supaLogout = function() {
+    sessionStorage.removeItem(SUPA_SESSION_KEY);
+    sessionStorage.removeItem('cloud_loaded_once');
+    location.reload();
+  };
+
+  window.doAppLogout = window.supaLogout;
+  window.openSecuritySettingsModal = function() {
+    if (isSuperAdmin()) window.openSupaUserManager();
+    else toast('🔒 Sirf Admin (' + SUPER_ADMIN_EMAIL + ') hi users manage kar sakte hain.');
+  };
+
+  // 4. Admin Panel: Dusre Users ko Login Dena & Role Set Karna
+  window.openSupaUserManager = function() {
+    if (!isSuperAdmin()) {
+      toast('🚫 Sirf Admin hi dusre users ko login de sakte hain!');
+      return;
+    }
+
+    const map = getPermissionsMap();
+    const rowsHtml = Object.entries(map).map(([email, info], idx) => {
+      const isOwner = email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
+      return `
+        <tr>
+          <td>${idx + 1}</td>
+          <td><b>${email}</b> ${isOwner ? '<span class="kbd" style="background:#fef08a;">Owner</span>' : ''}</td>
+          <td><span class="kbd">${(info.role || 'viewer').toUpperCase()}</span></td>
+          <td>${info.active !== false ? '<span style="color:var(--ok);font-weight:700;">✔ Active</span>' : '<span style="color:var(--danger);font-weight:700;">🚫 Blocked</span>'}</td>
+          <td>
+            ${isOwner ? '-' : `
+              <button class="btn btn-sec" style="padding:2px 7px;font-size:11px;" onclick="window.toggleSupaUserRole('${email}')">Switch Role</button>
+              <button class="btn ${info.active !== false ? 'btn-danger' : ''}" style="padding:2px 7px;font-size:11px;" onclick="window.toggleSupaUserBlock('${email}')">${info.active !== false ? 'Block' : 'Unblock'}</button>
+            `}
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    const body = `
+      <div class="form-card" style="background:#ecfdf5;border-color:var(--pri);">
+        <h3 style="font-size:14px;color:var(--pri-dark);margin-bottom:8px;">➕ Naye User Ko Login Dein (Create / Authorize User)</h3>
+        <div class="form-grid">
+          <div class="field">
+            <label>New User Email ID *</label>
+            <input type="email" id="newSupaEmail" placeholder="staff@gmail.com">
+          </div>
+          <div class="field">
+            <label>Create Password (Min 6 chars) *</label>
+            <input type="text" id="newSupaPass" placeholder="e.g. Tally@123">
+          </div>
+          <div class="field">
+            <label>Access Role *</label>
+            <select id="newSupaRole">
+              <option value="viewer">Viewer (Sirf Dekh Sakta Hai - Read Only)</option>
+              <option value="operator">Operator (Entry &amp; Save Kar Sakta Hai)</option>
+              <option value="admin">Co-Admin (Full Access)</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;">
+          <small style="color:#065f46;font-size:11px;">Note: Supabase Dashboard me <b>Authentication → Providers → Email → Confirm Email</b> OFF rakhein taaki user turant login kar sake.</small>
+          <button class="btn" onclick="window.createNewSupaUser()">👤 Create &amp; Grant Login</button>
+        </div>
+      </div>
+
+      <div class="form-card" style="padding:0;overflow:hidden;">
+        <table class="tally-tbl">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>User Email ID</th>
+              <th>Role</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+      </div>
+    `;
+
+    showModal('👥 Manage Cloud Users & Login Access (Admin Only)', body, `<button class="btn btn-sec" onclick="closeModal()">Close</button>`);
+  };
+
+  window.createNewSupaUser = async function() {
+    const email = (document.getElementById('newSupaEmail').value || '').trim().toLowerCase();
+    const password = (document.getElementById('newSupaPass').value || '').trim();
+    const role = document.getElementById('newSupaRole').value;
+
+    if (!email || !password || password.length < 6) {
+      toast('⚠ Valid Email aur kam se kam 6 akshar ka Password dalein!');
+      return;
+    }
+
+    toast('⏳ Creating user in Supabase...');
+    try {
+      const res = await fetch(AUTH_SIGNUP_URL, {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+
+      // Permission map me save karein (chahe user pehle se Supabase Auth me bana ho)
+      const map = getPermissionsMap();
+      map[email] = { role, active: true, addedAt: new Date().toISOString().slice(0, 10) };
+      savePermissionsMap(map);
+
+      if (!res.ok && data.msg && !data.msg.toLowerCase().includes('already registered')) {
+        toast('⚠ ' + (data.msg || data.error_description || 'Signup warning, role saved.'));
+      } else {
+        toast(`✅ User ${email} (${role}) ko login de diya gaya!`);
+      }
+      window.openSupaUserManager();
+    } catch (e) {
+      toast('❌ Network error while creating user.');
+    }
+  };
+
+  window.toggleSupaUserRole = function(email) {
+    const map = getPermissionsMap();
+    if (!map[email]) return;
+    const order = ['viewer', 'operator', 'admin'];
+    const next = order[(order.indexOf(map[email].role || 'viewer') + 1) % order.length];
+    map[email].role = next;
+    savePermissionsMap(map);
+    window.openSupaUserManager();
+    toast(`🔄 ${email} ka role ab "${next.toUpperCase()}" hai`);
+  };
+
+  window.toggleSupaUserBlock = function(email) {
+    const map = getPermissionsMap();
+    if (!map[email]) return;
+    map[email].active = map[email].active === false ? true : false;
+    savePermissionsMap(map);
+    window.openSupaUserManager();
+    toast(map[email].active ? `✅ ${email} Unblocked` : `🚫 ${email} Blocked`);
+  };
+
+  // 5. Cloud Status Badge
   function showCloudStatus(msg, color = '#16a34a') {
     let badge = document.getElementById('supa-cloud-badge');
     if (!badge) {
       badge = document.createElement('div');
       badge.id = 'supa-cloud-badge';
       badge.style.cssText = 'position:fixed;bottom:28px;right:15px;z-index:99999;padding:6px 14px;border-radius:20px;color:#fff;font-size:12px;font-family:sans-serif;font-weight:bold;box-shadow:0 2px 8px rgba(0,0,0,0.35);cursor:pointer;user-select:none;';
-      badge.title = 'Click to Sync (Double-click to Logout)';
+      badge.title = 'Click to Sync Cloud Data';
       badge.onclick = () => {
-        if (!isAdminUser()) {
-          alert('👁️ View-Only Account (' + (getAuthSession()?.email || '') + '): आप केवल डेटा देख सकते हैं।');
-        } else {
-          syncToSupabase(true);
-        }
-      };
-      badge.ondblclick = () => {
-        if (confirm('क्या आप Cloud Account से Logout करना चाहते हैं?')) {
-          sessionStorage.removeItem('supa_erp_session');
-          location.reload();
-        }
+        if (canWriteData()) syncToSupabase(true);
+        else toast('👁️ Read-Only Mode: Aap keval data dekh sakte hain.');
       };
       document.body.appendChild(badge);
     }
@@ -4552,30 +4774,37 @@ window.renderStockSummaryScreen = function() {
     badge.textContent = msg;
   }
 
-  // 3. डेटा सेव होने पर क्लाउड में भेजना (सिर्फ Admin के लिए)
+  // 6. LocalStorage Intercept & Cloud Sync
   const originalSetItem = localStorage.setItem;
   localStorage.setItem = function(key, value) {
-    if (getAuthSession() && !isAdminUser() && !isLoadingFromCloud) {
-      alert('🔒 View-Only Access: केवल Admin (' + ADMIN_EMAIL + ') ही डेटा में बदलाव कर सकते हैं!');
+    if (getSupaSession() && !canWriteData() && !isLoadingFromCloud) {
+      toast('🔒 Read-Only Access: Aap data me badlaav nahi kar sakte!');
       return;
     }
     originalSetItem.apply(this, arguments);
-    if (!isLoadingFromCloud && isAdminUser()) {
+    if (!isLoadingFromCloud && canWriteData()) {
       syncToSupabase();
     }
   };
 
   let syncTimeout;
   function syncToSupabase(forceNow = false) {
-    const sess = getAuthSession();
-    if (!sess || !isAdminUser()) return;
+    const sess = getSupaSession();
+    if (!sess || !canWriteData()) return;
     clearTimeout(syncTimeout);
     showCloudStatus('⏳ Saving to Cloud...', '#d97706');
 
     syncTimeout = setTimeout(async () => {
       try {
-        const allData = { ...localStorage };
-        const res = await reliableFetch(TABLE_URL, {
+        const allData = {};
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith('TALLY_PRIME_')) {
+            allData[k] = localStorage.getItem(k);
+          }
+        }
+
+        const res = await fetch(TABLE_URL, {
           method: 'POST',
           headers: {
             'apikey': SUPABASE_KEY,
@@ -4591,30 +4820,22 @@ window.renderStockSummaryScreen = function() {
         });
 
         if (res.ok) {
-          showCloudStatus('☁️ Admin Synced (' + sess.email.split('@')[0] + ')', '#16a34a');
+          showCloudStatus('☁️ Cloud Synced (' + sess.email.split('@')[0] + ')', '#16a34a');
         } else {
-          showCloudStatus('❌ Sync Error (' + res.status + ')', '#dc2626');
+          showCloudStatus('⚠️ Cloud Table Error (' + res.status + ')', '#dc2626');
         }
       } catch (err) {
         showCloudStatus('⚠️ Retry Sync (Click)', '#dc2626');
       }
-    }, forceNow ? 50 : 500);
+    }, forceNow ? 50 : 600);
   }
 
-  document.addEventListener('click', (e) => {
-    const txt = (e.target.innerText || '').toLowerCase();
-    if (txt.includes('save') || txt.includes('accept') || txt.includes('del')) {
-      setTimeout(() => syncToSupabase(true), 300);
-    }
-  });
-
-  // 4. क्लाउड से डेटा लोड करना
   async function loadFromSupabase() {
-    const sess = getAuthSession();
+    const sess = getSupaSession();
     if (!sess) return;
     showCloudStatus('🔄 Loading Cloud Data...', '#2563eb');
     try {
-      const res = await reliableFetch(`${TABLE_URL}?id=eq.tally_main_data&select=content`, {
+      const res = await fetch(`${TABLE_URL}?id=eq.tally_main_data&select=content`, {
         method: 'GET',
         headers: {
           'apikey': SUPABASE_KEY,
@@ -4627,26 +4848,22 @@ window.renderStockSummaryScreen = function() {
         if (Array.isArray(rows) && rows.length > 0 && rows[0].content) {
           isLoadingFromCloud = true;
           const cloudData = rows[0].content;
-          let hasChanges = false;
-
           Object.keys(cloudData).forEach(k => {
-            if (localStorage.getItem(k) !== cloudData[k]) {
-              originalSetItem.call(localStorage, k, cloudData[k]);
-              hasChanges = true;
-            }
+            originalSetItem.call(localStorage, k, cloudData[k]);
           });
           isLoadingFromCloud = false;
 
-          showCloudStatus(
-            isAdminUser() ? '☁️ Admin Synced' : '👁️ View-Only (' + sess.email.split('@')[0] + ')',
-            isAdminUser() ? '#16a34a' : '#2563eb'
-          );
+          // Reload active entity into memory
+          const lastEnt = localStorage.getItem('TALLY_PRIME_LAST_ENTITY') || 'DEFAULT_ENTITY';
+          if (typeof loadDB === 'function') loadDB(lastEnt);
+          if (typeof renderScreen === 'function') renderScreen(CURRENT_SCREEN);
+          applyRoleToApp();
 
-          if (hasChanges && !sessionStorage.getItem('cloud_loaded_once')) {
-            sessionStorage.setItem('cloud_loaded_once', 'true');
-            location.reload();
-          }
-        } else if (isAdminUser()) {
+          showCloudStatus(
+            canWriteData() ? '☁️ Cloud Synced (' + sess.email.split('@')[0] + ')' : '👁️ View-Only (' + sess.email.split('@')[0] + ')',
+            canWriteData() ? '#16a34a' : '#2563eb'
+          );
+        } else if (canWriteData()) {
           syncToSupabase(true);
         }
       }
@@ -4655,11 +4872,12 @@ window.renderStockSummaryScreen = function() {
     }
   }
 
-  // 5. Registration Type में 'Not Applicable / Non-GST' जोड़ना
-  function addNotApplicableOption() {
-    const selects = document.querySelectorAll('select');
-    selects.forEach(sel => {
-      const html = sel.innerHTML;
-
+  // Initialize on page load
+  window.addEventListener('DOMContentLoaded', showSupabaseLoginScreen);
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    setTimeout(showSupabaseLoginScreen, 100);
+  }
+})();
+</script>
 </body>
 </html>
