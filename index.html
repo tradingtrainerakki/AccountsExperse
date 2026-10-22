@@ -4879,5 +4879,704 @@ window.renderStockSummaryScreen = function() {
   }
 })();
 </script>
+  <!-- ================= PART 2 & PART 3 UPGRADE: QUICK GROUPS + BOM & MANUFACTURING ENGINE ================= -->
+<script>
+(function() {
+  // 1. Ensure BOM & Stock Group structures exist in DB
+  function ensureBomAndGroupsReady() {
+    if (typeof ensureStockGroupsInitialized === "function") ensureStockGroupsInitialized();
+    if (!Array.isArray(DB.items)) DB.items = [];
+    DB.items.forEach(it => {
+      if (!Array.isArray(it.bom)) it.bom = []; // [{ itemId, qty, type: 'Raw'|'Packing' }]
+      if (typeof it.bomStdBatch !== "number" || it.bomStdBatch <= 0) it.bomStdBatch = 1;
+    });
+  }
+
+  // ============================================================================
+  // FEATURE 1: QUICK CREATE ACCOUNTING GROUP & STOCK GROUP POPUPS (FROM ANY SCREEN)
+  // ============================================================================
+  window.openQuickAccountGroupModal = function(targetSelectId = "") {
+    const parentOpts = DB.groups.map(g => `<option value="${escHtml(g.name)}">${escHtml(g.name)} (${escHtml(g.nature)})</option>`).join("");
+    const body = `
+      <div class="form-card" style="margin:0;">
+        <div class="form-grid">
+          <div class="field" style="grid-column: span 2;">
+            <label>New Accounting Group Name *</label>
+            <input id="qGrpNameInp" placeholder="e.g. Factory Expenses / Roorkee Debtors">
+          </div>
+          <div class="field">
+            <label>Under Parent Group *</label>
+            <select id="qGrpParentInp" onchange="window.syncQuickGrpNature()">${parentOpts}</select>
+          </div>
+          <div class="field">
+            <label>Nature of Group</label>
+            <select id="qGrpNatureInp">
+              <option value="Assets">Assets</option>
+              <option value="Liabilities">Liabilities</option>
+              <option value="Expenses">Expenses</option>
+              <option value="Income">Income</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    `;
+    const foot = `
+      <button class="btn btn-sec" onclick="closeModal()">Cancel</button>
+      <button class="btn" onclick="window.saveQuickAccountGroup('${targetSelectId}')">💾 Create Group</button>
+    `;
+    showModal("➕ Create New Accounting Group", body, foot);
+    setTimeout(() => window.syncQuickGrpNature(), 30);
+  };
+
+  window.syncQuickGrpNature = function() {
+    const pEl = document.getElementById("qGrpParentInp");
+    const nEl = document.getElementById("qGrpNatureInp");
+    if (!pEl || !nEl) return;
+    const pObj = DB.groups.find(g => g.name === pEl.value);
+    if (pObj) nEl.value = pObj.nature;
+  };
+
+  window.saveQuickAccountGroup = function(targetSelectId) {
+    const name = (document.getElementById("qGrpNameInp").value || "").trim();
+    const parent = document.getElementById("qGrpParentInp").value;
+    const nature = document.getElementById("qGrpNatureInp").value;
+    if (!name) { toast("⚠ Group Name zaroori hai!"); return; }
+    if (DB.groups.some(g => g.name.toLowerCase() === name.toLowerCase())) {
+      toast("⚠ Is naam ka Group pehle se bana hua hai!");
+      return;
+    }
+    const pObj = DB.groups.find(g => g.name === parent);
+    DB.groups.push({ name, parent, nature, affectsGP: pObj ? pObj.affectsGP : false, custom: true });
+    saveDB();
+    closeModal();
+    toast(`✅ Accounting Group "${name}" ban gaya!`);
+    renderScreen(CURRENT_SCREEN);
+    setTimeout(() => {
+      if (targetSelectId && document.getElementById(targetSelectId)) {
+        document.getElementById(targetSelectId).value = name;
+      }
+    }, 50);
+  };
+
+  window.openQuickStockGroupModal = function(targetSelectId = "") {
+    ensureBomAndGroupsReady();
+    const parentOpts = `<option value="Primary">Primary</option>` +
+      DB.stockGroups.map(sg => `<option value="${escHtml(sg.name)}">${escHtml(sg.name)}</option>`).join("");
+    const slabOpts = GST_SLABS.map(s => `<option value="${s}" ${s===18?"selected":""}>${s}% GST</option>`).join("");
+    const body = `
+      <div class="form-card" style="margin:0;">
+        <div class="form-grid">
+          <div class="field" style="grid-column: span 2;">
+            <label>New Stock Group Name *</label>
+            <input id="qSgNameInp" placeholder="e.g. Electronic Raw Material / Outer Cartons">
+          </div>
+          <div class="field">
+            <label>Under Parent Stock Group</label>
+            <select id="qSgParentInp">${parentOpts}</select>
+          </div>
+          <div class="field">
+            <label>GST Category</label>
+            <select id="qSgCatInp">
+              <option value="Taxable">Taxable</option>
+              <option value="Exempt">Exempt</option>
+              <option value="Nil Rated">Nil Rated</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Default HSN Code</label>
+            <input id="qSgHsnInp" placeholder="e.g. 8504">
+          </div>
+          <div class="field">
+            <label>Default GST %</label>
+            <select id="qSgGstInp">${slabOpts}</select>
+          </div>
+        </div>
+      </div>
+    `;
+    const foot = `
+      <button class="btn btn-sec" onclick="closeModal()">Cancel</button>
+      <button class="btn" onclick="window.saveQuickStockGroup('${targetSelectId}')">💾 Create Stock Group</button>
+    `;
+    showModal("🏭 Create New Stock Group", body, foot);
+  };
+
+  window.saveQuickStockGroup = function(targetSelectId) {
+    ensureBomAndGroupsReady();
+    const name = (document.getElementById("qSgNameInp").value || "").trim();
+    const parent = document.getElementById("qSgParentInp").value;
+    const gstCategory = document.getElementById("qSgCatInp").value;
+    const defaultHsn = (document.getElementById("qSgHsnInp").value || "").trim();
+    const defaultGst = gstCategory === "Taxable" ? (Number(document.getElementById("qSgGstInp").value) || 0) : 0;
+
+    if (!name) { toast("⚠ Stock Group Name dalein!"); return; }
+    if (DB.stockGroups.some(x => x.name.toLowerCase() === name.toLowerCase())) {
+      toast("⚠ Yeh Stock Group pehle se maujood hai!");
+      return;
+    }
+    DB.stockGroups.push({
+      id: uid("SG"), name, parent, gstCategory, itcCategory: "Inputs", defaultHsn, defaultGst, custom: true
+    });
+    saveDB();
+    closeModal();
+    toast(`✅ Stock Group "${name}" Created!`);
+    renderScreen(CURRENT_SCREEN);
+    setTimeout(() => {
+      if (targetSelectId && document.getElementById(targetSelectId)) {
+        document.getElementById(targetSelectId).value = name;
+        if (typeof onItemStockGroupSelect === "function") onItemStockGroupSelect(name);
+      }
+    }, 50);
+  };
+
+  // ============================================================================
+  // FEATURE 2: BILL OF MATERIALS (BOM) RECIPE BUILDER FOR FINISHED GOODS
+  // ============================================================================
+  let TEMP_BOM_LINES = [];
+  let TEMP_BOM_ITEM_ID = "";
+  let TEMP_BOM_BATCH = 1;
+
+  window.openBomSetupModal = function(finishedItemId = "") {
+    ensureBomAndGroupsReady();
+    const fgId = finishedItemId || (document.getElementById("itmIdInp") ? document.getElementById("itmIdInp").value : "");
+    if (!fgId) {
+      toast("⚠ Pehle Stock Item ko Save karein ya neeche table se kisi Item par click karke BOM set karein!");
+      return;
+    }
+    const fgItem = getItem(fgId);
+    if (!fgItem) return;
+
+    const rawPackItems = DB.items.filter(i => i.id !== fgId);
+    if (!rawPackItems.length) {
+      toast("⚠ BOM banane ke liye pehle Raw Material aur Packing Material ke items banayein!");
+      return;
+    }
+
+    TEMP_BOM_ITEM_ID = fgId;
+    TEMP_BOM_BATCH = fgItem.bomStdBatch || 1;
+    TEMP_BOM_LINES = Array.isArray(fgItem.bom) && fgItem.bom.length
+      ? JSON.parse(JSON.stringify(fgItem.bom))
+      : [{ itemId: rawPackItems[0].id, qty: 1, compType: rawPackItems[0].stockGroup || "Raw Material" }];
+
+    renderBomModalUI();
+  };
+
+  window.renderBomModalUI = function() {
+    const fgItem = getItem(TEMP_BOM_ITEM_ID);
+    const availComponents = DB.items.filter(i => i.id !== TEMP_BOM_ITEM_ID);
+
+    let estMatCost = 0;
+    const rowsHtml = TEMP_BOM_LINES.map((ln, idx) => {
+      const comp = getItem(ln.itemId) || availComponents[0];
+      const compRate = Number(comp?.opRate) || Number(comp?.rate) || 0;
+      const lineCost = +((Number(ln.qty) || 0) * compRate).toFixed(2);
+      estMatCost += lineCost;
+
+      const compOpts = availComponents.map(c =>
+        `<option value="${c.id}" ${c.id === ln.itemId ? "selected" : ""}>${escHtml(c.name)} [${escHtml(c.stockGroup || 'Item')}] (${escHtml(c.uom)})</option>`
+      ).join("");
+
+      return `
+        <tr>
+          <td>${idx + 1}</td>
+          <td>
+            <select style="width:100%;padding:5px;" onchange="window.onBomCompSelect(${idx}, this.value)">
+              ${compOpts}
+            </select>
+          </td>
+          <td><span class="kbd">${escHtml(comp?.stockGroup || "Raw Material")}</span></td>
+          <td>
+            <input type="number" step="0.001" class="num" style="width:90px;padding:4px;" value="${ln.qty}" oninput="window.onBomQtyChange(${idx}, this.value)">
+            <b>${escHtml(comp?.uom || "NOS")}</b>
+          </td>
+          <td class="num">₹${fmtINR(compRate)}</td>
+          <td class="num"><b>₹${fmtINR(lineCost)}</b></td>
+          <td><button class="btn btn-danger" style="padding:2px 6px;" onclick="window.removeBomLine(${idx})">✕</button></td>
+        </tr>
+      `;
+    }).join("");
+
+    const body = `
+      <div class="form-card" style="background:#ecfdf5;border-color:var(--pri);margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+          <div>
+            <div style="font-size:14px;font-weight:800;color:var(--pri-dark);">🏭 BOM Recipe for: ${escHtml(fgItem.name)}</div>
+            <div style="font-size:11.5px;color:var(--muted);">Nirdharit karein ki is Finished Good ko banane me kitna Raw aur Packing Material lagta hai.</div>
+          </div>
+          <div class="field" style="width:180px;">
+            <label>Standard Batch Qty (${escHtml(fgItem.uom)})</label>
+            <input type="number" step="1" class="num" value="${TEMP_BOM_BATCH}" oninput="window.onBomBatchChange(this.value)">
+          </div>
+        </div>
+      </div>
+
+      <div class="form-card" style="padding:0;overflow:hidden;">
+        <table class="tally-tbl">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Raw / Packing Material Item</th>
+              <th>Group</th>
+              <th>Qty Required</th>
+              <th class="num">Std Cost Rate</th>
+              <th class="num">Est. Cost (₹)</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>${rowsHtml}</tbody>
+          <tfoot>
+            <tr style="background:#f1f5f9;font-weight:800;">
+              <td colspan="5" style="text-align:right;">Estimated Material Cost per ${TEMP_BOM_BATCH} ${escHtml(fgItem.uom)}:</td>
+              <td class="num">₹${fmtINR(estMatCost)}</td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+        <div style="padding:8px;background:#f8fafc;border-top:1px solid var(--border);">
+          <button class="btn btn-sec" onclick="window.addBomLine()">➕ Add Raw / Packing Component</button>
+        </div>
+      </div>
+    `;
+
+    const foot = `
+      <button class="btn btn-sec" onclick="closeModal()">Cancel</button>
+      <button class="btn" onclick="window.saveBomToItem()">💾 Save BOM Recipe</button>
+    `;
+    showModal(`⚙️ Bill of Materials (BOM) Setup - ${fgItem.name}`, body, foot);
+  };
+
+  window.onBomBatchChange = function(val) {
+    TEMP_BOM_BATCH = Math.max(1, Number(val) || 1);
+  };
+  window.onBomCompSelect = function(idx, itemId) {
+    const it = getItem(itemId);
+    TEMP_BOM_LINES[idx].itemId = itemId;
+    TEMP_BOM_LINES[idx].compType = it ? (it.stockGroup || "Raw Material") : "Raw Material";
+    renderBomModalUI();
+  };
+  window.onBomQtyChange = function(idx, val) {
+    TEMP_BOM_LINES[idx].qty = Number(val) || 0;
+    renderBomModalUI();
+  };
+  window.addBomLine = function() {
+    const avail = DB.items.filter(i => i.id !== TEMP_BOM_ITEM_ID);
+    if (!avail.length) return;
+    TEMP_BOM_LINES.push({ itemId: avail[0].id, qty: 1, compType: avail[0].stockGroup || "Raw Material" });
+    renderBomModalUI();
+  };
+  window.removeBomLine = function(idx) {
+    TEMP_BOM_LINES.splice(idx, 1);
+    renderBomModalUI();
+  };
+  window.saveBomToItem = function() {
+    const fgItem = getItem(TEMP_BOM_ITEM_ID);
+    if (!fgItem) return;
+    fgItem.bomStdBatch = Math.max(1, Number(TEMP_BOM_BATCH) || 1);
+    fgItem.bom = TEMP_BOM_LINES.filter(l => l.itemId && Number(l.qty) > 0);
+    saveDB();
+    closeModal();
+    renderScreen(CURRENT_SCREEN);
+    toast(`✅ BOM Saved for "${fgItem.name}" (${fgItem.bom.length} components)!`);
+  };
+
+  // ============================================================================
+  // FEATURE 3: MANUFACTURING / BOM PRODUCTION VOUCHER SCREEN (ALT+M)
+  // ============================================================================
+  let MFG_STATE = {
+    vchNo: "",
+    date: "",
+    fgItemId: "",
+    produceQty: 1,
+    extraCost: 0, // Packing / Labour / Electricity Overhead
+    narration: "",
+    consumedLines: [] // [{ itemId, itemName, stockGroup, uom, qty, rate, amount }]
+  };
+
+  window.openBomProductionScreen = function() {
+    ensureBomAndGroupsReady();
+    const fgCandidates = DB.items.filter(i => (i.bom && i.bom.length > 0) || i.stockGroup === "Finished Goods");
+    const firstFg = fgCandidates[0] || DB.items[0];
+
+    const count = DB.vouchers.filter(v => v.type === "Manufacturing" || v.type === "Stock Journal").length + 1;
+    MFG_STATE = {
+      vchNo: "MFG/" + String(count).padStart(4, "0"),
+      date: DB.company.curDate,
+      fgItemId: firstFg ? firstFg.id : "",
+      produceQty: 1,
+      extraCost: 0,
+      narration: "",
+      consumedLines: []
+    };
+    recalcMfgFromBom();
+    navigate("bom_production");
+  };
+
+  function recalcMfgFromBom() {
+    const fg = getItem(MFG_STATE.fgItemId);
+    if (!fg || !Array.isArray(fg.bom) || fg.bom.length === 0) {
+      MFG_STATE.consumedLines = [];
+      return;
+    }
+    const stockMap = computeInventoryStockSummary();
+    const batch = fg.bomStdBatch || 1;
+    const multiplier = (Number(MFG_STATE.produceQty) || 0) / batch;
+
+    MFG_STATE.consumedLines = fg.bom.map(b => {
+      const comp = getItem(b.itemId);
+      const st = stockMap[b.itemId];
+      const avgRate = st ? st.avgRate : (Number(comp?.opRate) || Number(comp?.rate) || 0);
+      const reqQty = +((Number(b.qty) || 0) * multiplier).toFixed(3);
+      return {
+        itemId: b.itemId,
+        itemName: comp ? comp.name : "(Deleted Item)",
+        stockGroup: comp ? (comp.stockGroup || "Raw Material") : "Raw Material",
+        uom: comp ? comp.uom : "NOS",
+        availStock: st ? st.closeQty : 0,
+        qty: reqQty,
+        rate: avgRate,
+        amount: +(reqQty * avgRate).toFixed(2)
+      };
+    });
+  }
+
+  window.renderBomProductionScreen = function() {
+    ensureBomAndGroupsReady();
+    document.getElementById("screenTitle").textContent = "🏭 BOM Manufacturing Journal (Raw + Packing → Finished Goods)";
+    document.getElementById("screenSub").textContent = "Auto-Consumes Raw & Packing Material as per BOM & Produces Finished Goods Stock";
+
+    const fgOpts = DB.items.map(it => {
+      const hasBom = Array.isArray(it.bom) && it.bom.length > 0;
+      return `<option value="${it.id}" ${it.id === MFG_STATE.fgItemId ? "selected" : ""}>${escHtml(it.name)} [${escHtml(it.stockGroup || 'Item')}] ${hasBom ? `✔ BOM (${it.bom.length} items)` : '⚠ No BOM'}</option>`;
+    }).join("");
+
+    const fgItem = getItem(MFG_STATE.fgItemId);
+    const stockMap = computeInventoryStockSummary();
+
+    let totalRawCost = 0;
+    const compRows = MFG_STATE.consumedLines.map((ln, idx) => {
+      const amt = +((Number(ln.qty) || 0) * (Number(ln.rate) || 0)).toFixed(2);
+      totalRawCost = +(totalRawCost + amt).toFixed(2);
+      const st = stockMap[ln.itemId];
+      const avail = st ? st.closeQty : 0;
+      const isShort = ln.qty > avail;
+
+      const allItemOpts = DB.items.map(it =>
+        `<option value="${it.id}" ${it.id === ln.itemId ? "selected" : ""}>${escHtml(it.name)} (${escHtml(it.stockGroup || '')})</option>`
+      ).join("");
+
+      return `
+        <tr>
+          <td>${idx + 1}</td>
+          <td>
+            <select style="width:100%;padding:4px;" onchange="window.onMfgCompItemChange(${idx}, this.value)">${allItemOpts}</select>
+          </td>
+          <td><span class="kbd">${escHtml(ln.stockGroup)}</span></td>
+          <td class="num" style="color:${isShort ? 'var(--danger)' : 'var(--ok)'};font-weight:700;">
+            ${avail} ${escHtml(ln.uom)} ${isShort ? '⚠ Low' : ''}
+          </td>
+          <td>
+            <input type="number" step="0.001" class="num" style="width:90px;padding:4px;" value="${ln.qty}" oninput="window.onMfgCompQtyChange(${idx}, this.value)">
+            ${escHtml(ln.uom)}
+          </td>
+          <td>
+            <input type="number" step="0.01" class="num" style="width:95px;padding:4px;" value="${ln.rate}" oninput="window.onMfgCompRateChange(${idx}, this.value)">
+          </td>
+          <td class="num"><b>₹${fmtINR(amt)}</b></td>
+          <td><button class="btn btn-danger" style="padding:2px 6px;" onclick="window.removeMfgCompRow(${idx})">✕</button></td>
+        </tr>
+      `;
+    }).join("");
+
+    const extraCost = Number(MFG_STATE.extraCost) || 0;
+    const totalProductionVal = +(totalRawCost + extraCost).toFixed(2);
+    const prodQty = Math.max(0.001, Number(MFG_STATE.produceQty) || 1);
+    const perUnitFgCost = +(totalProductionVal / prodQty).toFixed(2);
+
+    document.getElementById("screenBody").innerHTML = `
+      <div class="form-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+          <h3 style="font-size:14px;color:var(--pri-dark);">🏭 Part A: Finished Goods Output (Jo Maal Bankar Taiyar Hoga)</h3>
+          <div style="display:flex;gap:6px;">
+            ${fgItem ? `<button class="btn btn-sec" onclick="window.openBomSetupModal('${fgItem.id}')">⚙️ Set / Edit BOM Recipe for ${escHtml(fgItem.name)}</button>` : ""}
+            <button class="btn btn-sec" onclick="navigate('stock_summary')">📦 View Stock Summary</button>
+          </div>
+        </div>
+
+        <div class="form-grid">
+          <div class="field">
+            <label>Mfg Voucher No *</label>
+            <input value="${escHtml(MFG_STATE.vchNo)}" oninput="MFG_STATE.vchNo=this.value">
+          </div>
+          <div class="field">
+            <label>Production Date *</label>
+            <input type="date" value="${MFG_STATE.date}" onchange="MFG_STATE.date=this.value">
+          </div>
+          <div class="field" style="grid-column: span 2;">
+            <label>Select Finished Good to Produce *</label>
+            <select onchange="window.onMfgFgSelect(this.value)">${fgOpts}</select>
+          </div>
+          <div class="field">
+            <label>Quantity Produced (${escHtml(fgItem?.uom || 'NOS')}) *</label>
+            <input type="number" step="0.01" class="num" style="font-weight:800;font-size:14px;background:#fefce8;" value="${MFG_STATE.produceQty}" oninput="window.onMfgProduceQtyChange(this.value)">
+          </div>
+          <div class="field">
+            <label>Labour / Packing / Overhead Cost (₹)</label>
+            <input type="number" step="0.01" class="num" value="${MFG_STATE.extraCost}" oninput="window.onMfgExtraCostChange(this.value)">
+          </div>
+        </div>
+      </div>
+
+      <div class="form-card" style="padding:0;overflow:hidden;">
+        <div style="padding:8px 12px;background:#0f6e4e;color:#fff;font-weight:700;display:flex;justify-content:space-between;align-items:center;">
+          <span>🧪 Part B: Raw Material &amp; Packing Material Consumed (Stock Se Minus Hoga)</span>
+          <button class="btn btn-sec" style="padding:2px 8px;font-size:11px;" onclick="window.addMfgManualCompRow()">➕ Add Extra Material Line</button>
+        </div>
+        <table class="tally-tbl">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Component Item (Raw / Packing)</th>
+              <th>Stock Group</th>
+              <th class="num">Available Stock</th>
+              <th>Consumed Qty</th>
+              <th>Cost Rate (₹)</th>
+              <th class="num">Total Cost (₹)</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${compRows || `<tr><td colspan="8" style="text-align:center;padding:18px;color:var(--muted);">Is Finished Good me abhi BOM set nahi hai. Upar <b>"⚙️ Set / Edit BOM Recipe"</b> button dabayein ya <b>"➕ Add Extra Material Line"</b> par click karein.</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 360px;gap:12px;">
+        <div class="form-card">
+          <div class="field">
+            <label>Production Narration / Batch No.</label>
+            <input value="${escHtml(MFG_STATE.narration)}" placeholder="e.g. Batch #01 manufactured and packed..." oninput="MFG_STATE.narration=this.value">
+          </div>
+          <div style="margin-top:12px;display:flex;gap:8px;">
+            <button class="btn" onclick="window.saveMfgProductionVoucher()">💾 Complete Production &amp; Update Stock (Ctrl+A)</button>
+            <button class="btn btn-sec" onclick="goBack()">Cancel (Esc)</button>
+          </div>
+        </div>
+
+        <div class="form-card" style="background:#ecfdf5;border-color:var(--pri);">
+          <h4 style="font-size:12px;color:var(--pri-dark);text-transform:uppercase;margin-bottom:6px;border-bottom:1px solid var(--pri);padding-bottom:4px;">📊 Manufacturing Cost Sheet</h4>
+          <div class="info-row"><span>Raw + Packing Material Cost</span><span class="num">₹${fmtINR(totalRawCost)}</span></div>
+          <div class="info-row"><span>Additional Overhead / Labour</span><span class="num">₹${fmtINR(extraCost)}</span></div>
+          <div class="info-row" style="font-weight:700;"><span>Total Production Value</span><span class="num">₹${fmtINR(totalProductionVal)}</span></div>
+          <div class="info-row" style="font-size:14px;font-weight:800;color:var(--pri-dark);border-top:2px solid var(--pri);margin-top:6px;padding-top:6px;">
+            <span>Effective Cost / ${escHtml(fgItem?.uom || 'Unit')}</span>
+            <span class="num">₹${fmtINR(perUnitFgCost)}</span>
+          </div>
+        </div>
+      </div>
+    `;
+  };
+
+  window.onMfgFgSelect = function(itemId) {
+    MFG_STATE.fgItemId = itemId;
+    recalcMfgFromBom();
+    renderBomProductionScreen();
+  };
+  window.onMfgProduceQtyChange = function(val) {
+    MFG_STATE.produceQty = Number(val) || 0;
+    recalcMfgFromBom();
+    renderBomProductionScreen();
+  };
+  window.onMfgExtraCostChange = function(val) {
+    MFG_STATE.extraCost = Number(val) || 0;
+    renderBomProductionScreen();
+  };
+  window.onMfgCompItemChange = function(idx, newItemId) {
+    const it = getItem(newItemId);
+    if (!it) return;
+    const st = computeInventoryStockSummary()[newItemId];
+    MFG_STATE.consumedLines[idx].itemId = it.id;
+    MFG_STATE.consumedLines[idx].itemName = it.name;
+    MFG_STATE.consumedLines[idx].stockGroup = it.stockGroup || "Raw Material";
+    MFG_STATE.consumedLines[idx].uom = it.uom || "NOS";
+    MFG_STATE.consumedLines[idx].rate = st ? st.avgRate : (it.opRate || it.rate || 0);
+    renderBomProductionScreen();
+  };
+  window.onMfgCompQtyChange = function(idx, val) {
+    MFG_STATE.consumedLines[idx].qty = Number(val) || 0;
+    renderBomProductionScreen();
+  };
+  window.onMfgCompRateChange = function(idx, val) {
+    MFG_STATE.consumedLines[idx].rate = Number(val) || 0;
+    renderBomProductionScreen();
+  };
+  window.removeMfgCompRow = function(idx) {
+    MFG_STATE.consumedLines.splice(idx, 1);
+    renderBomProductionScreen();
+  };
+  window.addMfgManualCompRow = function() {
+    const comp = DB.items.find(i => i.id !== MFG_STATE.fgItemId) || DB.items[0];
+    if (!comp) return;
+    MFG_STATE.consumedLines.push({
+      itemId: comp.id,
+      itemName: comp.name,
+      stockGroup: comp.stockGroup || "Raw Material",
+      uom: comp.uom || "NOS",
+      qty: 1,
+      rate: comp.opRate || comp.rate || 0
+    });
+    renderBomProductionScreen();
+  };
+
+  window.saveMfgProductionVoucher = function() {
+    const fg = getItem(MFG_STATE.fgItemId);
+    const prodQty = Number(MFG_STATE.produceQty) || 0;
+    if (!fg || prodQty <= 0) {
+      toast("⚠ Finished Good aur sahi Quantity dalein!");
+      return;
+    }
+    if (!MFG_STATE.consumedLines.length) {
+      toast("⚠ Kam se kam 1 Raw ya Packing Material component hona zaroori hai!");
+      return;
+    }
+
+    let rawTotal = 0;
+    const stockJournalLines = [];
+
+    // 1. Outward (Negative Qty) for Raw & Packing Materials
+    MFG_STATE.consumedLines.forEach(c => {
+      const q = Math.abs(Number(c.qty) || 0);
+      const r = Number(c.rate) || 0;
+      if (q > 0) {
+        const val = +(q * r).toFixed(2);
+        rawTotal = +(rawTotal + val).toFixed(2);
+        stockJournalLines.push({
+          itemId: c.itemId,
+          itemName: c.itemName,
+          uom: c.uom,
+          qty: -q, // Negative so Stock Summary counts it as Outward Consumption!
+          rate: r,
+          taxable: -val,
+          gstRate: 0,
+          lineTotal: -val
+        });
+      }
+    });
+
+    const totalCost = +(rawTotal + (Number(MFG_STATE.extraCost) || 0)).toFixed(2);
+    const unitFgCost = +(totalCost / prodQty).toFixed(2);
+
+    // 2. Inward (Positive Qty) for Produced Finished Good
+    stockJournalLines.push({
+      itemId: fg.id,
+      itemName: fg.name,
+      uom: fg.uom,
+      qty: prodQty, // Positive so Stock Summary adds it to Finished Goods Inward!
+      rate: unitFgCost,
+      taxable: totalCost,
+      gstRate: 0,
+      lineTotal: totalCost
+    });
+
+    DB.vouchers.push({
+      id: uid("V"),
+      vchNo: MFG_STATE.vchNo || "MFG/001",
+      date: MFG_STATE.date || DB.company.curDate,
+      type: "Stock Journal",
+      subType: "BOM Manufacturing",
+      mode: "item",
+      narration: MFG_STATE.narration || `Manufactured ${prodQty} ${fg.uom} of ${fg.name} via BOM`,
+      amount: totalCost,
+      entries: [],
+      itemLines: stockJournalLines
+    });
+
+    saveDB();
+    toast(`✅ Produced ${prodQty} ${fg.uom} of "${fg.name}"! Raw/Packing Stock deducted.`);
+    navigate("stock_summary");
+  };
+
+  // ============================================================================
+  // 4. ENHANCE EXISTING SCREENS WITH "+ NEW GROUP" & "⚙️ BOM" BUTTONS
+  // ============================================================================
+  const origLedgerScreen = window.renderLedgerMastersScreen;
+  window.renderLedgerMastersScreen = function() {
+    origLedgerScreen();
+    const grpSel = document.getElementById("ledGroupInp");
+    if (grpSel && grpSel.parentElement) {
+      const lbl = grpSel.parentElement.querySelector("label");
+      if (lbl && !lbl.innerHTML.includes("openQuickAccountGroupModal")) {
+        lbl.innerHTML = `Under Accounting Group * <u style="color:var(--pri);cursor:pointer;float:right;" onclick="window.openQuickAccountGroupModal('ledGroupInp')">➕ New Group</u>`;
+      }
+    }
+  };
+
+  const origItemScreen = window.renderItemMastersScreen;
+  window.renderItemMastersScreen = function() {
+    ensureBomAndGroupsReady();
+    origItemScreen();
+    const sgSel = document.getElementById("itmSgInp");
+    if (sgSel && sgSel.parentElement) {
+      const lbl = sgSel.parentElement.querySelector("label");
+      if (lbl && !lbl.innerHTML.includes("openQuickStockGroupModal")) {
+        lbl.innerHTML = `Under Stock Group * <u style="color:var(--pri);cursor:pointer;float:right;" onclick="window.openQuickStockGroupModal('itmSgInp')">➕ New Stock Group</u>`;
+      }
+    }
+    // Inject BOM Setup & Manufacturing buttons in Item Master top bar
+    const heading = document.getElementById("itmFormHeading");
+    if (heading && heading.parentElement) {
+      const btnBar = heading.parentElement.querySelector("div");
+      if (btnBar && !btnBar.innerHTML.includes("openBomSetupModal")) {
+        const bomBtn = document.createElement("button");
+        bomBtn.className = "btn";
+        bomBtn.style.background = "#1e3a8a";
+        bomBtn.innerHTML = "⚙️ Set BOM (Recipe)";
+        bomBtn.onclick = () => window.openBomSetupModal();
+        btnBar.prepend(bomBtn);
+      }
+    }
+  };
+
+  // Add BOM Production to Gateway Menu, Router & Right Function Bar
+  if (!GATEWAY_MENU.some(m => m.screen === "bom_production")) {
+    const txIdx = GATEWAY_MENU.findIndex(m => m.section === "Transactions");
+    GATEWAY_MENU.splice(txIdx >= 0 ? txIdx + 1 : 5, 0, {
+      section: "Transactions",
+      label: "BOM Manufacturing (Raw+Packing → Finished)",
+      hk: "M",
+      screen: "bom_production"
+    });
+  }
+
+  const prevRender = window.renderScreen;
+  window.renderScreen = function(screen) {
+    if (screen === "bom_production") {
+      closeModal();
+      window.renderBomProductionScreen();
+    } else {
+      prevRender(screen);
+    }
+  };
+
+  const rb = document.querySelector(".right-bar");
+  if (rb && !document.getElementById("fnBomBtn")) {
+    const mfgBtn = document.createElement("button");
+    mfgBtn.id = "fnBomBtn";
+    mfgBtn.className = "fn-btn";
+    mfgBtn.style.borderLeftColor = "#1e3a8a";
+    mfgBtn.innerHTML = `<span class="fn-key">Alt+M</span><span>BOM Prod</span>`;
+    mfgBtn.onclick = () => window.openBomProductionScreen();
+    rb.appendChild(mfgBtn);
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if (e.altKey && (e.key === "m" || e.key === "M")) {
+      e.preventDefault();
+      window.openBomProductionScreen();
+    }
+  });
+
+  ensureBomAndGroupsReady();
+  if (CURRENT_SCREEN === "gateway") renderGateway();
+})();
+</script>
 </body>
 </html>
