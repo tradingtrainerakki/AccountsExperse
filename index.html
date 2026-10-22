@@ -5578,5 +5578,286 @@ window.renderStockSummaryScreen = function() {
   if (CURRENT_SCREEN === "gateway") renderGateway();
 })();
 </script>
+  <!-- ===== PRINT BUTTON + ARROW-KEY DROPDOWN (सबसे आख़िर में </body> से ठीक पहले paste करें) ===== -->
+<style>
+  #printArea{display:none;}
+  @media print{
+    html,body{height:auto!important;overflow:visible!important;background:#fff!important;}
+    body.printing > *:not(#printArea){display:none!important;}
+    body.printing #printArea{display:block!important;position:static!important;padding:10mm;color:#000;font-family:'Segoe UI',Tahoma,sans-serif;font-size:12px;user-select:text;}
+    #printArea .no-print,#printArea button,#printArea .btn,#printArea .kb-rowhint{display:none!important;}
+    #printArea table{width:100%;border-collapse:collapse;}
+    #printArea th,#printArea td{border:1px solid #000!important;padding:4px 6px!important;color:#000!important;background:#fff!important;position:static!important;}
+    #printArea .pr-val{border-bottom:1px dotted #000;font-weight:600;}
+    #printArea .form-card,#printArea .info-box{border:none!important;box-shadow:none!important;background:#fff!important;}
+    @page{size:A4;margin:8mm;}
+  }
+  #kdPop{position:fixed;z-index:999999;background:#fff;border:2px solid #0f6e4e;border-radius:4px;box-shadow:0 10px 25px rgba(0,0,0,.25);display:none;flex-direction:column;min-width:260px;max-width:92vw;user-select:none;}
+  #kdPop input{border:none;border-bottom:1px solid #cbd5e1;padding:7px 9px;font-size:13px;outline:none;width:100%;}
+  #kdList{overflow-y:auto;max-height:260px;}
+  .kd-item{padding:6px 12px;cursor:pointer;font-size:13px;border-left:4px solid transparent;}
+  .kd-item.cur{color:#0f6e4e;font-weight:700;}
+  .kd-item.act{background:#fef08a;border-left-color:#0f6e4e;color:#0f172a;font-weight:700;}
+  .kd-none{padding:8px 12px;color:#64748b;font-size:12px;}
+</style>
+
+<div id="printArea"></div>
+<div id="kdPop"><input id="kdSearch" type="text" autocomplete="off" placeholder="टाइप करें / ↑ ↓ / Enter"><div id="kdList"></div></div>
+
+<script>
+(function(){
+  /* ============ 1) PRINT ============ */
+  const _origPrint = window.print.bind(window);
+
+  function esc(t){ return String(t==null?"":t).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+  function cloneForPrint(src){
+    const clone = src.cloneNode(true);
+    const o = src.querySelectorAll("input,select,textarea");
+    const c = clone.querySelectorAll("input,select,textarea");
+    o.forEach((el,i)=>{
+      const t = c[i]; if(!t) return;
+      let val = "";
+      if(el.tagName==="SELECT"){ const op = el.options[el.selectedIndex]; val = op ? op.text : ""; }
+      else if(el.type==="checkbox"||el.type==="radio"){ val = el.checked ? "✔" : "✘"; }
+      else val = el.value;
+      const sp = document.createElement("span");
+      sp.className = "pr-val";
+      sp.textContent = val;
+      if(el.type==="hidden") sp.style.display="none";
+      t.replaceWith(sp);
+    });
+    return clone;
+  }
+
+  function companyHeader(){
+    try{
+      const c = DB.company || {};
+      return `<div style="text-align:center;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:10px;">
+        <div style="font-size:17px;font-weight:800;">${esc(c.name||"")}</div>
+        <div style="font-size:11px;">${esc(c.address||"")}${c.gstin?" | GSTIN: <b>"+esc(c.gstin)+"</b>":""}</div></div>`;
+    }catch(e){ return ""; }
+  }
+
+  function smartPrint(){
+    const modal = document.getElementById("appModal");
+    const modalOpen = modal && modal.classList.contains("open");
+    let title, srcEl;
+    if(modalOpen){
+      title = (document.getElementById("modalTitle")||{}).textContent || "";
+      srcEl = document.getElementById("modalBody");
+    }else{
+      title = (document.getElementById("screenTitle")||{}).textContent || "";
+      srcEl = document.getElementById("screenBody");
+    }
+    if(!srcEl) return _origPrint();
+    const area = document.getElementById("printArea");
+    area.innerHTML = companyHeader()
+      + `<div style="text-align:center;font-size:14px;font-weight:700;margin-bottom:8px;">${esc(title.replace(/\s+/g," ").trim())}</div>`;
+    area.appendChild(cloneForPrint(srcEl));
+    document.body.classList.add("printing");
+    const done = ()=>{ document.body.classList.remove("printing"); area.innerHTML=""; window.removeEventListener("afterprint",done); };
+    window.addEventListener("afterprint",done);
+    setTimeout(_origPrint,60);
+  }
+  window.print = smartPrint;           // पुराने "Print Invoice" बटन भी अब सही छपेंगे
+  window.smartPrint = smartPrint;
+
+  // राइट-बार में सबसे ऊपर Print बटन
+  const rb = document.querySelector(".right-bar");
+  if(rb && !document.getElementById("fnPrintBtn")){
+    const b = document.createElement("button");
+    b.id = "fnPrintBtn"; b.className = "fn-btn";
+    b.style.borderLeftColor = "#1e3a8a"; b.style.background = "#fef9c3";
+    b.innerHTML = '<span class="fn-key">Alt+P</span><span>🖨️ Print</span>';
+    b.onclick = smartPrint;
+    rb.insertBefore(b, rb.firstChild);
+  }
+
+  /* ============ 2) ARROW-KEY DROPDOWN (हर <select> के लिए) ============ */
+  const pop = document.getElementById("kdPop");
+  const sInp = document.getElementById("kdSearch");
+  const listEl = document.getElementById("kdList");
+  let cur = null, items = [], act = 0;
+
+  function popOpen(){ return pop.style.display === "flex"; }
+
+  function build(filter){
+    const f = (filter||"").toLowerCase().trim();
+    items = [];
+    Array.from(cur.options).forEach((o,i)=>{
+      if(o.disabled) return;
+      if(!f || o.text.toLowerCase().includes(f)) items.push({i, text:o.text});
+    });
+    act = Math.max(0, items.findIndex(x=>x.i===cur.selectedIndex));
+    if(f) act = 0;
+    listEl.innerHTML = items.length
+      ? items.map((x,k)=>`<div class="kd-item${x.i===cur.selectedIndex?" cur":""}" data-k="${k}">${esc(x.text)||"&nbsp;"}</div>`).join("")
+      : '<div class="kd-none">कुछ नहीं मिला</div>';
+    paint();
+  }
+  function paint(){
+    listEl.querySelectorAll(".kd-item").forEach((d,k)=>d.classList.toggle("act",k===act));
+    const a = listEl.querySelector(".kd-item.act");
+    if(a) a.scrollIntoView({block:"nearest"});
+  }
+  function openPop(sel){
+    if(sel.disabled || sel.multiple || sel.size>1 || sel.hasAttribute("data-nokd")) return;
+    cur = sel;
+    sInp.value = "";
+    pop.style.display = "flex";
+    build("");
+    const r = sel.getBoundingClientRect();
+    pop.style.minWidth = Math.max(260, r.width) + "px";
+    let left = Math.min(r.left, window.innerWidth - pop.offsetWidth - 8);
+    let top = r.bottom + 2;
+    if(top + pop.offsetHeight > window.innerHeight - 8) top = Math.max(8, r.top - pop.offsetHeight - 2);
+    pop.style.left = Math.max(8,left) + "px";
+    pop.style.top = top + "px";
+    sInp.focus();
+  }
+  function closePop(refocus){
+    pop.style.display = "none";
+    const s = cur; cur = null;
+    if(refocus && s && s.isConnected) s.focus();
+  }
+
+  function focusables(root){
+    return Array.from(root.querySelectorAll("input,select,textarea,button")).filter(e=>
+      !e.disabled && e.type!=="hidden" && !e.readOnly && e.offsetParent!==null && e.tabIndex>=0);
+  }
+  function pick(){
+    if(!cur) return;
+    const it = items[act];
+    const sel = cur;
+    if(!it){ closePop(true); return; }
+    const root = sel.closest("#modalBody") || document.getElementById("screenBody") || document.body;
+    const idx = focusables(root).indexOf(sel);
+    const sid = sel.id;
+    const changed = sel.selectedIndex !== it.i;
+    sel.selectedIndex = it.i;
+    pop.style.display = "none"; cur = null;
+    if(changed){
+      sel.dispatchEvent(new Event("input",{bubbles:true}));
+      sel.dispatchEvent(new Event("change",{bubbles:true}));
+    }
+    setTimeout(()=>{
+      const root2 = document.getElementById("modalBody") && document.getElementById("appModal").classList.contains("open")
+        ? document.getElementById("modalBody") : document.getElementById("screenBody");
+      let nextEl = null;
+      if(root2){
+        const fl = focusables(root2);
+        const i2 = sid && document.getElementById(sid) ? fl.indexOf(document.getElementById(sid)) : idx;
+        nextEl = fl[(i2>=0?i2:idx)+1] || null;
+      }
+      if(nextEl){ nextEl.focus(); if(nextEl.select && nextEl.tagName==="INPUT") try{nextEl.select();}catch(e){} }
+      else if(sid && document.getElementById(sid)) document.getElementById(sid).focus();
+    }, 70);
+  }
+
+  // पॉपअप के अंदर की keys
+  window.addEventListener("keydown",function(e){
+    if(popOpen()){
+      const k = e.key;
+      if(k==="ArrowDown"){ e.preventDefault(); e.stopImmediatePropagation(); if(items.length){act=(act+1)%items.length;paint();} return; }
+      if(k==="ArrowUp"){ e.preventDefault(); e.stopImmediatePropagation(); if(items.length){act=(act-1+items.length)%items.length;paint();} return; }
+      if(k==="Enter"){ e.preventDefault(); e.stopImmediatePropagation(); pick(); return; }
+      if(k==="Escape"){ e.preventDefault(); e.stopImmediatePropagation(); closePop(true); return; }
+      if(k==="Tab"){ e.preventDefault(); e.stopImmediatePropagation(); pick(); return; }
+      if(k==="Home"||k==="End"){ e.preventDefault(); e.stopImmediatePropagation(); if(items.length){act=k==="Home"?0:items.length-1;paint();} return; }
+      e.stopPropagation();   // बाकी keys सिर्फ़ search box में टाइप हों
+      return;
+    }
+    // Print shortcut: Alt+P या Ctrl+P
+    if((e.altKey||e.ctrlKey) && (e.key==="p"||e.key==="P")){
+      e.preventDefault(); e.stopImmediatePropagation(); smartPrint(); return;
+    }
+    // बंद select पर तीर / Enter / Space / F4 => लिस्ट खुले
+    const t = e.target;
+    if(t && t.tagName==="SELECT" && !e.ctrlKey && !e.metaKey){
+      if(["ArrowDown","ArrowUp","Enter"," ","F4"].includes(e.key)){
+        if(t.disabled || t.multiple || t.size>1 || t.hasAttribute("data-nokd")) return;
+        e.preventDefault(); e.stopImmediatePropagation();
+        openPop(t);
+      }
+    }
+  }, true);
+
+  sInp.addEventListener("input",()=>build(sInp.value));
+
+  listEl.addEventListener("mousedown",e=>{
+    const d = e.target.closest(".kd-item"); if(!d) return;
+    e.preventDefault(); act = +d.dataset.k; pick();
+  });
+
+  // माउस क्लिक पर भी वही लिस्ट खुले
+  document.addEventListener("mousedown",e=>{
+    const t = e.target;
+    if(popOpen()){ if(!pop.contains(t)) closePop(false); return; }
+    if(t && t.tagName==="SELECT" && !t.disabled && !t.multiple && !(t.size>1) && !t.hasAttribute("data-nokd")){
+      e.preventDefault(); t.focus(); openPop(t);
+    }
+  }, true);
+  window.addEventListener("resize",()=>{ if(popOpen()) closePop(true); });
+})();
+</script>
+  <!-- ===== TALLY STYLE ESC -> QUIT POPUP (पिछले कोड के बाद, </body> से पहले paste करें) ===== -->
+<style>
+  #quitBox{position:fixed;inset:0;z-index:1000000;background:rgba(15,23,42,.45);display:none;align-items:center;justify-content:center;}
+  #quitBox .qcard{background:#fff;border:2px solid #0f6e4e;border-radius:4px;width:300px;box-shadow:0 12px 30px rgba(0,0,0,.3);overflow:hidden;}
+  #quitBox .qhead{background:#0f6e4e;color:#fff;padding:7px 12px;font-weight:700;border-bottom:2px solid #fbbf24;}
+  #quitBox .qbody{padding:16px;text-align:center;font-size:14px;font-weight:600;}
+  #quitBox .qbtns{display:flex;gap:10px;justify-content:center;padding:0 16px 16px;}
+  #quitBox .qbtn{min-width:90px;padding:7px 12px;border:1px solid #94a3b8;background:#fff;border-radius:3px;cursor:pointer;font-size:13px;font-weight:600;}
+  #quitBox .qbtn.act{background:#fef08a;border-color:#0f6e4e;box-shadow:0 0 0 2px #0f6e4e inset;}
+</style>
+<div id="quitBox"><div class="qcard">
+  <div class="qhead">Quit?</div>
+  <div class="qbody">क्या आप बाहर निकलना चाहते हैं?</div>
+  <div class="qbtns">
+    <button class="qbtn" id="qYes"><u>Y</u>es</button>
+    <button class="qbtn act" id="qNo"><u>N</u>o</button>
+  </div>
+</div></div>
+
+<script>
+(function(){
+  const box = document.getElementById("quitBox");
+  const yes = document.getElementById("qYes"), no = document.getElementById("qNo");
+  let sel = "no";                                   // शुरू में No चुना रहेगा (गलती से logout न हो)
+  const isOpen = ()=> box.style.display === "flex";
+  const paint = ()=>{ yes.classList.toggle("act", sel==="yes"); no.classList.toggle("act", sel==="no"); };
+  function openQuit(){ sel="no"; paint(); box.style.display="flex"; no.focus(); }
+  function closeQuit(){ box.style.display="none"; }
+  function doQuit(){
+    closeQuit();
+    if(typeof doAppLogout === "function") doAppLogout();
+  }
+  yes.onclick = doQuit; no.onclick = closeQuit;
+
+  window.addEventListener("keydown", function(e){
+    if(isOpen()){
+      const k = e.key;
+      e.preventDefault(); e.stopImmediatePropagation();
+      if(k==="y"||k==="Y") doQuit();
+      else if(k==="n"||k==="N"||k==="Escape") closeQuit();
+      else if(k==="ArrowLeft"||k==="ArrowRight"||k==="Tab"){ sel = sel==="yes"?"no":"yes"; paint(); }
+      else if(k==="Enter"){ sel==="yes" ? doQuit() : closeQuit(); }
+      return;
+    }
+    if(e.key !== "Escape") return;
+    const modal = document.getElementById("appModal");
+    if(modal && modal.classList.contains("open")) return;                 // मॉडल खुला हो तो पहले जैसा
+    const kd = document.getElementById("kdPop");
+    if(kd && kd.style.display === "flex") return;                         // ड्रॉपडाउन खुला हो तो पहले जैसा
+    const lg = document.getElementById("loginOverlay");
+    if(lg && lg.classList.contains("active")) return;                     // लॉगिन स्क्रीन पर नहीं
+    if(typeof CURRENT_SCREEN !== "undefined" && CURRENT_SCREEN === "gateway"){
+      e.preventDefault(); e.stopImmediatePropagation();
+      openQuit();
+    }
+  }, true);
+})();
+</script>
 </body>
 </html>
