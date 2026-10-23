@@ -6116,5 +6116,81 @@ window.renderStockSummaryScreen = function() {
   }, true);
 })();
 </script>
+  <script>
+(function(){
+  const KEY = "VCH_NO_MODE";                       // auto / manual (याद रहेगा)
+  let mode = "auto";
+  try{ mode = localStorage.getItem(KEY) || "auto"; }catch(e){}
+  function setMode(m){ mode = m; try{ localStorage.setItem(KEY, m); }catch(e){} }
+
+  function toggleMode(){
+    setMode(mode === "auto" ? "manual" : "auto");
+    renderVoucherEntryScreen();
+    if(typeof toast === "function") toast(mode === "auto" ? "🔢 Voucher No.: Automatic" : "✍ Voucher No.: Manual (ख़ुद लिखें)");
+    const i = document.getElementById("vchNoInp");
+    if(i){ i.focus(); try{ i.select(); }catch(e){} }
+  }
+
+  function apply(){
+    const inp = document.getElementById("vchNoInp");
+    if(!inp || typeof VCH_STATE === "undefined" || !VCH_STATE) return;
+    const editing = !!VCH_STATE.editingId;
+
+    if(mode === "auto" && !editing){
+      const old = VCH_STATE.vchNo;
+      const nn = nextVoucherNumber(VCH_STATE.vchType);
+      VCH_STATE.vchNo = nn;
+      inp.value = nn;
+      if(!VCH_STATE.billRefName || VCH_STATE.billRefName === old) VCH_STATE.billRefName = nn;
+      inp.readOnly = true;
+      inp.style.background = "#f1f5f9";
+    }else{
+      inp.readOnly = false;
+      inp.style.background = "";
+    }
+
+    // Auto / Manual बटन (पुराना वाउचर Alter करते समय नहीं दिखेगा)
+    const label = inp.parentElement && inp.parentElement.querySelector("label");
+    if(label && !editing && !label.querySelector("#vchNoModeBtn")){
+      const b = document.createElement("button");
+      b.type = "button"; b.id = "vchNoModeBtn"; b.tabIndex = -1;
+      b.title = "Voucher No. Automatic / Manual (Alt+N)";
+      b.textContent = mode === "auto" ? "🔢 Auto" : "✍ Manual";
+      b.style.cssText = "margin-left:8px;padding:1px 8px;font-size:10.5px;font-weight:700;cursor:pointer;border-radius:3px;border:1px solid "
+        + (mode === "auto" ? "#0f6e4e;background:#dcfce7;color:#0f6e4e;" : "#b45309;background:#fef3c7;color:#b45309;");
+      b.onmousedown = ev => ev.preventDefault();
+      b.onclick = ev => { ev.preventDefault(); toggleMode(); };
+      label.appendChild(b);
+    }
+
+    // Manual में पहले से मौजूद नंबर लिखने पर चेतावनी
+    inp.addEventListener("change", function(){
+      if(mode !== "manual" || editing) return;
+      const v = inp.value.trim();
+      const dup = DB.vouchers.some(x => x.type === VCH_STATE.vchType && String(x.vchNo).trim() === v);
+      if(dup && typeof toast === "function") toast("⚠ यह Voucher No. पहले से मौजूद है!");
+    });
+  }
+
+  if(typeof window.renderVoucherEntryScreen === "function"){
+    const _r = window.renderVoucherEntryScreen;
+    window.renderVoucherEntryScreen = function(){
+      const r = _r.apply(this, arguments);
+      try{ apply(); }catch(e){ console.error(e); }
+      return r;
+    };
+  }
+
+  // शॉर्टकट: Alt+N
+  window.addEventListener("keydown", function(e){
+    if(e.altKey && !e.ctrlKey && !e.metaKey && (e.key === "n" || e.key === "N")
+       && typeof CURRENT_SCREEN !== "undefined" && CURRENT_SCREEN === "voucher_entry"
+       && VCH_STATE && !VCH_STATE.editingId){
+      e.preventDefault(); e.stopImmediatePropagation();
+      toggleMode();
+    }
+  }, true);
+})();
+</script>
 </body>
 </html>
