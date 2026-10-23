@@ -6772,5 +6772,66 @@ window.renderStockSummaryScreen = function() {
   })();
 })();
 </script>
+  <!-- ================= MASTER TALLY UPGRADE: BANK RECON (BRS) + TALLY LEDGER VIEW + DRILL-DOWN BALANCE SHEET ================= -->
+<style>
+  .tally-sheet-grid {
+    display: grid; grid-template-columns: 1fr 1fr; border: 2px solid #0f172a; background: #fff;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+  }
+  .tally-sheet-col {
+    display: flex; flex-direction: column; justify-content: space-between; min-height: 430px;
+  }
+  .tally-sheet-col:first-child { border-right: 2px solid #0f172a; }
+  .tally-col-head {
+    background: #0f6e4e; color: #fff; font-weight: 800; padding: 8px 12px;
+    display: flex; justify-content: space-between; border-bottom: 2px solid #0f172a;
+    font-size: 13px; letter-spacing: 0.4px;
+  }
+  .tally-grp-block { border-bottom: 1px dashed #cbd5e1; padding: 6px 10px; transition: background 0.15s; }
+  .tally-grp-title {
+    display: flex; justify-content: space-between; align-items: center;
+    font-weight: 800; color: #0f172a; font-size: 13px; padding: 4px 6px;
+    cursor: pointer; border-radius: 3px;
+  }
+  .tally-grp-title:hover { background: #fef08a; color: #000; }
+  .tally-sub-led-list {
+    margin-top: 4px; padding-left: 14px; border-left: 2px solid #0f6e4e; margin-left: 8px;
+  }
+  .tally-sub-led {
+    display: flex; justify-content: space-between; font-size: 12.5px; color: #1e293b;
+    padding: 4px 8px; cursor: pointer; font-style: italic; border-radius: 3px;
+  }
+  .tally-sub-led:hover { background: #dcfce7; color: #094d36; font-style: normal; font-weight: 700; }
+  .tally-col-foot {
+    background: #f1f5f9; border-top: 2px solid #0f172a; border-bottom: 3px double #0f172a;
+    padding: 9px 12px; display: flex; justify-content: space-between; font-weight: 800; font-size: 14px;
+  }
+</style>
+
+<script>
+(function() {
+  // State variables for Reports & BRS
+  let SELECTED_BANK_LEDGER_ID = "";
+  let SHOW_RECONCILED_ENTRIES = true;
+  let ACTUAL_STATEMENT_BAL = "";
+
+  let SHOW_NARRATION_IN_LEDGER = true;
+  let SHOW_ZERO_BALANCES = false;
+
+  // Balance Sheet Drill-Down States
+  let BS_EXPANDED_GROUPS = {};      // Tracks inline expanded groups { "Current Assets": true }
+  let BS_DRILLED_GROUP_NAME = null; // If user opened full-screen Group Summary
+
+  // ============================================================================
+  // HELPER 1: FIND OPPOSITE LEDGER(S) FOR TALLY LEDGER STATEMENT & DAYBOOK
+  // ============================================================================
+  function getOppositeParticulars(v, targetLedgerId) {
+    const entries = getVoucherEntries(v);
+    const myEntry = entries.find(e => e.ledgerId === targetLedgerId);
+    const others = entries.filter(e => e.ledgerId !== targetLedgerId);
+
+    if (!others.length) {
+      const fallbackId = (v.partyLedgerId && v.partyLedgerId !== targetLedgerId) ? v.partyLedgerId
+        : (v.
 </body>
 </html>
