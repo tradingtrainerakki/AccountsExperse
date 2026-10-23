@@ -1130,10 +1130,12 @@ function openQuickLedgerModal(callbackFnName = "") {
       </div>
       <div class="field">
         <label>Registration Type</label>
-        <select id="qLedReg">
+                <select id="qLedReg">
+          <option value="Not Applicable">Not Applicable / Non-GST</option>
           <option value="Regular">Regular (B2B)</option>
           <option value="Unregistered">Unregistered</option>
           <option value="Composition">Composition</option>
+          <option value="Consumer">End Consumer</option>
         </select>
       </div>
       <div class="field">
@@ -6080,7 +6082,7 @@ window.renderStockSummaryScreen = function() {
 
     if(!onVoucher()) return;
     const t = e.target;
-    const typing = t && ["INPUT","SELECT","TEXTAREA"].includes(t.tagName);
+    const typing = t && ["INPUT","SELECT","TEXTAREA"].includes(t.tagName) && !(t.tagName === "INPUT" && t.readOnly);
 
     // पहला Esc => टाइप-लिस्ट (दूसरा वाउचर चुनने के लिए)
     if(k === "Escape"){
