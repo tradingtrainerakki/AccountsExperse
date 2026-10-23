@@ -6182,5 +6182,108 @@ window.renderStockSummaryScreen = function() {
   }, true);
 })();
 </script>
+  <script>
+(function(){
+  function acctMode(){
+    return typeof VCH_STATE !== "undefined" && VCH_STATE &&
+      !(VCH_STATE.mode === "item" && isItemCapableVoucher(VCH_STATE.vchType));
+  }
+  function tot(){
+    let d = 0, c = 0;
+    VCH_STATE.acctLines.forEach(l => { const a = Number(l.amount) || 0; if(l.type === "Dr") d += a; else c += a; });
+    return { d: +d.toFixed(2), c: +c.toFixed(2) };
+  }
+
+  // टोटल और मैच/अंतर वाला संदेश (बिना स्क्रीन दोबारा बनाए)
+  function refresh(){
+    try{
+      const { d, c } = tot();
+      const tbl = document.querySelector(".tally-tbl"); if(!tbl) return;
+      const cells = tbl.querySelectorAll("tfoot td.num");
+      if(cells[0]) cells[0].textContent = "₹" + fmtINR(d);
+      if(cells[1]) cells[1].textContent = "₹" + fmtINR(c);
+      const diff = +(d - c).toFixed(2);
+      const bar = tbl.parentElement.lastElementChild;          // बटन + संदेश वाली पट्टी
+      const msg = bar && bar.lastElementChild;                 // संदेश वाला हिस्सा
+      if(msg){
+        const ok = diff === 0 && d > 0;
+        msg.style.color = ok ? "var(--ok)" : "var(--danger)";
+        msg.textContent = ok ? "✔ Debit & Credit Matched"
+          : `⚠ Difference: ₹${fmtINR(Math.abs(diff))} (${diff > 0 ? "Cr short" : "Dr short"})`;
+      }
+    }catch(e){}
+  }
+
+  // अमाउंट टाइप करते समय: सिर्फ़ उसी लाइन में भरे, दूसरी तरफ़ अपने आप कुछ न भरे
+  window.updateAcctRow = function(idx, field, val){
+    syncVoucherHeaderFromDOM();
+    const L = VCH_STATE.acctLines;
+    if(!L[idx]) return;
+    if(field === "amount"){
+      L[idx].amount = Number(val) || 0;
+      refresh();
+      return;
+    }
+    L[idx][field] = val;
+    renderVoucherEntryScreen();
+  };
+
+  function nextFieldAfter(el){
+    const root = document.getElementById("screenBody");
+    const list = Array.from(root.querySelectorAll("input,select,textarea,button")).filter(x =>
+      !x.disabled && x.type !== "hidden" && !x.readOnly && x.offsetParent !== null && x.tabIndex >= 0 &&
+      (x.tagName !== "BUTTON" || /saveCurrentVoucher/.test(x.getAttribute("onclick") || "")));
+    return list[list.indexOf(el) + 1] || null;
+  }
+
+  // अमाउंट पक्का होते ही (Enter/आगे बढ़ने पर): जो तरफ़ कम है उसकी खाली लाइन आ जाए
+  document.addEventListener("change", function(e){
+    if(typeof CURRENT_SCREEN === "undefined" || CURRENT_SCREEN !== "voucher_entry" || !acctMode()) return;
+    const inp = e.target;
+    if(!(inp && inp.matches && inp.matches("input.num") && inp.closest(".tally-tbl tbody"))) return;
+    const tr = inp.closest("tr");
+    const idx = Array.from(tr.parentElement.children).indexOf(tr);
+    const L = VCH_STATE.acctLines;
+    if(!L[idx]) return;
+    L[idx].amount = Number(inp.value) || 0;
+
+    const before = L.length;
+    const { d, c } = tot();
+    const diff = +(d - c).toFixed(2);
+    let targetIdx = -1;
+
+    if(diff === 0 && d > 0){
+      // बराबर हो गया: आख़िर की बिना-इस्तेमाल खाली लाइनें हटा दें (कम से कम 2 लाइन रहेंगी)
+      while(L.length > 2){
+        const l = L[L.length - 1];
+        if(!(Number(l.amount) || 0) && !l.ledgerId) L.pop(); else break;
+      }
+    }else if(diff !== 0){
+      const need = diff > 0 ? "Cr" : "Dr";                     // जो तरफ़ कम है
+      targetIdx = L.findIndex(l => l.type === need && !(Number(l.amount) || 0));
+      if(targetIdx < 0){ L.push({ type: need, ledgerId: "", amount: 0 }); targetIdx = L.length - 1; }
+    }
+
+    const rerender = L.length !== before;
+    if(rerender) renderVoucherEntryScreen(); else refresh();
+
+    setTimeout(function(){
+      const rows = document.querySelectorAll(".tally-tbl tbody tr");
+      if(targetIdx >= 0 && rows[targetIdx]){
+        const row = rows[targetIdx];
+        const sels = row.querySelectorAll("select");
+        const amt = row.querySelector("input.num");
+        const t = (L[targetIdx] && L[targetIdx].ledgerId) ? (amt || sels[1] || sels[0]) : (sels[1] || sels[0] || amt);
+        if(t){ t.focus(); if(t.tagName === "INPUT"){ try{ t.select(); }catch(x){} } return; }
+      }
+      if(rerender && rows[idx]){
+        const a = rows[idx].querySelector("input.num");
+        const nx = a && nextFieldAfter(a);
+        if(nx) nx.focus();
+      }
+    }, 30);
+  });
+})();
+</script>
 </body>
 </html>
