@@ -1903,24 +1903,10 @@ function updateAcctRow(idx, field, val) {
   if (!L[idx]) return;
 
   if (field === "amount") {
-    const old = Number(L[idx].amount) || 0;
-    const nv = Number(val) || 0;
-    L[idx].amount = nv;
+    L[idx].amount = Number(val) || 0;
 
-    // सिर्फ़ 2 लाइन हों तो दूसरी लाइन का अमाउंट साथ-साथ बराबर होता रहे
-    if (L.length === 2) {
-      const o = L[1 - idx];
-      if (!Number(o.amount) || Number(o.amount) === old) o.amount = nv;
-    }
-
-    // स्क्रीन दोबारा नहीं बनेगी (कर्सर बना रहेगा), सिर्फ़ ज़रूरी हिस्से बदलेंगे
+    // स्क्रीन दोबारा नहीं बनेगी (कर्सर बना रहेगा), सिर्फ़ टोटल और संदेश बदलेंगे
     try {
-      const rows = document.querySelectorAll(".tally-tbl tbody tr");
-      rows.forEach((r, i) => {
-        if (i === idx) return;
-        const inp = r.querySelector("input.num");
-        if (inp) inp.value = L[i].amount || "";
-      });
       let totDr = 0, totCr = 0;
       L.forEach(l => { if (l.type === "Dr") totDr += Number(l.amount) || 0; else totCr += Number(l.amount) || 0; });
       totDr = +totDr.toFixed(2); totCr = +totCr.toFixed(2);
@@ -1943,7 +1929,6 @@ function updateAcctRow(idx, field, val) {
   L[idx][field] = val;
   renderVoucherEntryScreen();
 }
-
 function addAcctRow() {
   syncVoucherHeaderFromDOM();
   let totDr = 0, totCr = 0;
