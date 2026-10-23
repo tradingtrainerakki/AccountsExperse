@@ -5964,5 +5964,157 @@ window.renderStockSummaryScreen = function() {
   }, true);
 })();
 </script>
+  <script>
+(function(){
+  // ====== वाउचर टाइप और उनके अक्षर (अपनी पसंद से बदल सकते हैं) ======
+  const VCH_TYPES = [
+    { k: "c", t: "Contra" },
+    { k: "y", t: "Payment" },
+    { k: "r", t: "Receipt" },
+    { k: "j", t: "Journal" },
+    { k: "s", t: "Sales" },
+    { k: "p", t: "Purchase" },
+    { k: "k", t: "Credit Note" },
+    { k: "d", t: "Debit Note" }
+  ];
+  // ================================================================
+
+  /* ---------- टाइप-लिस्ट वाला बॉक्स ---------- */
+  const st = document.createElement("style");
+  st.textContent = `
+    #vtBox{position:fixed;inset:0;z-index:1000001;background:rgba(15,23,42,.45);display:none;align-items:center;justify-content:center;}
+    #vtBox .vcard{background:#fff;border:2px solid #0f6e4e;border-radius:4px;width:300px;box-shadow:0 12px 30px rgba(0,0,0,.3);overflow:hidden;}
+    #vtBox .vhead{background:#0f6e4e;color:#fff;padding:7px 12px;font-weight:700;border-bottom:2px solid #fbbf24;}
+    #vtBox .vitem{display:flex;justify-content:space-between;padding:7px 14px;cursor:pointer;font-size:13.5px;border-left:4px solid transparent;}
+    #vtBox .vitem.act{background:#fef08a;border-left-color:#0f6e4e;font-weight:700;}
+    #vtBox .vitem .vk{font-family:monospace;background:#e2e8f0;border:1px solid #94a3b8;border-radius:3px;padding:0 6px;font-size:11px;}
+    #vtBox .vfoot{padding:6px 12px;font-size:11px;color:#475569;background:#f1f5f9;border-top:1px solid #cbd5e1;}
+  `;
+  document.head.appendChild(st);
+  const box = document.createElement("div");
+  box.id = "vtBox";
+  box.innerHTML = `<div class="vcard"><div class="vhead">Voucher Type चुनें</div><div id="vtList"></div>
+    <div class="vfoot">↑ ↓ + Enter चुनें &nbsp;|&nbsp; अक्षर दबाएँ &nbsp;|&nbsp; <b>Esc</b> = Gateway</div></div>`;
+  document.body.appendChild(box);
+  const listEl = box.querySelector("#vtList");
+  let act = 0, snap = "";
+
+  const boxOpen = () => box.style.display === "flex";
+  function paint(){
+    listEl.innerHTML = VCH_TYPES.map((x,i)=>
+      `<div class="vitem${i===act?" act":""}" data-i="${i}"><span>${x.t}</span><span class="vk">${x.k.toUpperCase()}</span></div>`).join("");
+  }
+  function openBox(){
+    const cur = (typeof VCH_STATE !== "undefined" && VCH_STATE) ? VCH_STATE.vchType : "";
+    act = Math.max(0, VCH_TYPES.findIndex(x => x.t === cur));
+    paint();
+    if(document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    box.style.display = "flex";
+  }
+  function closeBox(){ box.style.display = "none"; }
+
+  function focusVchNo(){
+    const el = document.getElementById("vchNoInp");
+    if(el){ el.focus(); try{ el.select(); }catch(e){} }
+  }
+  function chooseType(i){
+    const x = VCH_TYPES[i]; if(!x) return;
+    closeBox();
+    if(VCH_STATE && VCH_STATE.vchType === x.t && !VCH_STATE.editingId){ focusVchNo(); return; }  // वही टाइप: डेटा न मिटे
+    openVoucherScreen(x.t);
+  }
+  function goGateway(){
+    closeBox();
+    let dirty = false;
+    try{ dirty = JSON.stringify(VCH_STATE) !== snap; }catch(e){}
+    NAV_STACK.length = 0;
+    navigate("gateway", false);
+    if(typeof toast === "function") toast(dirty ? "⚠ वाउचर सेव नहीं हुआ — Gateway पर आ गए" : "↩ Gateway पर आ गए");
+  }
+  listEl.addEventListener("mousedown", e => {
+    const d = e.target.closest(".vitem"); if(!d) return;
+    e.preventDefault(); chooseType(+d.dataset.i);
+  });
+
+  /* ---------- सामान्य जाँच ---------- */
+  function onVoucher(){
+    if(typeof CURRENT_SCREEN === "undefined" || CURRENT_SCREEN !== "voucher_entry") return false;
+    const m = document.getElementById("appModal");
+    if(m && m.classList.contains("open")) return false;
+    const kd = document.getElementById("kdPop");
+    if(kd && kd.style.display === "flex") return false;
+    const q = document.getElementById("quitBox");
+    if(q && q.style.display === "flex") return false;
+    return true;
+  }
+
+  /* ---------- 1) स्क्रीन खुलते ही कर्सर Voucher No. पर ---------- */
+  if(typeof window.navigate === "function"){
+    const _nav = window.navigate;
+    window.navigate = function(screen){
+      const r = _nav.apply(this, arguments);
+      if(screen === "voucher_entry"){
+        setTimeout(()=>{ focusVchNo(); try{ snap = JSON.stringify(VCH_STATE); }catch(e){} }, 80);
+      }
+      return r;
+    };
+  }
+
+  /* ---------- 2) Enter = अगला खाना, आख़िर में Save बटन ---------- */
+  function fields(){
+    const root = document.getElementById("screenBody");
+    if(!root) return [];
+    return Array.from(root.querySelectorAll("input,select,textarea,button")).filter(el =>
+      !el.disabled && el.type !== "hidden" && !el.readOnly && el.offsetParent !== null && el.tabIndex >= 0 &&
+      (el.tagName !== "BUTTON" || /saveCurrentVoucher/.test(el.getAttribute("onclick") || "")));
+  }
+
+  /* ---------- सारी keys एक ही जगह ---------- */
+  window.addEventListener("keydown", function(e){
+    if(e.ctrlKey || e.altKey || e.metaKey || e.isComposing) return;
+    const k = e.key;
+
+    // टाइप-लिस्ट खुली हो
+    if(boxOpen()){
+      e.preventDefault(); e.stopImmediatePropagation();
+      if(k === "ArrowDown"){ act = (act + 1) % VCH_TYPES.length; paint(); }
+      else if(k === "ArrowUp"){ act = (act - 1 + VCH_TYPES.length) % VCH_TYPES.length; paint(); }
+      else if(k === "Enter"){ chooseType(act); }
+      else if(k === "Escape"){ goGateway(); }
+      else if(k.length === 1){
+        const i = VCH_TYPES.findIndex(x => x.k === k.toLowerCase());
+        if(i >= 0) chooseType(i);
+      }
+      return;
+    }
+
+    if(!onVoucher()) return;
+    const t = e.target;
+    const typing = t && ["INPUT","SELECT","TEXTAREA"].includes(t.tagName);
+
+    // पहला Esc => टाइप-लिस्ट (दूसरा वाउचर चुनने के लिए)
+    if(k === "Escape"){
+      e.preventDefault(); e.stopImmediatePropagation();
+      openBox();
+      return;
+    }
+
+    // Enter => अगला खाना
+    if(k === "Enter" && t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")){
+      if(t.tagName === "TEXTAREA" && e.shiftKey) return;          // Shift+Enter = नई लाइन
+      e.preventDefault(); e.stopImmediatePropagation();
+      const list = fields(), i = list.indexOf(t), nx = list[i + 1];
+      if(nx){ nx.focus(); if(nx.tagName === "INPUT"){ try{ nx.select(); }catch(err){} } }
+      return;
+    }
+
+    // खाने में टाइप न कर रहे हों तो अक्षर से सीधे वाउचर टाइप
+    if(!typing && k.length === 1){
+      const i = VCH_TYPES.findIndex(x => x.k === k.toLowerCase());
+      if(i >= 0){ e.preventDefault(); e.stopImmediatePropagation(); chooseType(i); }
+    }
+  }, true);
+})();
+</script>
 </body>
 </html>
