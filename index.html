@@ -1897,7 +1897,7 @@ function renderAcctDoubleEntrySubScreen() {
   `;
 }
 
-function function updateAcctRow(idx, field, val) {
+function updateAcctRow(idx, field, val) {
   syncVoucherHeaderFromDOM();
   const L = VCH_STATE.acctLines;
   if (!L[idx]) return;
@@ -1942,8 +1942,9 @@ function function updateAcctRow(idx, field, val) {
   // Dr/Cr या लेजर बदलने पर ही स्क्रीन दोबारा बनेगी
   L[idx][field] = val;
   renderVoucherEntryScreen();
+}
 
-  function addAcctRow() {
+function addAcctRow() {
   syncVoucherHeaderFromDOM();
   let totDr = 0, totCr = 0;
   VCH_STATE.acctLines.forEach(l => {
@@ -1959,9 +1960,8 @@ function function updateAcctRow(idx, field, val) {
   });
   renderVoucherEntryScreen();
 }
-}
 
-  function removeAcctRow(idx) {
+function removeAcctRow(idx) {
   syncVoucherHeaderFromDOM();
   if (VCH_STATE.acctLines.length <= 2) {
     toast("⚠ Double-Entry me kam se kam 2 lines (Dr aur Cr) zaroori hain!");
@@ -1970,7 +1970,6 @@ function function updateAcctRow(idx, field, val) {
   VCH_STATE.acctLines.splice(idx, 1);
   renderVoucherEntryScreen();
 }
-
 // ============================================================================
 // SAVE VOUCHER ENGINE (CONSTRUCTS EXACT DOUBLE-ENTRY LEGS + GST METADATA)
 // ============================================================================
