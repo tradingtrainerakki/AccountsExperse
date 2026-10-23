@@ -256,14 +256,14 @@
     <button class="fn-btn" onclick="openPeriodModal()"><span class="fn-key">A+F2</span><span>Period</span></button>
     <button class="fn-btn" onclick="openEntitySwitcherModal()"><span class="fn-key">F3</span><span>Company</span></button>
     <hr style="border:none; border-top:1px solid #cbd5e1; margin:2px 0;">
-    <button class="fn-btn" onclick="openVoucherScreen('Contra')"><span class="fn-key">F4</span><span>Contra</span></button>
-    <button class="fn-btn" onclick="openVoucherScreen('Payment')"><span class="fn-key">F5</span><span>Payment</span></button>
-    <button class="fn-btn" onclick="openVoucherScreen('Receipt')"><span class="fn-key">F6</span><span>Receipt</span></button>
-    <button class="fn-btn" onclick="openVoucherScreen('Journal')"><span class="fn-key">F7</span><span>Journal</span></button>
-    <button class="fn-btn" onclick="openVoucherScreen('Sales')"><span class="fn-key">F8</span><span>Sales</span></button>
-    <button class="fn-btn" onclick="openVoucherScreen('Purchase')"><span class="fn-key">F9</span><span>Purchase</span></button>
-    <button class="fn-btn" onclick="openVoucherScreen('Credit Note')"><span class="fn-key">A+F6</span><span>Cr Note</span></button>
-    <button class="fn-btn" onclick="openVoucherScreen('Debit Note')"><span class="fn-key">A+F5</span><span>Dr Note</span></button>
+    <button class="fn-btn" onclick="openVoucherScreen('Contra')"><span class="fn-key">C</span><span>Contra</span></button>
+    <button class="fn-btn" onclick="openVoucherScreen('Payment')"><span class="fn-key">Y</span><span>Payment</span></button>
+    <button class="fn-btn" onclick="openVoucherScreen('Receipt')"><span class="fn-key">R</span><span>Receipt</span></button>
+    <button class="fn-btn" onclick="openVoucherScreen('Journal')"><span class="fn-key">J</span><span>Journal</span></button>
+    <button class="fn-btn" onclick="openVoucherScreen('Sales')"><span class="fn-key">S</span><span>Sales</span></button>
+    <button class="fn-btn" onclick="openVoucherScreen('Purchase')"><span class="fn-key">P</span><span>Purchase</span></button>
+    <button class="fn-btn" onclick="openVoucherScreen('Credit Note')"><span class="fn-key">K</span><span>Cr Note</span></button>
+    <button class="fn-btn" onclick="openVoucherScreen('Debit Note')"><span class="fn-key">D</span><span>Dr Note</span></button>
     <hr style="border:none; border-top:1px solid #cbd5e1; margin:2px 0;">
     <button class="fn-btn" onclick="navigate('daybook')"><span class="fn-key">Alt+D</span><span>Day Book</span></button>
     <button class="fn-btn" onclick="navigate('ledgers_view')"><span class="fn-key">Alt+L</span><span>Ledger View</span></button>
@@ -5932,6 +5932,38 @@ window.renderStockSummaryScreen = function() {
   }, true);
 })();
 </script>
-
+<script>
+(function(){
+  // ====== यहाँ अपनी पसंद के अक्षर बदलें (छोटे अक्षर में लिखें) ======
+  const VCH_KEYS = {
+    c: "Contra",
+    y: "Payment",       // P पहले से Purchase के लिए है, इसलिए Payment को Y दिया है
+    r: "Receipt",
+    j: "Journal",
+    s: "Sales",
+    p: "Purchase",
+    k: "Credit Note",
+    d: "Debit Note"
+  };
+  // ==================================================================
+  window.addEventListener("keydown", function(e){
+    if(e.ctrlKey || e.altKey || e.metaKey || e.isComposing) return;
+    if(typeof CURRENT_SCREEN === "undefined" || CURRENT_SCREEN !== "voucher_entry") return;
+    const m = document.getElementById("appModal");
+    if(m && m.classList.contains("open")) return;
+    const kd = document.getElementById("kdPop");
+    if(kd && kd.style.display === "flex") return;
+    const q = document.getElementById("quitBox");
+    if(q && q.style.display === "flex") return;
+    const t = e.target;
+    if(t && ["INPUT","SELECT","TEXTAREA"].includes(t.tagName)) return;   // टाइप करते समय नहीं चलेगा
+    const type = VCH_KEYS[String(e.key).toLowerCase()];
+    if(!type) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    if(VCH_STATE && VCH_STATE.vchType === type && !VCH_STATE.editingId) return;
+    openVoucherScreen(type);
+  }, true);
+})();
+</script>
 </body>
 </html>
