@@ -5712,10 +5712,11 @@ window.renderStockSummaryScreen = function() {
 
   function build(filter){
     const f = (filter||"").toLowerCase().trim();
+    const toks = f.split(/\s+/).filter(Boolean);
     items = [];
     Array.from(cur.options).forEach((o,i)=>{
       if(o.disabled) return;
-      if(!f || o.text.toLowerCase().includes(f)) items.push({i, text:o.text});
+      if(toks.every(w => o.text.toLowerCase().includes(w))) items.push({i, text:o.text});
     });
     act = Math.max(0, items.findIndex(x=>x.i===cur.selectedIndex));
     if(f) act = 0;
@@ -5801,15 +5802,19 @@ window.renderStockSummaryScreen = function() {
       e.preventDefault(); e.stopImmediatePropagation(); smartPrint(); return;
     }
     // बंद select पर तीर / Enter / Space / F4 => लिस्ट खुले
-    const t = e.target;
-    if(t && t.tagName==="SELECT" && !e.ctrlKey && !e.metaKey){
+        const t = e.target;
+    if(t && t.tagName==="SELECT" && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing){
+      if(t.disabled || t.multiple || t.size>1 || t.hasAttribute("data-nokd")) return;
       if(["ArrowDown","ArrowUp","Enter"," ","F4"].includes(e.key)){
-        if(t.disabled || t.multiple || t.size>1 || t.hasAttribute("data-nokd")) return;
         e.preventDefault(); e.stopImmediatePropagation();
         openPop(t);
+      } else if(e.key.length === 1){            // अक्षर/शब्द टाइप करते ही लिस्ट खुले और छँटे
+        e.preventDefault(); e.stopImmediatePropagation();
+        openPop(t);
+        sInp.value = e.key;
+        build(e.key);
       }
-    }
-  }, true);
+    }  }, true);
 
   sInp.addEventListener("input",()=>build(sInp.value));
 
