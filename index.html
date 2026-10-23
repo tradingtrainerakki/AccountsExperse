@@ -1486,28 +1486,10 @@ function createBlankItemLine() {
 }
 
 function createDefaultAcctLines(type) {
-  if (type === "Payment") {
-    return [
-      { type: "Dr", ledgerId: "L_PARTY_INTER", amount: 0 },
-      { type: "Cr", ledgerId: "L_CASH", amount: 0 }
-    ];
-  }
-  if (type === "Receipt") {
-    return [
-      { type: "Cr", ledgerId: "L_PARTY_LOCAL", amount: 0 },
-      { type: "Dr", ledgerId: "L_CASH", amount: 0 }
-    ];
-  }
-  if (type === "Contra") {
-    return [
-      { type: "Dr", ledgerId: "L_BANK", amount: 0 },
-      { type: "Cr", ledgerId: "L_CASH", amount: 0 }
-    ];
-  }
-  return [
-    { type: "Dr", ledgerId: "L_PARTY_LOCAL", amount: 0 },
-    { type: "Cr", ledgerId: "L_SALES_GST", amount: 0 }
-  ];
+  // लेजर खाली रहेंगे, यूज़र ख़ुद चुनेगा। सिर्फ़ Dr/Cr का क्रम वाउचर टाइप से तय होता है
+  if (type === "Payment") return [ { type: "Dr", ledgerId: "", amount: 0 }, { type: "Cr", ledgerId: "", amount: 0 } ];
+  if (type === "Receipt") return [ { type: "Cr", ledgerId: "", amount: 0 }, { type: "Dr", ledgerId: "", amount: 0 } ];
+  return [ { type: "Dr", ledgerId: "", amount: 0 }, { type: "Cr", ledgerId: "", amount: 0 } ];
 }
 
 function openVoucherScreen(type = "Sales", editVoucherId = null) {
@@ -1823,7 +1805,7 @@ function renderAcctDoubleEntrySubScreen() {
     if (ln.type === "Dr") totDr = +(totDr + amt).toFixed(2);
     else totCr = +(totCr + amt).toFixed(2);
 
-    const ledOpts = DB.ledgers.map(l =>
+        const ledOpts = '<option value="">-- Select Ledger --</option>' + DB.ledgers.map(l =>
       `<option value="${l.id}" ${l.id === ln.ledgerId ? "selected" : ""}>${l.name} [${l.group}] (Bal: ${getLedgerClosingString(l.id)})</option>`
     ).join("");
 
@@ -1915,22 +1897,53 @@ function renderAcctDoubleEntrySubScreen() {
   `;
 }
 
-function updateAcctRow(idx, field, val) {
+function function updateAcctRow(idx, field, val) {
   syncVoucherHeaderFromDOM();
-  if (!VCH_STATE.acctLines[idx]) return;
-  if (field === "amount") {
-    VCH_STATE.acctLines[idx].amount = Number(val) || 0;
-    // Auto-balance 2nd line if there are only 2 lines
-    if (idx === 0 && VCH_STATE.acctLines.length === 2 && !VCH_STATE.acctLines[1].amount) {
-      VCH_STATE.acctLines[1].amount = VCH_STATE.acctLines[0].amount;
-    }
-  } else {
-    VCH_STATE.acctLines[idx][field] = val;
-  }
-  renderVoucherEntryScreen();
-}
+  const L = VCH_STATE.acctLines;
+  if (!L[idx]) return;
 
-function addAcctRow() {
+  if (field === "amount") {
+    const old = Number(L[idx].amount) || 0;
+    const nv = Number(val) || 0;
+    L[idx].amount = nv;
+
+    // सिर्फ़ 2 लाइन हों तो दूसरी लाइन का अमाउंट साथ-साथ बराबर होता रहे
+    if (L.length === 2) {
+      const o = L[1 - idx];
+      if (!Number(o.amount) || Number(o.amount) === old) o.amount = nv;
+    }
+
+    // स्क्रीन दोबारा नहीं बनेगी (कर्सर बना रहेगा), सिर्फ़ ज़रूरी हिस्से बदलेंगे
+    try {
+      const rows = document.querySelectorAll(".tally-tbl tbody tr");
+      rows.forEach((r, i) => {
+        if (i === idx) return;
+        const inp = r.querySelector("input.num");
+        if (inp) inp.value = L[i].amount || "";
+      });
+      let totDr = 0, totCr = 0;
+      L.forEach(l => { if (l.type === "Dr") totDr += Number(l.amount) || 0; else totCr += Number(l.amount) || 0; });
+      totDr = +totDr.toFixed(2); totCr = +totCr.toFixed(2);
+      const cells = document.querySelectorAll(".tally-tbl tfoot td.num");
+      if (cells[0]) cells[0].textContent = "₹" + fmtINR(totDr);
+      if (cells[1]) cells[1].textContent = "₹" + fmtINR(totCr);
+      const diff = +(totDr - totCr).toFixed(2);
+      const msg = document.querySelector('.tally-tbl').parentElement.querySelector('div[style*="font-weight:700"]');
+      if (msg) {
+        msg.style.color = (diff === 0 && totDr > 0) ? "var(--ok)" : "var(--danger)";
+        msg.textContent = (diff === 0 && totDr > 0)
+          ? "✔ Debit & Credit Matched"
+          : `⚠ Difference: ₹${fmtINR(Math.abs(diff))} (${diff > 0 ? "Cr short" : "Dr short"})`;
+      }
+    } catch (e) {}
+    return;
+  }
+
+  // Dr/Cr या लेजर बदलने पर ही स्क्रीन दोबारा बनेगी
+  L[idx][field] = val;
+  renderVoucherEntryScreen();
+
+  function addAcctRow() {
   syncVoucherHeaderFromDOM();
   let totDr = 0, totCr = 0;
   VCH_STATE.acctLines.forEach(l => {
@@ -1941,13 +1954,14 @@ function addAcctRow() {
   const balDiff = +(Math.abs(totDr - totCr)).toFixed(2);
   VCH_STATE.acctLines.push({
     type: nextType,
-    ledgerId: DB.ledgers[0]?.id || "L_CASH",
-    amount: balDiff
+    ledgerId: "",          // लेजर खाली, यूज़र ख़ुद चुनेगा
+    amount: balDiff        // बाकी बचा अंतर अपने आप भर जाएगा
   });
   renderVoucherEntryScreen();
 }
+}
 
-function removeAcctRow(idx) {
+  function removeAcctRow(idx) {
   syncVoucherHeaderFromDOM();
   if (VCH_STATE.acctLines.length <= 2) {
     toast("⚠ Double-Entry me kam se kam 2 lines (Dr aur Cr) zaroori hain!");
