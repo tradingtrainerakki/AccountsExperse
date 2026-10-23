@@ -6287,5 +6287,490 @@ window.renderStockSummaryScreen = function() {
   });
 })();
 </script>
+  <script>
+(function(){
+  /* =====================================================================
+     BILL-WISE (Sundry Debtors / Creditors) + OUTSTANDING REPORT
+     ===================================================================== */
+  const TYPES = ["New Ref","Agst Ref","Advance","On Account"];
+  const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  const num = v => Number(v) || 0;
+  const r2  = v => +num(v).toFixed(2);
+  const sum = a => r2((a || []).reduce((s, x) => s + num(x.amount), 0));
+  const clone = o => JSON.parse(JSON.stringify(o));
+
+  /* ---------- पार्टी पहचान: Sundry Debtors (D) / Sundry Creditors (C) ---------- */
+  function partyKind(ledgerId){
+    const l = getLedger(ledgerId); if(!l) return "";
+    let g = l.group, n = 0;
+    while(g && n++ < 12){
+      if(g === "Sundry Debtors") return "D";
+      if(g === "Sundry Creditors") return "C";
+      const o = DB.groups.find(x => x.name === g);
+      g = o && o.parent;
+    }
+    return "";
+  }
+  function acctMode(){
+    return typeof VCH_STATE !== "undefined" && VCH_STATE &&
+      !(VCH_STATE.mode === "item" && isItemCapableVoucher(VCH_STATE.vchType));
+  }
+
+  /* ---------- वाउचर की एंट्री से बिल निकालना ---------- */
+  function entryBills(v, e){
+    if(e.bills && e.bills.length) return e.bills;
+    if(v.mode === "item" || (v.itemLines && v.itemLines.length)){
+      const b = v.bill || {};
+      return [{ type: b.type || "New Ref", ref: b.ref || v.vchNo, amount: e.amount }];
+    }
+    return [{ type: "On Account", ref: "", amount: e.amount }];     // पुराने वाउचर
+  }
+
+  /* ---------- एक पार्टी के बकाया बिल ---------- */
+  function outstanding(ledgerId, excludeId){
+    const l = getLedger(ledgerId), map = {};
+    function add(key, ref, signed, date){
+      const m = map[key] || (map[key] = { ref: ref, net: 0, date: "" });
+      m.net = r2(m.net + signed);
+      if(date && (!m.date || date < m.date)) m.date = date;
+    }
+    if(l && num(l.opBal) > 0){
+      add("R:Opening Balance", "Opening Balance", (l.opType === "Dr" ? 1 : -1) * num(l.opBal),
+          (DB.company && (DB.company.fyFrom || DB.company.booksFrom)) || "");
+    }
+    DB.vouchers.forEach(v => {
+      if(v.id === excludeId) return;
+      (v.entries || []).forEach(e => {
+        if(e.ledgerId !== ledgerId) return;
+        const sign = e.type === "Dr" ? 1 : -1;
+        entryBills(v, e).forEach(b => {
+          const amt = num(b.amount);
+          if(b.type === "On Account") add("ONACC", "On Account", sign * amt, v.date);
+          else add("R:" + (b.ref || "(no ref)"), b.ref || "(no ref)", sign * amt, v.date);
+        });
+      });
+    });
+    return Object.keys(map).map(k => map[k]).filter(m => Math.abs(m.net) > 0.004);
+  }
+  // Agst Ref के लिए: लाइन के उलटी तरफ़ वाले बकाया बिल
+  function pending(ledgerId, lineType){
+    return outstanding(ledgerId, VCH_STATE && VCH_STATE.editingId)
+      .filter(m => m.ref !== "On Account" && (lineType === "Dr" ? m.net < 0 : m.net > 0))
+      .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+  }
+
+  function todayStr(){ return (DB.company && DB.company.curDate) || new Date().toISOString().slice(0, 10); }
+  function age(d){ if(!d) return 0; return Math.max(0, Math.round((new Date(todayStr()) - new Date(d)) / 86400000)); }
+
+  function defaultRef(){
+    try{ syncVoucherHeaderFromDOM(); }catch(e){}
+    return String((VCH_STATE.refNo || "").trim() || VCH_STATE.vchNo || "");
+  }
+  function defaultBills(idx){
+    const L = VCH_STATE.acctLines[idx], kind = partyKind(L.ledgerId), amt = r2(L.amount);
+    const increasing = (kind === "D" && L.type === "Dr") || (kind === "C" && L.type === "Cr");
+    if(increasing) return [{ type: "New Ref", ref: defaultRef(), amount: amt }];
+    let rem = amt; const out = [];
+    pending(L.ledgerId, L.type).forEach(p => {
+      if(rem <= 0.004) return;
+      const a = Math.min(rem, Math.abs(p.net));
+      out.push({ type: "Agst Ref", ref: p.ref, amount: r2(a) });
+      rem = r2(rem - a);
+    });
+    if(rem > 0.004) out.push({ type: "On Account", ref: "", amount: rem });
+    return out;
+  }
+  const billsOk = L => L.bills && L.bills.length && Math.abs(sum(L.bills) - r2(L.amount)) < 0.01;
+
+  /* ---------- स्टाइल ---------- */
+  const st = document.createElement("style");
+  st.textContent = `
+    .ba-badge{margin-top:4px;font-size:11px;color:#475569;display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+    .ba-badge button{font-size:10.5px;font-weight:700;padding:1px 8px;border:1px solid #0f6e4e;background:#dcfce7;color:#0f6e4e;border-radius:3px;cursor:pointer;}
+    .ba-badge .ba-warn{color:#b45309;font-weight:700;}
+    #baWrap .ba-sum{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:8px;font-size:13px;}
+    table.ba-tbl{width:100%;border-collapse:collapse;font-size:12.5px;background:#fff;}
+    table.ba-tbl th{background:#f1f5f9;text-align:left;padding:6px 8px;border-bottom:2px solid #0f6e4e;}
+    table.ba-tbl td{padding:5px 6px;border-bottom:1px solid #e2e8f0;}
+    table.ba-tbl select,table.ba-tbl input{width:100%;padding:5px;}
+  `;
+  document.head.appendChild(st);
+
+  /* =====================================================================
+     1) + 2)  BILL ALLOCATION POPUP  (New Ref / Agst Ref / Advance / On Account)
+     ===================================================================== */
+  let ctx = null;                       // चल रहे पॉपअप की जानकारी
+
+  function remaining(){ return r2(ctx.amt - sum(ctx.rows)); }
+  function recalc(){
+    const a = document.getElementById("baAlloc"), r = document.getElementById("baRem");
+    if(!a || !r || !ctx) return;
+    a.textContent = "₹" + fmtINR(sum(ctx.rows));
+    const rem = remaining();
+    r.textContent = Math.abs(rem) < 0.01 ? "✔ पूरा" : "₹" + fmtINR(Math.abs(rem)) + (rem > 0 ? " बाकी" : " ज़्यादा");
+    r.style.color = Math.abs(rem) < 0.01 ? "var(--ok)" : "var(--danger)";
+  }
+  function drawRows(){
+    const tb = document.getElementById("baBody"); if(!tb || !ctx) return;
+    const pend = pending(ctx.ledgerId, ctx.type);
+    tb.innerHTML = ctx.rows.map((r, i) => {
+      let refCell;
+      if(r.type === "Agst Ref"){
+        let o = '<option value="">-- बिल चुनें --</option>' + pend.map(p =>
+          `<option value="${esc(p.ref)}" ${p.ref === r.ref ? "selected" : ""}>${esc(p.ref)} — ₹${fmtINR(Math.abs(p.net))} ${p.net > 0 ? "Dr" : "Cr"} बाकी${p.date ? " (" + age(p.date) + " दिन)" : ""}</option>`).join("");
+        if(r.ref && !pend.some(p => p.ref === r.ref)) o += `<option value="${esc(r.ref)}" selected>${esc(r.ref)}</option>`;
+        refCell = `<select class="ba-ref" data-i="${i}">${o}</select>`;
+      }else if(r.type === "On Account"){
+        refCell = `<span style="color:#64748b">— (बिना बिल)</span>`;
+      }else{
+        refCell = `<input class="ba-ref" data-i="${i}" value="${esc(r.ref)}" placeholder="बिल / रेफ़ नंबर">`;
+      }
+      return `<tr>
+        <td style="width:130px"><select class="ba-type" data-i="${i}">${TYPES.map(t => `<option ${t === r.type ? "selected" : ""}>${t}</option>`).join("")}</select></td>
+        <td>${refCell}</td>
+        <td style="width:140px"><input type="number" step="0.01" class="ba-amt" data-i="${i}" value="${r.amount || ""}"></td>
+        <td style="width:44px"><button type="button" class="btn btn-sec ba-del" data-i="${i}" tabindex="-1">✕</button></td></tr>`;
+    }).join("");
+  }
+  function focusRow(i){
+    const t = document.querySelector(`#baBody .ba-ref[data-i="${i}"]`) || document.querySelector(`#baBody .ba-amt[data-i="${i}"]`);
+    if(t){ t.focus(); if(t.tagName === "INPUT"){ try{ t.select(); }catch(e){} } }
+  }
+  function addRow(){
+    const kind = partyKind(ctx.ledgerId);
+    const inc = (kind === "D" && ctx.type === "Dr") || (kind === "C" && ctx.type === "Cr");
+    const rem = remaining();
+    ctx.rows.push({ type: inc ? "New Ref" : "Agst Ref", ref: inc ? defaultRef() : "", amount: rem > 0 ? rem : 0 });
+    drawRows(); recalc();
+    setTimeout(() => { const s = document.querySelector(`#baBody .ba-type[data-i="${ctx.rows.length - 1}"]`); if(s) s.focus(); }, 0);
+  }
+
+  function openAlloc(idx){
+    if(ctx) return;
+    try{ syncVoucherHeaderFromDOM(); }catch(e){}
+    const L = VCH_STATE.acctLines[idx]; if(!L) return;
+    if(!partyKind(L.ledgerId)){ return; }
+    if(!(num(L.amount) > 0)){ toast("⚠ पहले रक़म डालें"); return; }
+    const amt = r2(L.amount);
+    const rows = billsOk(L) ? clone(L.bills) : defaultBills(idx);
+    ctx = { idx: idx, rows: rows, amt: amt, ledgerId: L.ledgerId, type: L.type, done: false };
+    const led = getLedger(L.ledgerId);
+    const body = `<div id="baWrap">
+      <div class="ba-sum">
+        <div><b>${esc(led.name)}</b> &nbsp;|&nbsp; ${L.type === "Dr" ? "Debit" : "Credit"}</div>
+        <div>लाइन की रक़म: <b>₹${fmtINR(amt)}</b></div>
+        <div>बाँटा गया: <b id="baAlloc"></b></div>
+        <div>अंतर: <b id="baRem"></b></div>
+      </div>
+      <table class="ba-tbl"><thead><tr><th>Type</th><th>Bill / Reference</th><th>Amount (₹)</th><th></th></tr></thead><tbody id="baBody"></tbody></table>
+      <div style="margin-top:8px;"><button type="button" class="btn btn-sec" id="baAdd">➕ Bill Row जोड़ें</button>
+        <span style="font-size:11px;color:#64748b;margin-left:8px;">Enter = आगे | Ctrl+Enter = OK | Esc = रद्द</span></div>
+    </div>`;
+    const foot = `<button class="btn" id="baOk">OK (Ctrl+Enter)</button> <button class="btn btn-sec" id="baCancel">Cancel (Esc)</button>`;
+    showModal("📑 Bill Allocation", body, foot);
+    drawRows(); recalc();
+
+    const wrap = document.getElementById("baWrap");
+    wrap.addEventListener("input", e => {
+      const t = e.target, i = +t.dataset.i; if(!ctx || isNaN(i) || !ctx.rows[i]) return;
+      if(t.classList.contains("ba-amt")){ ctx.rows[i].amount = num(t.value); recalc(); }
+      else if(t.classList.contains("ba-ref") && t.tagName === "INPUT"){ ctx.rows[i].ref = t.value; }
+    });
+    wrap.addEventListener("change", e => {
+      const t = e.target, i = +t.dataset.i; if(!ctx || isNaN(i) || !ctx.rows[i]) return;
+      const row = ctx.rows[i];
+      if(t.classList.contains("ba-type")){
+        row.type = t.value;
+        row.ref = t.value === "Agst Ref" || t.value === "On Account" ? "" : (row.ref || defaultRef());
+        drawRows(); recalc();
+        setTimeout(() => focusRow(i), 0);
+      }else if(t.classList.contains("ba-ref") && t.tagName === "SELECT"){
+        row.ref = t.value;
+        const p = pending(ctx.ledgerId, ctx.type).find(x => x.ref === t.value);
+        if(p && !num(row.amount)){
+          const rem = remaining();
+          row.amount = r2(Math.min(Math.abs(p.net), rem > 0 ? rem : Math.abs(p.net)));
+          const ai = document.querySelector(`#baBody .ba-amt[data-i="${i}"]`); if(ai) ai.value = row.amount;
+        }
+        recalc();
+      }
+    });
+    wrap.addEventListener("click", e => {
+      if(e.target.closest("#baAdd")){ addRow(); return; }
+      const d = e.target.closest(".ba-del");
+      if(d && ctx){
+        ctx.rows.splice(+d.dataset.i, 1);
+        if(!ctx.rows.length) ctx.rows.push({ type: "New Ref", ref: defaultRef(), amount: 0 });
+        drawRows(); recalc();
+      }
+    });
+    document.getElementById("baOk").onclick = okAlloc;
+    document.getElementById("baCancel").onclick = () => closeModal();
+  }
+
+  function okAlloc(){
+    if(!ctx) return;
+    const rows = ctx.rows.filter(r => num(r.amount) > 0).map(r => ({
+      type: r.type, ref: r.type === "On Account" ? "" : String(r.ref || "").trim(), amount: r2(r.amount) }));
+    for(const r of rows){
+      if(r.type === "Agst Ref" && !r.ref){ toast("⚠ Agst Ref के लिए बिल चुनें"); return; }
+      if((r.type === "New Ref" || r.type === "Advance") && !r.ref) r.ref = defaultRef();
+    }
+    const tot = sum(rows);
+    if(tot > ctx.amt + 0.01){ toast(`⚠ बिलों का जोड़ (₹${fmtINR(tot)}) लाइन की रक़म (₹${fmtINR(ctx.amt)}) से ज़्यादा है`); return; }
+    if(tot < ctx.amt - 0.01){
+      rows.push({ type: "On Account", ref: "", amount: r2(ctx.amt - tot) });
+      toast("ℹ बची रक़म On Account में गई");
+    }
+    const L = VCH_STATE.acctLines[ctx.idx];
+    const idx = ctx.idx;
+    if(L) L.bills = rows;
+    ctx.done = true;
+    closeModal();
+    ctx = null;
+    decorate();
+    afterAlloc(idx);
+  }
+
+  function amtInput(idx){
+    const tr = document.querySelectorAll(".tally-tbl tbody tr")[idx];
+    return tr && tr.querySelector("input.num");
+  }
+  function afterAlloc(idx){
+    const a = amtInput(idx);
+    if(a) a.dispatchEvent(new Event("change", { bubbles: true }));     // बराबरी वाली खाली लाइन का काम फिर चले
+    setTimeout(() => {
+      const ae = document.activeElement;
+      if(!ae || ae === document.body){
+        const a2 = amtInput(idx); if(!a2) return;
+        const list = Array.from(document.getElementById("screenBody").querySelectorAll("input,select,textarea,button")).filter(x =>
+          !x.disabled && x.type !== "hidden" && !x.readOnly && x.offsetParent !== null && x.tabIndex >= 0 &&
+          (x.tagName !== "BUTTON" || /saveCurrentVoucher/.test(x.getAttribute("onclick") || "")));
+        const nx = list[list.indexOf(a2) + 1];
+        if(nx) nx.focus();
+      }
+    }, 120);
+  }
+
+  // Esc/क्लोज़ होने पर सफ़ाई
+  new MutationObserver(() => {
+    const m = document.getElementById("appModal");
+    if(ctx && m && !m.classList.contains("open")){
+      const c = ctx; ctx = null;
+      if(!c.done) setTimeout(() => { const a = amtInput(c.idx); if(a){ a.focus(); try{ a.select(); }catch(e){} } }, 30);
+    }
+  }).observe(document.getElementById("appModal"), { attributes: true, attributeFilter: ["class"] });
+
+  // पॉपअप के अंदर की keys
+  window.addEventListener("keydown", function(e){
+    if(!ctx) return;
+    const m = document.getElementById("appModal");
+    if(!m || !m.classList.contains("open")) return;
+    const kd = document.getElementById("kdPop");
+    if(kd && kd.style.display === "flex") return;
+    if(e.key === "Escape"){ e.preventDefault(); e.stopImmediatePropagation(); closeModal(); return; }   // ऐप में मॉडल पर Esc नहीं चलता, इसलिए यहीं संभाला
+    if(e.key === "Enter" && e.ctrlKey){ e.preventDefault(); e.stopImmediatePropagation(); okAlloc(); return; }
+    if(e.key === "Enter" && !e.ctrlKey && !e.altKey && !e.shiftKey){
+      const t = e.target;
+      if(!t || !t.closest || !t.closest("#baWrap")) return;
+      if(t.tagName === "SELECT" || t.tagName === "BUTTON") return;       // SELECT का Enter ड्रॉपडाउन खोलता है
+      e.preventDefault(); e.stopImmediatePropagation();
+      const list = Array.from(document.querySelectorAll("#baWrap input, #baWrap select")).filter(x => !x.disabled && x.offsetParent !== null);
+      const nx = list[list.indexOf(t) + 1];
+      if(nx){ nx.focus(); if(nx.tagName === "INPUT"){ try{ nx.select(); }catch(x){} } }
+      else if(Math.abs(remaining()) < 0.01) okAlloc();
+      else addRow();
+    }
+  }, true);
+
+  /* =====================================================================
+     वाउचर की लाइन पर "📑 Bills" बटन और सारांश
+     ===================================================================== */
+  function decorate(){
+    if(typeof CURRENT_SCREEN === "undefined" || CURRENT_SCREEN !== "voucher_entry" || !acctMode()) return;
+    document.querySelectorAll(".tally-tbl tbody tr").forEach((tr, i) => {
+      const L = VCH_STATE.acctLines[i]; if(!L) return;
+      const old = tr.querySelector(".ba-badge"); if(old) old.remove();
+      const sel = tr.querySelectorAll("select")[1]; if(!sel || !partyKind(L.ledgerId)) return;
+      const b = document.createElement("div");
+      b.className = "ba-badge";
+      const txt = billsOk(L)
+        ? L.bills.map(x => (x.type === "On Account" ? "On Account" : esc(x.type) + ": " + esc(x.ref)) + " ₹" + fmtINR(x.amount)).join(" | ")
+        : `<span class="ba-warn">${num(L.amount) > 0 ? "⚠ बिल तय नहीं (सेव पर अपने आप होगा)" : "बिल: रक़म डालने पर खुलेगा"}</span>`;
+      b.innerHTML = `<button type="button" class="ba-open" tabindex="-1" title="Bill Allocation (Alt+B)">📑 Bills</button><span>${txt}</span>`;
+      sel.insertAdjacentElement("afterend", b);
+    });
+  }
+  if(typeof window.renderVoucherEntryScreen === "function"){
+    const _rv = window.renderVoucherEntryScreen;
+    window.renderVoucherEntryScreen = function(){
+      const r = _rv.apply(this, arguments);
+      try{ decorate(); }catch(e){ console.error(e); }
+      return r;
+    };
+  }
+  document.addEventListener("click", e => {
+    const b = e.target.closest && e.target.closest(".ba-open"); if(!b) return;
+    const tr = b.closest("tr"); openAlloc(Array.from(tr.parentElement.children).indexOf(tr));
+  });
+  window.addEventListener("keydown", e => {
+    if(e.altKey && !e.ctrlKey && (e.key === "b" || e.key === "B") && !ctx &&
+       typeof CURRENT_SCREEN !== "undefined" && CURRENT_SCREEN === "voucher_entry" && acctMode()){
+      const t = e.target, tr = t && t.closest && t.closest(".tally-tbl tbody tr");
+      if(tr){ e.preventDefault(); e.stopImmediatePropagation(); openAlloc(Array.from(tr.parentElement.children).indexOf(tr)); }
+    }
+  }, true);
+  document.addEventListener("focusin", e => {            // रक़म वाले खाने में जाते ही पुराना "0" चुना हुआ रहे
+    const t = e.target;
+    if(typeof CURRENT_SCREEN !== "undefined" && CURRENT_SCREEN === "voucher_entry" && t.matches && t.matches("input.num") && t.closest(".tally-tbl tbody")){
+      try{ t.select(); }catch(x){}
+    }
+  });
+
+  /* ---------- पॉपअप कब खुले ---------- */
+  document.addEventListener("change", function(e){               // रक़म पक्की होने पर
+    if(ctx || typeof CURRENT_SCREEN === "undefined" || CURRENT_SCREEN !== "voucher_entry" || !acctMode()) return;
+    const inp = e.target;
+    if(!(inp && inp.matches && inp.matches("input.num") && inp.closest(".tally-tbl tbody"))) return;
+    const tr = inp.closest("tr"), idx = Array.from(tr.parentElement.children).indexOf(tr);
+    const L = VCH_STATE.acctLines[idx]; if(!L) return;
+    const amt = r2(inp.value);
+    if(!partyKind(L.ledgerId) || !(amt > 0)) return;
+    if(L.bills && L.bills.length && Math.abs(sum(L.bills) - amt) < 0.01) return;
+    setTimeout(() => openAlloc(idx), 80);
+  });
+  (function(){                                                    // लेजर/टाइप बदलने पर
+    const _u = window.updateAcctRow;
+    if(typeof _u !== "function") return;
+    window.updateAcctRow = function(idx, field, val){
+      const L = VCH_STATE.acctLines[idx];
+      if(L && (field === "ledgerId" || field === "type")) L.bills = undefined;
+      const r = _u.apply(this, arguments);
+      if(field === "ledgerId" && L && partyKind(val) && num(L.amount) > 0) setTimeout(() => openAlloc(idx), 90);
+      return r;
+    };
+  })();
+
+  /* =====================================================================
+     3) SAVE / ALTER : बिल वाउचर के साथ जुड़कर सेव हों
+     ===================================================================== */
+  (function(){
+    const _save = window.saveCurrentVoucher;
+    if(typeof _save !== "function") return;
+    window.saveCurrentVoucher = function(){
+      let snap = null, editing = null, oldObj = null;
+      const before = DB.vouchers.length;
+      try{
+        if(acctMode()){
+          VCH_STATE.acctLines.forEach((L, i) => {
+            if(partyKind(L.ledgerId) && num(L.amount) > 0 && !billsOk(L)) L.bills = defaultBills(i);
+          });
+          snap = VCH_STATE.acctLines.filter(L => r2(L.amount) > 0 && L.ledgerId).map(L => L.bills ? clone(L.bills) : null);
+        }
+        editing = VCH_STATE.editingId;
+        if(editing) oldObj = DB.vouchers.find(v => v.id === editing);
+      }catch(err){ console.error(err); }
+      const res = _save.apply(this, arguments);
+      try{
+        if(snap){
+          let v = null;
+          if(editing){ const cur = DB.vouchers.find(x => x.id === editing); if(cur && cur !== oldObj) v = cur; }
+          else if(DB.vouchers.length === before + 1) v = DB.vouchers[DB.vouchers.length - 1];
+          if(v && v.entries){
+            v.entries.forEach((en, i) => { if(snap[i] && partyKind(en.ledgerId)) en.bills = snap[i]; });
+            saveDB();
+          }
+        }
+      }catch(err){ console.error(err); }
+      return res;
+    };
+  })();
+
+  /* =====================================================================
+     4) OUTSTANDING REPORT (Receivables / Payables)
+     ===================================================================== */
+  const OS = { kind: "D", q: "" };
+
+  function renderOutstandingScreen(){
+    document.getElementById("screenTitle").textContent = "Outstanding — " + (OS.kind === "D" ? "Receivables (Sundry Debtors)" : "Payables (Sundry Creditors)");
+    document.getElementById("screenSub").textContent = "R = Receivables | P = Payables | / = पार्टी खोजें | Alt+P = Print";
+    const ns = OS.kind === "D" ? 1 : -1, q = OS.q.trim().toLowerCase();
+    let grand = 0, billCnt = 0; const bk = [0, 0, 0, 0]; let rows = "";
+    DB.ledgers.filter(l => partyKind(l.id) === OS.kind && (!q || l.name.toLowerCase().includes(q))).forEach(l => {
+      const items = outstanding(l.id).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+      if(!items.length) return;
+      const total = r2(items.reduce((s, m) => s + m.net, 0));
+      grand = r2(grand + total * ns);
+      rows += `<tr style="background:#f1f5f9;font-weight:700;"><td colspan="3">${esc(l.name)}</td>
+        <td class="num">₹${fmtINR(Math.abs(total))} ${total > 0 ? "Dr" : "Cr"}</td></tr>`;
+      items.forEach(m => {
+        const normal = m.net * ns > 0, a = age(m.date);
+        if(normal && m.ref !== "On Account"){ bk[a <= 30 ? 0 : a <= 60 ? 1 : a <= 90 ? 2 : 3] += Math.abs(m.net); billCnt++; }
+        rows += `<tr><td style="padding-left:26px;">${esc(m.ref)}</td><td>${m.date ? fmtDate(m.date) : "-"}</td>
+          <td class="num">${m.ref === "On Account" ? "-" : a}</td>
+          <td class="num" style="${normal ? "" : "color:#b45309;"}">₹${fmtINR(Math.abs(m.net))} ${m.net > 0 ? "Dr" : "Cr"}</td></tr>`;
+      });
+    });
+    const card = (t, v, c) => `<div style="flex:1;min-width:130px;background:#fff;border:1px solid #cbd5e1;border-left:4px solid ${c};padding:8px 10px;border-radius:3px;">
+      <div style="font-size:11px;color:#64748b;">${t}</div><div style="font-weight:800;font-size:15px;">₹${fmtINR(v)}</div></div>`;
+    const tab = (k, t) => `<button class="btn ${OS.kind === k ? "" : "btn-sec"}" onclick="window.osSetKind('${k}')">${t}</button>`;
+    document.getElementById("screenBody").innerHTML = `
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap;" class="no-print">
+        ${tab("D", "Receivables (R)")} ${tab("C", "Payables (P)")}
+        <input id="osQ" placeholder="🔍 पार्टी खोजें ( / )" value="${esc(OS.q)}" oninput="window.osSearch(this.value)" style="margin-left:auto;padding:6px 10px;min-width:220px;">
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+        ${card("कुल बकाया (" + billCnt + " बिल)", grand, "#0f6e4e")}
+        ${card("0 – 30 दिन", bk[0], "#16a34a")} ${card("31 – 60 दिन", bk[1], "#ca8a04")}
+        ${card("61 – 90 दिन", bk[2], "#ea580c")} ${card("90+ दिन", bk[3], "#dc2626")}
+      </div>
+      <div class="form-card" style="padding:0;overflow:hidden;">
+        <table class="tally-tbl"><thead><tr><th>Party / Bill Ref</th><th>Date</th><th class="num">Age (दिन)</th><th class="num">Pending</th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="4" style="text-align:center;color:#64748b;padding:18px;">कोई बकाया बिल नहीं</td></tr>`}</tbody></table>
+      </div>`;
+  }
+  window.renderOutstandingScreen = renderOutstandingScreen;
+  window.osSetKind = k => { OS.kind = k; OS.q = ""; renderOutstandingScreen(); };
+  window.osSearch = v => {
+    OS.q = v; renderOutstandingScreen();
+    const i = document.getElementById("osQ"); if(i){ i.focus(); i.setSelectionRange(v.length, v.length); }
+  };
+
+  (function(){                                                     // नई स्क्रीन को ऐप में जोड़ना
+    const _rs = window.renderScreen;
+    window.renderScreen = function(screen){
+      if(screen === "outstanding"){ closeModal(); renderOutstandingScreen(); return; }
+      return _rs.apply(this, arguments);
+    };
+    try{
+      const i = GATEWAY_MENU.findIndex(m => m.screen === "balance_sheet");
+      if(i >= 0 && !GATEWAY_MENU.some(m => m.screen === "outstanding")){
+        GATEWAY_MENU.splice(i + 1, 0, { section: GATEWAY_MENU[i].section, label: "Outstanding (Receivables / Payables)", hk: "O", screen: "outstanding" });
+      }
+      const rb = document.querySelector(".right-bar");
+      if(rb && !document.getElementById("fnOutBtn")){
+        const b = document.createElement("button");
+        b.id = "fnOutBtn"; b.className = "fn-btn";
+        b.innerHTML = '<span class="fn-key">Alt+O</span><span>Outstanding</span>';
+        b.onclick = () => navigate("outstanding");
+        rb.appendChild(b);
+      }
+      if(CURRENT_SCREEN === "gateway") renderGateway();
+    }catch(e){ console.error(e); }
+    window.addEventListener("keydown", e => {
+      const m = document.getElementById("appModal");
+      if(m && m.classList.contains("open")) return;
+      if(e.altKey && !e.ctrlKey && (e.key === "o" || e.key === "O")){ e.preventDefault(); e.stopImmediatePropagation(); navigate("outstanding"); return; }
+      if(CURRENT_SCREEN !== "outstanding" || e.ctrlKey || e.altKey || e.metaKey) return;
+      const t = e.target;
+      if(t && ["INPUT","SELECT","TEXTAREA"].includes(t.tagName)) return;
+      const k = e.key.toLowerCase();
+      if(k === "r"){ e.preventDefault(); e.stopImmediatePropagation(); window.osSetKind("D"); }
+      else if(k === "p"){ e.preventDefault(); e.stopImmediatePropagation(); window.osSetKind("C"); }
+      else if(e.key === "/"){ e.preventDefault(); e.stopImmediatePropagation(); const i = document.getElementById("osQ"); if(i) i.focus(); }
+    }, true);
+  })();
+})();
+</script>
 </body>
 </html>
