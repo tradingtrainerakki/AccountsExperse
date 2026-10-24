@@ -6772,883 +6772,481 @@ window.renderStockSummaryScreen = function() {
   })();
 })();
 </script>
-  <!-- ================= MASTER TALLY-PRIME UPGRADE: BRS + LEDGER DR/CR + B/S 3-STEP DRILL-DOWN ================= -->
-<style>
-  .tally-sheet-grid {
-    display: grid; grid-template-columns: 1fr 1fr; border: 2px solid #0f172a; background: #fff;
-  }
-  .tally-sheet-col {
-    display: flex; flex-direction: column; justify-content: space-between; min-height: 430px;
-  }
-  .tally-sheet-col:first-child { border-right: 2px solid #0f172a; }
-  .tally-col-head {
-    background: #0f6e4e; color: #fff; font-weight: 800; padding: 7px 10px;
-    display: flex; justify-content: space-between; border-bottom: 2px solid #0f172a;
-    font-size: 13px; letter-spacing: 0.4px;
-  }
-  .tally-grp-block {
-    border-bottom: 1px dashed #cbd5e1; padding: 7px 10px; transition: background 0.15s;
-  }
-  .tally-grp-block.clickable:hover { background: #fef9c3; cursor: pointer; }
-  .tally-grp-title {
-    display: flex; justify-content: space-between; font-weight: 800; color: #0f172a;
-    font-size: 13px; padding: 2px 0;
-  }
-  .tally-sub-led {
-    display: flex; justify-content: space-between; font-size: 12px; color: #334155;
-    padding: 3px 6px 3px 18px; cursor: pointer; font-style: italic; border-radius: 3px;
-  }
-  .tally-sub-led:hover { background: #fef08a; color: #000; font-style: normal; font-weight: 700; }
-  .tally-col-foot {
-    background: #f1f5f9; border-top: 2px solid #0f172a; border-bottom: 3px double #0f172a;
-    padding: 8px 10px; display: flex; justify-content: space-between; font-weight: 800; font-size: 14px;
-  }
-</style>
+  <script>
+(function(){
+  /* =====================================================================
+     TALLY-STYLE REPORTS : Ledger (Particulars) | Balance Sheet | P&L | Trial Balance
+     (ग्रुप पर क्लिक -> लेजर खुलें, लेजर पर क्लिक -> लेजर का खाता)  +  BANK RECONCILIATION
+     ===================================================================== */
+  const num = v => Number(v) || 0;
+  const r2  = v => +num(v).toFixed(2);
+  const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  const money  = v => "₹" + fmtINR(Math.abs(v));
+  const signed = v => (v < -0.004 ? "-" : "") + money(v);
+  const todayStr = () => (DB.company && DB.company.curDate) || new Date().toISOString().slice(0, 10);
 
-<script>
-(function() {
-  let SHOW_NARRATION_IN_LEDGER = true;
-  let SHOW_ZERO_BALANCES = false;
-  let BS_DETAILED_MODE = false;      // Alt+F1: Condensed (Groups only) vs Detailed (Groups + Ledgers)
-  let BS_ACTIVE_GROUP_DRILL = null;  // Jab Balance Sheet me kisi Group par click kiya jaye
-  let SELECTED_BANK_LEDGER_ID = "";
-  let SHOW_RECONCILED_ENTRIES = true;
-  let ACTUAL_STATEMENT_BAL = "";
+  const st = document.createElement("style");
+  st.textContent = `
+    .rp-card{background:#fff;border:1px solid #cbd5e1;border-radius:4px;overflow:hidden;}
+    .rp-head{background:#0f6e4e;color:#fff;font-weight:700;padding:7px 12px;border-bottom:2px solid #fbbf24;display:flex;justify-content:space-between;}
+    .rp-sec{background:#f1f5f9;color:#0f6e4e;font-weight:800;font-size:11.5px;padding:4px 12px;letter-spacing:.4px;border-bottom:1px solid #e2e8f0;}
+    .rp-row{display:flex;justify-content:space-between;gap:10px;padding:6px 12px;border-bottom:1px solid #eef2f7;font-size:13px;}
+    .rp-row[data-t="g"],.rp-row[data-t="l"],.rp-row[data-t="pl"]{cursor:pointer;}
+    .rp-row[data-t="g"]:hover,.rp-row[data-t="l"]:hover,.rp-row[data-t="pl"]:hover{background:#f0fdf4;}
+    .rp-row.sel{background:#fef08a !important;outline:1px solid #0f6e4e;}
+    .rp-row.g{font-weight:700;} .rp-row.l{color:#1e3a8a;font-weight:500;} .rp-row.p,.rp-row.pl{font-weight:700;color:#0f6e4e;}
+    .rp-row span:first-child{flex:1;} .rp-a,.rp-c{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;}
+    .rp-c{width:130px;flex:none;}
+    .rp-tot{display:flex;justify-content:space-between;padding:8px 12px;font-weight:800;border-top:2px solid #0f6e4e;background:#f1f5f9;}
+    .rp-tb{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap;}
+    .rp-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start;}
+    .lv-cp{color:#0f172a;font-weight:600;} .lv-nar{display:block;font-size:11px;color:#64748b;font-style:italic;font-weight:400;}
+    .lv-more{font-size:11px;color:#64748b;font-weight:400;}
+    tr.lv-sum td{background:#f1f5f9;font-weight:700;} tr.lv-open td{background:#f8fafc;font-weight:600;}
+    tr.br-ok td{background:#f0fdf4;color:#166534;}
+  `;
+  document.head.appendChild(st);
 
-  // ============================================================================
-  // HELPER 1: FIND OPPOSITE LEDGER(S) FOR TALLY LEDGER VIEW (DR / CR HEADS)
-  // ============================================================================
-  function getOppositeParticulars(v, targetLedgerId) {
-    const entries = getVoucherEntries(v);
-    const myEntry = entries.find(e => e.ledgerId === targetLedgerId);
-    const others = entries.filter(e => e.ledgerId !== targetLedgerId);
+  const RP = { open: {}, zero: false, sel: null };
 
-    if (!others.length) {
-      const fallbackId = (v.partyLedgerId && v.partyLedgerId !== targetLedgerId) ? v.partyLedgerId
-        : (v.drLedgerId && v.drLedgerId !== targetLedgerId) ? v.drLedgerId : v.crLedgerId;
-      const nm = fallbackId ? getLedgerName(fallbackId) : v.type;
-      return { prefix: myEntry?.type === "Dr" ? "Cr" : "Dr", mainName: nm, subLines: [] };
+  /* ---------- ग्रुप का पेड़ (group -> subgroup -> ledger) ---------- */
+  function buildTree(bal){
+    const nodes = {};
+    DB.groups.forEach(g => { nodes[g.name] = { g: g, name: g.name, parent: g.parent || "", kids: [], leds: [], net: 0, has: false }; });
+    Object.keys(bal).forEach(id => {
+      const b = bal[id], gn = b.ledger.group || "Suspense A/c";
+      if(!nodes[gn]) nodes[gn] = { g: { name: gn, nature: "Assets", affectsGP: false }, name: gn, parent: "", kids: [], leds: [], net: 0, has: false };
+      nodes[gn].leds.push(b);
+    });
+    Object.keys(nodes).forEach(k => { const n = nodes[k]; if(n.parent && nodes[n.parent]) nodes[n.parent].kids.push(n); });
+    const roots = Object.keys(nodes).map(k => nodes[k]).filter(n => !n.parent || !nodes[n.parent]);
+    function tot(n, d){
+      if(d > 15) return 0;
+      let s = 0, h = false;
+      n.leds.forEach(b => { s += b.netSigned; if(Math.abs(b.netSigned) > 0.004 || b.curDr || b.curCr) h = true; });
+      n.kids.forEach(k => { s += tot(k, d + 1); if(k.has) h = true; });
+      n.net = r2(s); n.has = h; return n.net;
     }
-
-    // Tally Rule: Agar current ledger Dr hua hai to opposite account Cr ("To/Cr") hoga, aur vice-versa
-    const prefix = (myEntry && myEntry.type === "Dr") ? "Cr" : "Dr";
-
-    if (others.length === 1) {
-      return {
-        prefix,
-        mainName: getLedgerName(others[0].ledgerId),
-        subLines: []
-      };
-    }
-
-    return {
-      prefix,
-      mainName: `${getLedgerName(others[0].ledgerId)}  (as per details)`,
-      subLines: others.map(o => ({
-        name: getLedgerName(o.ledgerId),
-        type: o.type,
-        amount: o.amount
-      }))
-    };
+    roots.forEach(n => tot(n, 0));
+    return { nodes: nodes, roots: roots };
+  }
+  function natureOf(n, T){
+    let x = n, k = 0;
+    while(x && k++ < 12){ if(x.g && x.g.nature) return x.g.nature; x = T.nodes[x.parent]; }
+    return "Assets";
   }
 
-  // Direct Drill-Down to any Ledger Statement (and Esc brings you back to the Group / B/S!)
-  window.drillToLedger = function(ledgerId) {
-    SELECTED_LEDGER_FOR_VIEW = ledgerId;
-    navigate("ledgers_view", true);
+  /* ---------- पंक्तियाँ ---------- */
+  function row(t, k, depth, label, amt, extra){
+    return `<div class="rp-row ${t}" data-t="${t}" data-k="${esc(k)}" ${extra || ""} style="padding-left:${12 + depth * 18}px"><span>${label}</span>${amt}</div>`;
+  }
+  const one = v => `<span class="rp-a">${signed(v)}</span>`;
+  const two = v => `<span class="rp-c">${v > 0.004 ? money(v) : ""}</span><span class="rp-c">${v < -0.004 ? money(v) : ""}</span>`;
+  function ledShow(b){ return RP.zero || Math.abs(b.netSigned) > 0.004 || b.curDr || b.curCr; }
+  function nodeRows(n, depth, sign, scr, out, twoCol){
+    if(!RP.zero && !n.has) return;
+    const key = scr + ":" + n.name, open = !!RP.open[key];
+    out.push(row("g", key, depth, (open ? "▼ " : "▶ ") + esc(n.name), twoCol ? two(n.net) : one(n.net * sign)));
+    if(!open) return;
+    n.kids.forEach(k => nodeRows(k, depth + 1, sign, scr, out, twoCol));
+    n.leds.forEach(b => {
+      if(!ledShow(b)) return;
+      out.push(row("l", "L:" + scr + ":" + b.ledger.id, depth + 1, esc(b.ledger.name), twoCol ? two(b.netSigned) : one(b.netSigned * sign), `data-led="${b.ledger.id}"`));
+    });
+  }
+  const plain = (label, v) => `<div class="rp-row p" data-t="p"><span>${label}</span><span class="rp-a">${money(v)}</span></div>`;
+  const sec   = label => `<div class="rp-sec">${label}</div>`;
+  const totBox = v => `<div class="rp-tot"><span>Total</span><span class="rp-a">${money(v)}</span></div>`;
+
+  function toolbar(){
+    return `<div class="rp-tb no-print">
+      <button class="btn btn-sec" onclick="window.rpAll(true)">▼ सब खोलें</button>
+      <button class="btn btn-sec" onclick="window.rpAll(false)">▶ सब बंद करें</button>
+      <label style="font-size:12px;display:flex;gap:4px;align-items:center;"><input type="checkbox" ${RP.zero ? "checked" : ""} onchange="window.rpZero(this.checked)"> शून्य शेष भी दिखाएँ</label>
+      <span style="font-size:11.5px;color:#64748b;margin-left:auto;">क्लिक/Enter = खोलें | लेजर पर क्लिक = खाता | ↑ ↓ चुनें | ← बंद</span></div>`;
+  }
+
+  function openLedger(id){
+    SELECTED_LEDGER_FOR_VIEW = id; LV.from = ""; LV.to = "";
+    navigate("ledgers_view");
+  }
+  const TREE_SCREENS = { balance_sheet: "renderBalanceSheetScreen", trial_balance: "renderTrialBalanceScreen", pnl_report: "renderPnlScreen" };
+  const isTree = () => !!TREE_SCREENS[CURRENT_SCREEN];
+
+  function scroller(){
+    let el = document.getElementById("screenBody");
+    while(el){ const o = getComputedStyle(el).overflowY; if((o === "auto" || o === "scroll") && el.scrollHeight > el.clientHeight) return el; el = el.parentElement; }
+    return document.scrollingElement;
+  }
+  function rerender(){
+    const sc = scroller(), top = sc ? sc.scrollTop : 0;
+    window[TREE_SCREENS[CURRENT_SCREEN]]();
+    if(sc) sc.scrollTop = top;
+    applySel();
+  }
+  function applySel(){
+    document.querySelectorAll("#screenBody .rp-row.sel").forEach(x => x.classList.remove("sel"));
+    if(!RP.sel) return;
+    const r = Array.from(document.querySelectorAll("#screenBody .rp-row")).find(x => x.dataset.k === RP.sel);
+    if(r){ r.classList.add("sel"); r.scrollIntoView({ block: "nearest" }); }
+  }
+  function allKeys(){
+    const bal = computeAllLedgerBalances(), T = buildTree(bal);
+    const pre = { balance_sheet: "bs", trial_balance: "tb", pnl_report: "pl" }[CURRENT_SCREEN];
+    return Object.keys(T.nodes).map(g => pre + ":" + g);
+  }
+  window.rpAll = function(open){ RP.open = {}; if(open) allKeys().forEach(k => { RP.open[k] = true; }); rerender(); };
+  window.rpZero = function(v){ RP.zero = v; rerender(); };
+
+  function activate(r, openOnly){
+    const t = r.dataset.t;
+    RP.sel = r.dataset.k;
+    if(t === "g"){ RP.open[r.dataset.k] = openOnly ? true : !RP.open[r.dataset.k]; rerender(); }
+    else if(t === "l") openLedger(r.dataset.led);
+    else if(t === "pl") navigate("pnl_report");
+  }
+  document.addEventListener("click", e => {
+    const r = e.target.closest && e.target.closest("#screenBody .rp-row");
+    if(r && isTree()) activate(r, false);
+  });
+
+  /* ---------- BALANCE SHEET ---------- */
+  window.renderBalanceSheetScreen = function(){
+    document.getElementById("screenTitle").textContent = "Balance Sheet";
+    document.getElementById("screenSub").textContent = "Liabilities & Assets — ग्रुप पर क्लिक करें, फिर लेजर पर";
+    const bal = computeAllLedgerBalances(), T = buildTree(bal);
+    const byN = nat => T.roots.filter(n => natureOf(n, T) === nat);
+    const L = byN("Liabilities"), A = byN("Assets"), E = byN("Expenses"), I = byN("Income");
+    const profit = r2(-I.reduce((s, n) => s + n.net, 0) - E.reduce((s, n) => s + n.net, 0));   // आय - ख़र्च
+    const lo = [], ao = [];
+    L.forEach(n => nodeRows(n, 0, -1, "bs", lo));
+    A.forEach(n => nodeRows(n, 0, 1, "bs", ao));
+    if(Math.abs(profit) > 0.004){
+      if(profit > 0) lo.push(row("pl", "PL", 0, "Profit &amp; Loss A/c (Net Profit)", one(profit)));
+      else ao.push(row("pl", "PL", 0, "Profit &amp; Loss A/c (Net Loss)", one(-profit)));
+    }
+    const lt = r2(-L.reduce((s, n) => s + n.net, 0) + Math.max(profit, 0));
+    const at = r2(A.reduce((s, n) => s + n.net, 0) + Math.max(-profit, 0));
+    const diff = r2(lt - at);
+    document.getElementById("screenBody").innerHTML = toolbar() + `
+      <div class="rp-grid">
+        <div class="rp-card"><div class="rp-head"><span>LIABILITIES</span><span>as on ${fmtDate(DB.company.fyTo)}</span></div>
+          ${lo.join("") || '<div class="rp-row p">कुछ दर्ज नहीं</div>'}${totBox(lt)}</div>
+        <div class="rp-card"><div class="rp-head"><span>ASSETS</span><span>as on ${fmtDate(DB.company.fyTo)}</span></div>
+          ${ao.join("") || '<div class="rp-row p">कुछ दर्ज नहीं</div>'}${totBox(at)}</div>
+      </div>
+      <div style="margin-top:10px;padding:8px;text-align:center;font-weight:700;border-radius:4px;background:${Math.abs(diff) < 0.01 ? "#ecfdf5" : "#fef2f2"};color:${Math.abs(diff) < 0.01 ? "var(--ok)" : "var(--danger)"};">
+        ${Math.abs(diff) < 0.01 ? "✔ Balance Sheet मिल गई (Liabilities = Assets)" : "⚠ अंतर ₹" + fmtINR(Math.abs(diff)) + " — " + (diff > 0 ? "Assets कम" : "Liabilities कम")}</div>`;
+    applySel();
   };
 
-  // ============================================================================
-  // 1. TALLY-STYLE LEDGER ACCOUNT VOUCHERS STATEMENT (ALT+L)
-  // ============================================================================
-  window.renderLedgersViewScreen = function() {
-    document.getElementById("screenTitle").textContent = "Ledger Vouchers Statement (Tally Style)";
-    document.getElementById("screenSub").textContent = "Shows Exact Opposite Dr/Cr Ledger | Double-Click or Enter/E to Edit Voucher | Esc: Back";
-
-    if (!SELECTED_LEDGER_FOR_VIEW && DB.ledgers.length > 0) {
-      SELECTED_LEDGER_FOR_VIEW = DB.ledgers[0].id;
+  /* ---------- PROFIT & LOSS ---------- */
+  window.renderPnlScreen = function(){
+    document.getElementById("screenTitle").textContent = "Profit & Loss Account";
+    document.getElementById("screenSub").textContent = "Trading + P&L — ग्रुप पर क्लिक करें, फिर लेजर पर";
+    const bal = computeAllLedgerBalances(), T = buildTree(bal);
+    const byN = nat => T.roots.filter(n => natureOf(n, T) === nat);
+    const E = byN("Expenses"), I = byN("Income"), isT = n => n.g.affectsGP === true;
+    const tE = E.filter(isT), pE = E.filter(n => !isT(n)), tI = I.filter(isT), pI = I.filter(n => !isT(n));
+    const sE = a => r2(a.reduce((s, n) => s + n.net, 0)), sI = a => r2(-a.reduce((s, n) => s + n.net, 0));
+    const hasT = tE.concat(tI).some(n => n.has);
+    const gp = hasT ? r2(sI(tI) - sE(tE)) : 0;
+    const np = r2(gp + sI(pI) - sE(pE));
+    const Lr = [], Rr = [];
+    if(hasT){
+      Lr.push(sec("TRADING ACCOUNT")); Rr.push(sec("TRADING ACCOUNT"));
+      tE.forEach(n => nodeRows(n, 0, 1, "pl", Lr)); tI.forEach(n => nodeRows(n, 0, -1, "pl", Rr));
+      if(gp >= 0) Lr.push(plain("Gross Profit c/o", gp)); else Rr.push(plain("Gross Loss c/o", -gp));
+      const tt = r2(sE(tE) + Math.max(gp, 0));
+      Lr.push(totBox(tt)); Rr.push(totBox(tt));
+      Lr.push(sec("PROFIT &amp; LOSS ACCOUNT")); Rr.push(sec("PROFIT &amp; LOSS ACCOUNT"));
+      if(gp < 0) Lr.push(plain("Gross Loss b/f", -gp)); else if(gp > 0) Rr.push(plain("Gross Profit b/f", gp));
     }
+    pE.forEach(n => nodeRows(n, 0, 1, "pl", Lr)); pI.forEach(n => nodeRows(n, 0, -1, "pl", Rr));
+    if(np >= 0) Lr.push(plain("Net Profit", np)); else Rr.push(plain("Net Loss", -np));
+    const lt = r2((hasT && gp < 0 ? -gp : 0) + sE(pE) + Math.max(np, 0));
+    const rt = r2((hasT && gp > 0 ? gp : 0) + sI(pI) + Math.max(-np, 0));
+    document.getElementById("screenBody").innerHTML = toolbar() + `
+      <div class="rp-grid">
+        <div class="rp-card"><div class="rp-head"><span>EXPENSES (Dr)</span><span>${fmtDate(DB.company.fyFrom)} → ${fmtDate(DB.company.fyTo)}</span></div>${Lr.join("")}${totBox(lt)}</div>
+        <div class="rp-card"><div class="rp-head"><span>INCOMES (Cr)</span><span>&nbsp;</span></div>${Rr.join("")}${totBox(rt)}</div>
+      </div>
+      <div style="margin-top:10px;padding:8px;text-align:center;font-weight:800;border-radius:4px;background:${np >= 0 ? "#ecfdf5" : "#fef2f2"};color:${np >= 0 ? "var(--ok)" : "var(--danger)"};">
+        ${np >= 0 ? "Net Profit" : "Net Loss"}: ₹${fmtINR(Math.abs(np))}</div>`;
+    applySel();
+  };
 
-    const ledOpts = DB.ledgers.map(l =>
-      `<option value="${l.id}" ${l.id === SELECTED_LEDGER_FOR_VIEW ? "selected" : ""}>${escHtml(l.name)}  —  [${escHtml(l.group)}]</option>`
-    ).join("");
+  /* ---------- TRIAL BALANCE ---------- */
+  window.renderTrialBalanceScreen = function(){
+    document.getElementById("screenTitle").textContent = "Trial Balance";
+    document.getElementById("screenSub").textContent = "Closing Balance — ग्रुप पर क्लिक करें, फिर लेजर पर";
+    const bal = computeAllLedgerBalances(), T = buildTree(bal);
+    const out = [];
+    let td = 0, tc = 0;
+    T.roots.forEach(n => { nodeRows(n, 0, 1, "tb", out, true); if(n.net > 0) td += n.net; else tc -= n.net; });
+    td = r2(td); tc = r2(tc);
+    const diff = r2(td - tc);
+    document.getElementById("screenBody").innerHTML = toolbar() + `
+      <div class="rp-card">
+        <div class="rp-head"><span>Particulars</span><span style="display:flex;"><span class="rp-c">Debit</span><span class="rp-c">Credit</span></span></div>
+        ${out.join("") || '<div class="rp-row p">कुछ दर्ज नहीं</div>'}
+        <div class="rp-tot"><span>Grand Total</span><span style="display:flex;"><span class="rp-c">${money(td)}</span><span class="rp-c">${money(tc)}</span></span></div>
+        <div style="padding:9px;text-align:center;font-weight:700;border-top:1px solid #cbd5e1;background:${Math.abs(diff) < 0.01 ? "#ecfdf5" : "#fef2f2"};color:${Math.abs(diff) < 0.01 ? "var(--ok)" : "var(--danger)"};">
+          ${Math.abs(diff) < 0.01 ? "✔ Trial Balance मिल गया (Debit = Credit)" : "⚠ अंतर ₹" + fmtINR(Math.abs(diff))}</div>
+      </div>`;
+    applySel();
+  };
 
-    const balMap = computeAllLedgerBalances();
-    const curBal = balMap[SELECTED_LEDGER_FOR_VIEW] || { opDr: 0, opCr: 0, curDr: 0, curCr: 0, closeBal: 0, closeType: "Dr" };
-    const targetLedger = getLedger(SELECTED_LEDGER_FOR_VIEW);
+  /* ---------- ↑ ↓ Enter ← → से चलना (BS / P&L / TB) ---------- */
+  window.addEventListener("keydown", function(e){
+    if(!isTree() || e.ctrlKey || e.altKey || e.metaKey) return;
+    const m = document.getElementById("appModal");
+    if(m && m.classList.contains("open")) return;
+    const t = e.target;
+    if(t && ["INPUT","SELECT","TEXTAREA"].includes(t.tagName)) return;
+    const rows = Array.from(document.querySelectorAll("#screenBody .rp-row")).filter(r => r.dataset.t === "g" || r.dataset.t === "l" || r.dataset.t === "pl");
+    if(!rows.length) return;
+    let i = rows.findIndex(r => r.classList.contains("sel"));
+    const k = e.key;
+    if(k === "ArrowDown" || k === "ArrowUp"){
+      e.preventDefault(); e.stopImmediatePropagation();
+      i = i < 0 ? (k === "ArrowDown" ? 0 : rows.length - 1) : Math.max(0, Math.min(rows.length - 1, i + (k === "ArrowDown" ? 1 : -1)));
+      RP.sel = rows[i].dataset.k; applySel();
+    }else if(k === "Enter" || k === "ArrowRight" || k === " "){
+      if(i < 0) return;
+      e.preventDefault(); e.stopImmediatePropagation();
+      activate(rows[i], k === "ArrowRight");
+    }else if(k === "ArrowLeft"){
+      if(i < 0) return;
+      const r = rows[i];
+      if(r.dataset.t === "g" && RP.open[r.dataset.k]){ e.preventDefault(); e.stopImmediatePropagation(); RP.open[r.dataset.k] = false; rerender(); }
+    }
+  }, true);
 
-    let running = +(curBal.opDr - curBal.opCr).toFixed(2);
-    let totPeriodDr = 0;
-    let totPeriodCr = 0;
-    let rowsHtml = "";
-
-    const sortedVouchers = [...DB.vouchers]
-      .filter(v => isVoucherInPeriod(v, DB.company.fyFrom, DB.company.fyTo))
-      .sort((a, b) => (a.date > b.date ? 1 : -1));
-
-    sortedVouchers.forEach((v) => {
-      const entries = getVoucherEntries(v);
-      const myLines = entries.filter(e => e.ledgerId === SELECTED_LEDGER_FOR_VIEW);
-      if (!myLines.length) return;
-
-      let drAmt = 0, crAmt = 0;
-      myLines.forEach(m => {
-        if (m.type === "Dr") drAmt = +(drAmt + m.amount).toFixed(2);
-        else crAmt = +(crAmt + m.amount).toFixed(2);
+  /* =====================================================================
+     LEDGER VIEW (Tally जैसा: Particulars में सामने वाला लेजर)
+     ===================================================================== */
+  const LV = { from: "", to: "" };
+  function statement(id, from, to){
+    const l = getLedger(id);
+    let op = (l && l.opType === "Dr" ? 1 : -1) * num(l && l.opBal);
+    const rows = [];
+    const sorted = DB.vouchers.map((v, i) => ({ v: v, i: i })).filter(x => x.v && x.v.date)
+      .sort((a, b) => a.v.date === b.v.date ? a.i - b.i : (a.v.date > b.v.date ? 1 : -1));
+    sorted.forEach(x => {
+      const v = x.v, ents = getVoucherEntries(v);
+      const mine = ents.filter(e => e.ledgerId === id);
+      if(!mine.length) return;
+      if(from && v.date < from){ mine.forEach(e => { op += e.type === "Dr" ? e.amount : -e.amount; }); return; }
+      if(to && v.date > to) return;
+      let dr = 0, cr = 0;
+      mine.forEach(e => { if(e.type === "Dr") dr += e.amount; else cr += e.amount; });
+      const cmap = {};
+      ents.filter(e => e.ledgerId !== id).forEach(e => {
+        const c = cmap[e.ledgerId] || (cmap[e.ledgerId] = { id: e.ledgerId, amt: 0 });
+        c.amt += (e.type === "Dr" ? 1 : -1) * e.amount;
       });
-
-      totPeriodDr = +(totPeriodDr + drAmt).toFixed(2);
-      totPeriodCr = +(totPeriodCr + crAmt).toFixed(2);
-      running = +(running + drAmt - crAmt).toFixed(2);
-
-      const opp = getOppositeParticulars(v, SELECTED_LEDGER_FOR_VIEW);
-      const subDetailsHtml = opp.subLines.length > 1
-        ? `<div style="padding-left:22px; font-size:11px; color:#475569; margin-top:2px;">` +
-          opp.subLines.map(s => `<div>• ${escHtml(s.name)} : ₹${fmtINR(s.amount)} ${s.type}</div>`).join("") +
-          `</div>`
-        : "";
-
-      const narrHtml = (SHOW_NARRATION_IN_LEDGER && v.narration)
-        ? `<div style="padding-left:22px; font-size:11.5px; color:#64748b; font-style:italic; margin-top:2px;">Narration: ${escHtml(v.narration)}</div>`
-        : "";
-
-      rowsHtml += `
-        <tr data-vid="${v.id}" onclick="kbSetRow(this, false)" ondblclick="openVoucherScreen('${v.type}', '${v.id}')" style="cursor:pointer;">
-          <td style="white-space:nowrap; vertical-align:top;"><b>${fmtDate(v.date)}</b></td>
-          <td style="vertical-align:top;">
-            <div>
-              <span class="kbd" style="background:${opp.prefix === 'Dr' ? '#dbeafe' : '#fef3c7'}; margin-right:6px;">${opp.prefix}</span>
-              <b style="font-size:13px; color:#0f172a;">${escHtml(opp.mainName)}</b>
-            </div>
-            ${subDetailsHtml}
-            ${narrHtml}
-          </td>
-          <td style="vertical-align:top;"><span class="kbd">${escHtml(v.type)}</span></td>
-          <td style="vertical-align:top;"><b>${escHtml(v.vchNo)}</b></td>
-          <td class="num" style="vertical-align:top; font-weight:700; color:#0f172a;">${drAmt ? `₹${fmtINR(drAmt)}` : ""}</td>
-          <td class="num" style="vertical-align:top; font-weight:700; color:#0f172a;">${crAmt ? `₹${fmtINR(crAmt)}` : ""}</td>
-          <td class="num" style="vertical-align:top; font-weight:700; color:var(--pri-dark);">
-            ₹${fmtINR(Math.abs(running))} ${running >= 0 ? "Dr" : "Cr"}
-          </td>
-        </tr>
-      `;
+      rows.push({ v: v, dr: r2(dr), cr: r2(cr), cps: Object.keys(cmap).map(k => cmap[k]).sort((a, b) => Math.abs(b.amt) - Math.abs(a.amt)) });
     });
-
-    const opNet = +(curBal.opDr - curBal.opCr).toFixed(2);
-    const closeNet = running;
-
-    document.getElementById("screenBody").innerHTML = `
-      <div class="form-card" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; background:#f8fafc; border-top:3px solid var(--pri);">
-        <div style="display:flex; align-items:center; gap:10px; flex:1; flex-wrap:wrap;">
-          <button class="btn btn-sec" onclick="goBack()" title="Return to Previous Screen">← Back (Esc)</button>
-          <label style="font-weight:800; color:var(--pri-dark); white-space:nowrap;">📒 Ledger:</label>
-          <select style="padding:6px 10px; font-size:13.5px; font-weight:700; min-width:260px; border:2px solid var(--pri); border-radius:4px;" onchange="SELECTED_LEDGER_FOR_VIEW=this.value; renderLedgersViewScreen();">
-            ${ledOpts}
-          </select>
-          <label style="display:flex; align-items:center; gap:5px; font-size:12px; cursor:pointer; margin-left:6px;">
-            <input type="checkbox" ${SHOW_NARRATION_IN_LEDGER ? "checked" : ""} onchange="window.toggleLedgerNarration(this.checked)">
-            Show Narration
-          </label>
-        </div>
-        <div style="text-align:right;">
-          <span style="font-size:11.5px; color:var(--muted);">Group: <b>${escHtml(targetLedger ? targetLedger.group : "-")}</b> &nbsp;|&nbsp; Closing:</span>
-          <span style="font-size:15px; font-weight:800; color:var(--pri-dark); margin-left:6px;">₹${fmtINR(Math.abs(closeNet))} ${closeNet >= 0 ? "Dr" : "Cr"}</span>
-        </div>
-      </div>
-
-      <div class="form-card" style="padding:0; overflow:hidden;" id="kbTableWrap">
-        <table class="tally-tbl">
-          <thead>
-            <tr>
-              <th style="width:95px;">Date</th>
-              <th>Particulars (Opposite Dr/Cr Account Head &amp; Narration)</th>
-              <th style="width:105px;">Vch Type</th>
-              <th style="width:105px;">Vch No.</th>
-              <th class="num" style="width:125px;">Debit (₹)</th>
-              <th class="num" style="width:125px;">Credit (₹)</th>
-              <th class="num" style="width:140px;">Running Bal</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rowsHtml || `<tr><td colspan="7" style="text-align:center; padding:24px; color:var(--muted);">Is Ledger me is period me koi transaction nahi hai.</td></tr>`}
-          </tbody>
-        </table>
-
-        <!-- TALLY BOTTOM SUMMARY BAR (OPENING + CURRENT TOTAL + CLOSING) -->
-        <div style="background:#f8fafc; border-top:2px solid #0f172a; padding:10px 14px; display:flex; justify-content:flex-end; gap:32px; font-size:12.5px;">
-          <div style="text-align:right;">
-            <div style="color:var(--muted);">Opening Balance:</div>
-            <div style="color:var(--muted); margin-top:4px;">Current Total:</div>
-            <div style="font-weight:800; color:#0f172a; margin-top:6px; font-size:13.5px;">Closing Balance:</div>
-          </div>
-          <div style="text-align:right; min-width:120px; font-family:var(--mono);">
-            <div><b>${opNet > 0 ? `₹${fmtINR(opNet)} Dr` : "-"}</b></div>
-            <div style="margin-top:4px;"><b>₹${fmtINR(totPeriodDr)} Dr</b></div>
-            <div style="margin-top:6px; font-weight:800; font-size:13.5px; color:var(--pri-dark); border-top:1px solid #94a3b8; padding-top:2px;">
-              ${closeNet >= 0 ? `₹${fmtINR(closeNet)} Dr` : ""}
-            </div>
-          </div>
-          <div style="text-align:right; min-width:120px; font-family:var(--mono);">
-            <div><b>${opNet < 0 ? `₹${fmtINR(Math.abs(opNet))} Cr` : "-"}</b></div>
-            <div style="margin-top:4px;"><b>₹${fmtINR(totPeriodCr)} Cr</b></div>
-            <div style="margin-top:6px; font-weight:800; font-size:13.5px; color:var(--pri-dark); border-top:1px solid #94a3b8; padding-top:2px;">
-              ${closeNet < 0 ? `₹${fmtINR(Math.abs(closeNet))} Cr` : ""}
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
+    return { op: r2(op), rows: rows };
+  }
+  window.lvSet = function(){
+    LV.from = (document.getElementById("lvFrom") || {}).value || "";
+    LV.to = (document.getElementById("lvTo") || {}).value || "";
+    window.renderLedgersViewScreen();
   };
-
-  window.toggleLedgerNarration = function(val) {
-    SHOW_NARRATION_IN_LEDGER = val;
-    renderLedgersViewScreen();
-  };
-
-  // ============================================================================
-  // 2. DETAILED P&L HELPER & TALLY PROFIT & LOSS / INCOME & EXPENDITURE SCREEN
-  // ============================================================================
-  window.computeDetailedPnL = function(balMap) {
-    const directExpList = [], directIncList = [], indirectExpList = [], indirectIncList = [];
-    let directExp = 0, directInc = 0, indirectExp = 0, indirectInc = 0;
-
-    Object.values(balMap).forEach(b => {
-      if (Math.abs(b.netSigned) < 0.005) return;
-      const grp = b.ledger.group;
-      const gObj = getGroupObj(grp);
-      if (gObj.nature === "Expenses") {
-        const amt = b.netSigned;
-        if (gObj.affectsGP || grp === "Purchase Accounts" || grp === "Direct Expenses") {
-          directExp = +(directExp + amt).toFixed(2);
-          directExpList.push({ id: b.ledger.id, name: b.ledger.name, group: grp, amount: amt });
-        } else {
-          indirectExp = +(indirectExp + amt).toFixed(2);
-          indirectExpList.push({ id: b.ledger.id, name: b.ledger.name, group: grp, amount: amt });
-        }
-      } else if (gObj.nature === "Income") {
-        const amt = -b.netSigned;
-        if (gObj.affectsGP || grp === "Sales Accounts" || grp === "Direct Incomes") {
-          directInc = +(directInc + amt).toFixed(2);
-          directIncList.push({ id: b.ledger.id, name: b.ledger.name, group: grp, amount: amt });
-        } else {
-          indirectInc = +(indirectInc + amt).toFixed(2);
-          indirectIncList.push({ id: b.ledger.id, name: b.ledger.name, group: grp, amount: amt });
-        }
-      }
+  window.renderLedgersViewScreen = function(){
+    document.getElementById("screenTitle").textContent = "Ledger Vouchers";
+    document.getElementById("screenSub").textContent = "↑ ↓ चुनें | Enter / E = वाउचर खोलें | Esc = वापस";
+    if(!SELECTED_LEDGER_FOR_VIEW && DB.ledgers.length) SELECTED_LEDGER_FOR_VIEW = DB.ledgers[0].id;
+    const id = SELECTED_LEDGER_FOR_VIEW, led = getLedger(id);
+    const from = LV.from || DB.company.fyFrom, to = LV.to || DB.company.fyTo;
+    const S = statement(id, from, to);
+    let totDr = 0, totCr = 0, run = S.op;
+    let body = "";
+    const opDr = S.op > 0 ? S.op : 0, opCr = S.op < 0 ? -S.op : 0;
+    body += `<tr class="lv-open"><td>${fmtDate(from)}</td><td colspan="3">Opening Balance</td>
+      <td class="num">${opDr ? money(opDr) : ""}</td><td class="num">${opCr ? money(opCr) : ""}</td><td class="num">${money(S.op)} ${S.op >= 0 ? "Dr" : "Cr"}</td></tr>`;
+    S.rows.forEach(r => {
+      totDr += r.dr; totCr += r.cr; run = r2(run + r.dr - r.cr);
+      const side = r.dr >= r.cr ? "To" : "By";
+      const first = r.cps[0];
+      const cpName = first ? esc((getLedger(first.id) || { name: "?" }).name) : "—";
+      const more = r.cps.length > 1 ? ` <span class="lv-more">(as per details)</span>` : "";
+      const tip = r.cps.map(c => ((getLedger(c.id) || {}).name || "?") + " " + (c.amt > 0 ? "Dr " : "Cr ") + money(c.amt)).join("\n");
+      body += `<tr data-vid="${r.v.id}" onclick="kbSetRow(this,false)" ondblclick="kbEditSelected()" style="cursor:pointer;" title="${esc(tip)}">
+        <td style="white-space:nowrap;">${fmtDate(r.v.date)}</td>
+        <td><span class="lv-cp">${side} ${cpName}</span>${more}${r.v.narration ? `<span class="lv-nar">${esc(r.v.narration)}</span>` : ""}</td>
+        <td>${esc(r.v.type)}</td><td><b>${esc(r.v.vchNo)}</b></td>
+        <td class="num">${r.dr ? money(r.dr) : ""}</td><td class="num">${r.cr ? money(r.cr) : ""}</td>
+        <td class="num">${money(run)} ${run >= 0 ? "Dr" : "Cr"}</td></tr>`;
     });
-
-    const grossProfit = +(directInc - directExp).toFixed(2);
-    const netProfit = +((grossProfit + indirectInc) - indirectExp).toFixed(2);
-
-    return {
-      directExpList, directIncList, indirectExpList, indirectIncList,
-      directExp, directInc, indirectExp, indirectInc,
-      grossProfit, netProfit
-    };
-  };
-
-  window.renderPnlScreen = function() {
-    const isTrust = DB.company.entityType === "Trust";
-    document.getElementById("screenTitle").textContent = isTrust
-      ? "Income & Expenditure Account (Tally Detailed View)"
-      : "Profit & Loss Account (Trading & P&L)";
-    document.getElementById("screenSub").textContent = "Click any Ledger to open its Voucher Statement | Esc: Go Back";
-
-    const balMap = computeAllLedgerBalances();
-    const pnl = window.computeDetailedPnL(balMap);
-
-    const renderLedList = (arr) => arr.map(x => `
-      <div class="tally-sub-led" onclick="window.drillToLedger('${x.id}')">
-        <span>📄 ${escHtml(x.name)} <small style="color:#64748b;">(${escHtml(x.group)})</small></span>
-        <span class="num">₹${fmtINR(x.amount)}</span>
-      </div>
-    `).join("");
-
-    const totalLeft = +(pnl.directExp + pnl.indirectExp + (pnl.netProfit > 0 ? pnl.netProfit : 0)).toFixed(2);
-    const totalRight = +(pnl.directInc + pnl.indirectInc + (pnl.netProfit < 0 ? Math.abs(pnl.netProfit) : 0)).toFixed(2);
-    const grandTotal = Math.max(totalLeft, totalRight);
-
+    totDr = r2(totDr); totCr = r2(totCr);
+    const close = r2(S.op + totDr - totCr);
+    const gDr = r2(opDr + totDr + (close < 0 ? -close : 0)), gCr = r2(opCr + totCr + (close > 0 ? close : 0));
+    body += `<tr class="lv-sum"><td colspan="4" style="text-align:right;">Current Total</td><td class="num">${money(totDr)}</td><td class="num">${money(totCr)}</td><td></td></tr>
+      <tr class="lv-open"><td colspan="4" style="text-align:right;">Closing Balance</td>
+        <td class="num">${close < 0 ? money(close) : ""}</td><td class="num">${close > 0 ? money(close) : ""}</td><td class="num">${money(close)} ${close >= 0 ? "Dr" : "Cr"}</td></tr>
+      <tr class="lv-sum"><td colspan="4" style="text-align:right;">Total</td><td class="num">${money(gDr)}</td><td class="num">${money(gCr)}</td><td></td></tr>`;
+    const opts = DB.ledgers.map(l => `<option value="${l.id}" ${l.id === id ? "selected" : ""}>${esc(l.name)} [${esc(l.group)}]</option>`).join("");
     document.getElementById("screenBody").innerHTML = `
-      <div class="tally-sheet-grid">
-        <div class="tally-sheet-col">
-          <div>
-            <div class="tally-col-head">
-              <span>${isTrust ? "EXPENDITURE (DR)" : "PARTICULARS (EXPENSES / DR)"}</span>
-              <span>AMOUNT (₹)</span>
-            </div>
-            ${pnl.directExpList.length ? `
-              <div class="tally-grp-block">
-                <div class="tally-grp-title"><span>Direct Expenses / Purchases</span><span class="num">₹${fmtINR(pnl.directExp)}</span></div>
-                ${renderLedList(pnl.directExpList)}
-              </div>
-            ` : ""}
-            <div class="tally-grp-block">
-              <div class="tally-grp-title"><span>Indirect / Operational Expenses</span><span class="num">₹${fmtINR(pnl.indirectExp)}</span></div>
-              ${renderLedList(pnl.indirectExpList) || `<div style="padding-left:16px;font-size:11.5px;color:var(--muted);">No Indirect Expenses</div>`}
-            </div>
-            ${pnl.netProfit >= 0 ? `
-              <div class="tally-grp-block" style="background:#ecfdf5;">
-                <div class="tally-grp-title" style="color:var(--ok);">
-                  <span>${isTrust ? "Excess of Income over Expenditure (Surplus)" : "Net Profit (Transferred to Capital A/c)"}</span>
-                  <span class="num">₹${fmtINR(pnl.netProfit)}</span>
-                </div>
-              </div>
-            ` : ""}
-          </div>
-          <div class="tally-col-foot">
-            <span>Total</span>
-            <span class="num">₹${fmtINR(grandTotal)}</span>
-          </div>
-        </div>
-
-        <div class="tally-sheet-col">
-          <div>
-            <div class="tally-col-head">
-              <span>${isTrust ? "INCOME / DONATIONS (CR)" : "PARTICULARS (INCOMES / CR)"}</span>
-              <span>AMOUNT (₹)</span>
-            </div>
-            ${pnl.directIncList.length ? `
-              <div class="tally-grp-block">
-                <div class="tally-grp-title"><span>Sales / Direct Incomes</span><span class="num">₹${fmtINR(pnl.directInc)}</span></div>
-                ${renderLedList(pnl.directIncList)}
-              </div>
-            ` : ""}
-            <div class="tally-grp-block">
-              <div class="tally-grp-title"><span>${isTrust ? "Donations, Contributions & Indirect Incomes" : "Indirect Incomes"}</span><span class="num">₹${fmtINR(pnl.indirectInc)}</span></div>
-              ${renderLedList(pnl.indirectIncList) || `<div style="padding-left:16px;font-size:11.5px;color:var(--muted);">No Indirect Incomes</div>`}
-            </div>
-            ${pnl.netProfit < 0 ? `
-              <div class="tally-grp-block" style="background:#fef2f2;">
-                <div class="tally-grp-title" style="color:var(--danger);">
-                  <span>${isTrust ? "Excess of Expenditure over Income (Deficit)" : "Net Loss"}</span>
-                  <span class="num">₹${fmtINR(Math.abs(pnl.netProfit))}</span>
-                </div>
-              </div>
-            ` : ""}
-          </div>
-          <div class="tally-col-foot">
-            <span>Total</span>
-            <span class="num">₹${fmtINR(grandTotal)}</span>
-          </div>
-        </div>
+      <div class="form-card" style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;">
+        <div class="field" style="flex:1;min-width:260px;"><label>Ledger Account</label>
+          <select style="padding:6px;font-size:13px;font-weight:600;" onchange="SELECTED_LEDGER_FOR_VIEW=this.value; LV_RESET();">${opts}</select></div>
+        <div class="field"><label>From</label><input type="date" id="lvFrom" value="${from}" onchange="lvSet()"></div>
+        <div class="field"><label>To</label><input type="date" id="lvTo" value="${to}" onchange="lvSet()"></div>
+        <div><div style="font-size:11.5px;color:var(--muted);">${led ? esc(led.group) : ""} — Closing Balance</div>
+          <div style="font-size:16px;font-weight:800;color:var(--pri-dark);">${money(close)} ${close >= 0 ? "Dr" : "Cr"}</div></div>
       </div>
-    `;
+      <div class="form-card" style="padding:0;overflow:hidden;" id="kbTableWrap">
+        <table class="tally-tbl"><thead><tr><th>Date</th><th>Particulars</th><th>Vch Type</th><th>Vch No.</th>
+          <th class="num">Debit (₹)</th><th class="num">Credit (₹)</th><th class="num">Balance</th></tr></thead>
+        <tbody>${body}</tbody></table></div>`;
+    if(typeof kbReapplyRow === "function") kbReapplyRow();
   };
+  window.LV_RESET = function(){ LV.from = ""; LV.to = ""; window.renderLedgersViewScreen(); };
 
-  // ============================================================================
-  // 3. TALLY-STYLE BALANCE SHEET (GROUP CLICK -> GROUP LEDGERS -> LEDGER VOUCHERS)
-  // ============================================================================
-  window.renderBalanceSheetScreen = function() {
-    const isTrust = DB.company.entityType === "Trust";
-    const balMap = computeAllLedgerBalances();
-    const pnl = window.computeDetailedPnL(balMap);
+  /* =====================================================================
+     BANK RECONCILIATION (BRS)
+     ===================================================================== */
+  const BR = { bank: "", asOn: "", only: false, stmt: "" };
+  function underGroup(g, names){
+    let x = g, k = 0;
+    while(x && k++ < 12){ if(names.indexOf(x) >= 0) return true; const o = DB.groups.find(y => y.name === x); x = o && o.parent; }
+    return false;
+  }
+  const bankLedgers = () => DB.ledgers.filter(l => underGroup(l.group, ["Bank Accounts", "Bank OD A/c"]));
 
-    // --- STEP 2 VIEW: IF USER CLICKED A GROUP, SHOW ALL LEDGERS OF THAT GROUP ---
-    if (BS_ACTIVE_GROUP_DRILL) {
-      const grpName = BS_ACTIVE_GROUP_DRILL;
-      document.getElementById("screenTitle").textContent = `Group Summary: ${grpName}`;
-      document.getElementById("screenSub").textContent = "Click on any Ledger below to open its full Ledger Statement | Esc: Back to Balance Sheet";
-
-      const groupLedgers = Object.values(balMap).filter(b => {
-        if (b.ledger.group !== grpName) return false;
-        if (!SHOW_ZERO_BALANCES && Math.abs(b.netSigned) < 0.005 && b.curDr === 0 && b.curCr === 0) return false;
-        return true;
+  function renderBankReco(){
+    document.getElementById("screenTitle").textContent = "Bank Reconciliation";
+    document.getElementById("screenSub").textContent = "☑ = बैंक में क्लियर | बैंक की तारीख़ ख़ुद भी लिख सकते हैं | Esc = वापस";
+    const banks = bankLedgers();
+    if(!banks.length){
+      document.getElementById("screenBody").innerHTML = `<div class="form-card">कोई Bank ledger नहीं मिला। लेजर बनाते समय ग्रुप <b>Bank Accounts</b> चुनें।</div>`;
+      return;
+    }
+    if(!BR.bank || !banks.some(b => b.id === BR.bank)) BR.bank = banks[0].id;
+    const asOn = BR.asOn || todayStr();
+    DB.bankReco = DB.bankReco || {};
+    const map = DB.bankReco[BR.bank] || {};
+    const l = getLedger(BR.bank);
+    let book = (l.opType === "Dr" ? 1 : -1) * num(l.opBal);
+    const items = [];
+    DB.vouchers.map((v, i) => ({ v: v, i: i })).filter(x => x.v && x.v.date && x.v.date <= asOn)
+      .sort((a, b) => a.v.date === b.v.date ? a.i - b.i : (a.v.date > b.v.date ? 1 : -1))
+      .forEach(x => {
+        const v = x.v, ents = getVoucherEntries(v);
+        let n = 0;
+        ents.forEach(e => {
+          if(e.ledgerId !== BR.bank) return;
+          const key = v.id + "|" + (n++);
+          book += e.type === "Dr" ? e.amount : -e.amount;
+          const cp = ents.filter(z => z.ledgerId !== BR.bank).sort((a, b) => b.amount - a.amount)[0];
+          items.push({ key: key, v: v, e: e, cp: cp, bd: map[key] || "" });
+        });
       });
-
-      let totDr = 0, totCr = 0;
-      const rowsHtml = groupLedgers.map((b, idx) => {
-        const dr = b.netSigned > 0 ? b.netSigned : 0;
-        const cr = b.netSigned < 0 ? Math.abs(b.netSigned) : 0;
-        totDr = +(totDr + dr).toFixed(2);
-        totCr = +(totCr + cr).toFixed(2);
-
-        return `
-          <tr onclick="window.drillToLedger('${b.ledger.id}')" style="cursor:pointer;" title="Click to open Ledger Statement">
-            <td>${idx + 1}</td>
-            <td><b style="color:var(--pri-dark); font-size:13px;">📄 ${escHtml(b.ledger.name)}</b></td>
-            <td>${escHtml(b.ledger.gstin || "-")}</td>
-            <td class="num">${b.opDr ? `₹${fmtINR(b.opDr)} Dr` : (b.opCr ? `₹${fmtINR(b.opCr)} Cr` : "-")}</td>
-            <td class="num">${b.curDr ? `₹${fmtINR(b.curDr)}` : "-"}</td>
-            <td class="num">${b.curCr ? `₹${fmtINR(b.curCr)}` : "-"}</td>
-            <td class="num" style="font-weight:800;">${dr ? `₹${fmtINR(dr)} Dr` : ""}</td>
-            <td class="num" style="font-weight:800;">${cr ? `₹${fmtINR(cr)} Cr` : ""}</td>
-          </tr>
-        `;
-      }).join("");
-
-      document.getElementById("screenBody").innerHTML = `
-        <div class="form-card" style="display:flex; justify-content:space-between; align-items:center; background:#f8fafc; border-top:3px solid var(--pri);">
-          <div>
-            <h3 style="color:var(--pri-dark); font-size:15px;">📁 Group Ledgers: ${escHtml(grpName)}</h3>
-            <span style="font-size:12px; color:var(--muted);">💡 Kisi bhi <b>Ledger</b> par click karein uska poora खाता (Ledger Statement) kholne ke liye.</span>
-          </div>
-          <div style="display:flex; align-items:center; gap:12px;">
-            <label style="display:flex; align-items:center; gap:5px; font-size:12px; cursor:pointer;">
-              <input type="checkbox" ${SHOW_ZERO_BALANCES ? "checked" : ""} onchange="SHOW_ZERO_BALANCES=this.checked; renderBalanceSheetScreen();">
-              Show Zero Balances
-            </label>
-            <button class="btn" onclick="window.closeBsGroupDrill()">← Back to Balance Sheet (Esc)</button>
-          </div>
-        </div>
-
-        <div class="form-card" style="padding:0; overflow:hidden;">
-          <table class="tally-tbl">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Particulars (Ledger Name)</th>
-                <th>GSTIN</th>
-                <th class="num">Opening Bal</th>
-                <th class="num">Period Debit</th>
-                <th class="num">Period Credit</th>
-                <th class="num">Closing Debit (₹)</th>
-                <th class="num">Closing Credit (₹)</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${rowsHtml || `<tr><td colspan="8" style="text-align:center; padding:22px; color:var(--muted);">Is Group me koi active balance wala Ledger nahi hai. Upar "Show Zero Balances" par tick karke ₹0 wale ledgers dekh sakte hain.</td></tr>`}
-            </tbody>
-            <tfoot>
-              <tr style="background:#f1f5f9; font-weight:800; font-size:13.5px;">
-                <td colspan="6" style="text-align:right;">Total (${escHtml(grpName)}):</td>
-                <td class="num">₹${fmtINR(totDr)} Dr</td>
-                <td class="num">₹${fmtINR(totCr)} Cr</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      `;
-      return;
-    }
-
-    // --- STEP 1 VIEW: MAIN BALANCE SHEET (GROUPS + OPTIONAL DETAILED SUB-LEDGERS) ---
-    document.getElementById("screenTitle").textContent = `Balance Sheet as on ${fmtDate(DB.company.fyTo)}`;
-    document.getElementById("screenSub").textContent = "Click any Group 📁 to see its Ledgers | Or Toggle Detailed Mode (Alt+F1) to see Ledgers inline";
-
-    const liabGroups = {};
-    const assetGroups = {};
-    let totalLiab = 0;
-    let totalAsset = 0;
-
-    Object.values(balMap).forEach(b => {
-      const grpName = b.ledger.group;
-      const gObj = getGroupObj(grpName);
-      if (gObj.nature !== "Liabilities" && gObj.nature !== "Assets") return;
-      if (!SHOW_ZERO_BALANCES && Math.abs(b.netSigned) < 0.005) return;
-
-      if (gObj.nature === "Liabilities") {
-        const amt = -b.netSigned; // Positive if Credit
-        totalLiab = +(totalLiab + amt).toFixed(2);
-        if (!liabGroups[grpName]) liabGroups[grpName] = { total: 0, items: [] };
-        liabGroups[grpName].total = +(liabGroups[grpName].total + amt).toFixed(2);
-        liabGroups[grpName].items.push({ id: b.ledger.id, name: b.ledger.name, amount: amt });
-      } else if (gObj.nature === "Assets") {
-        const amt = b.netSigned; // Positive if Debit
-        totalAsset = +(totalAsset + amt).toFixed(2);
-        if (!assetGroups[grpName]) assetGroups[grpName] = { total: 0, items: [] };
-        assetGroups[grpName].total = +(assetGroups[grpName].total + amt).toFixed(2);
-        assetGroups[grpName].items.push({ id: b.ledger.id, name: b.ledger.name, amount: amt });
-      }
-    });
-
-    if (pnl.netProfit >= 0) {
-      totalLiab = +(totalLiab + pnl.netProfit).toFixed(2);
-    } else {
-      totalAsset = +(totalAsset + Math.abs(pnl.netProfit)).toFixed(2);
-    }
-
-    const diff = +(totalAsset - totalLiab).toFixed(2);
-    let diffLiab = 0, diffAsset = 0;
-    if (Math.abs(diff) >= 0.01) {
-      if (diff > 0) { diffLiab = diff; totalLiab = +(totalLiab + diff).toFixed(2); }
-      else { diffAsset = Math.abs(diff); totalAsset = +(totalAsset + Math.abs(diff)).toFixed(2); }
-    }
-
-    const renderGroupBlocks = (grpMap) => Object.entries(grpMap).map(([gName, data]) => `
-      <div class="tally-grp-block clickable" onclick="window.openBsGroupDrill('${escHtml(gName)}')">
-        <div class="tally-grp-title">
-          <span>📁 ${escHtml(gName)} <small style="color:var(--pri); font-weight:600; font-size:11px;">(${data.items.length} Ledgers ↗)</small></span>
-          <span class="num">₹${fmtINR(data.total)}</span>
-        </div>
-        ${BS_DETAILED_MODE ? data.items.map(it => `
-          <div class="tally-sub-led" onclick="event.stopPropagation(); window.drillToLedger('${it.id}')" title="Click to open Ledger Statement">
-            <span>↳ 📄 ${escHtml(it.name)}</span>
-            <span class="num">${it.amount < 0 ? `(-) ₹${fmtINR(Math.abs(it.amount))}` : `₹${fmtINR(it.amount)}`}</span>
-          </div>
-        `).join("") : ""}
-      </div>
-    `).join("");
-
+    book = r2(book);
+    const cleared = it => it.bd && it.bd <= asOn;
+    let uD = 0, uC = 0;
+    items.forEach(it => { if(!cleared(it)){ if(it.e.type === "Dr") uD += it.e.amount; else uC += it.e.amount; } });
+    uD = r2(uD); uC = r2(uC);
+    const bankBal = r2(book - uD + uC);
+    const stmt = BR.stmt === "" ? null : num(BR.stmt);
+    const shown = items.filter(it => !BR.only || !cleared(it));
+    const rows = shown.map(it => {
+      const ok = cleared(it);
+      const dr = it.e.type === "Dr" ? money(it.e.amount) : "", cr = it.e.type === "Cr" ? money(it.e.amount) : "";
+      return `<tr class="${ok ? "br-ok" : ""}">
+        <td><input type="checkbox" class="br-chk" data-k="${esc(it.key)}" ${ok ? "checked" : ""}></td>
+        <td style="white-space:nowrap;">${fmtDate(it.v.date)}</td>
+        <td><b>${it.cp ? esc((getLedger(it.cp.ledgerId) || { name: "?" }).name) : "—"}</b>${it.v.narration ? `<span class="lv-nar">${esc(it.v.narration)}</span>` : ""}</td>
+        <td>${esc(it.v.type)}</td><td>${esc(it.v.vchNo)}</td><td>${esc(it.v.refNo || "")}</td>
+        <td class="num">${dr}</td><td class="num">${cr}</td>
+        <td><input type="date" class="br-date" data-k="${esc(it.key)}" value="${it.bd}" style="padding:3px;"></td></tr>`;
+    }).join("");
+    const opts = banks.map(b => `<option value="${b.id}" ${b.id === BR.bank ? "selected" : ""}>${esc(b.name)}</option>`).join("");
     document.getElementById("screenBody").innerHTML = `
-      <div style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-        <div style="font-size:12px; color:var(--muted);">
-          💡 <b>Tally Drill-Down:</b> Kisi bhi <b>📁 Group</b> par click karein uske Ledgers dekhne ke liye, aur <b>📄 Ledger</b> par click karein uska Statement kholne ke liye!
-        </div>
-        <div style="display:flex; align-items:center; gap:12px;">
-          <button class="btn btn-sec" style="padding:4px 10px;" onclick="window.toggleBsDetailedMode()">
-            ${BS_DETAILED_MODE ? "🔽 Condensed View (Groups Only)" : "📂 Detailed View (Show Ledgers Below Groups)"}
-          </button>
-          <label style="display:flex; align-items:center; gap:5px; font-size:12px; font-weight:600; cursor:pointer;">
-            <input type="checkbox" ${SHOW_ZERO_BALANCES ? "checked" : ""} onchange="SHOW_ZERO_BALANCES=this.checked; renderBalanceSheetScreen();">
-            Show ₹0.00 Ledgers
-          </label>
-        </div>
+      <div class="form-card" style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;">
+        <div class="field" style="min-width:240px;"><label>Bank Account</label><select id="brBank" style="padding:6px;font-weight:600;">${opts}</select></div>
+        <div class="field"><label>Reconciliation Date (as on)</label><input type="date" id="brAsOn" value="${asOn}"></div>
+        <div class="field"><label>Bank Statement Balance (वैकल्पिक)</label><input type="number" step="0.01" id="brStmt" value="${BR.stmt}" placeholder="जैसा पासबुक में" style="width:170px;"></div>
+        <label style="font-size:12px;display:flex;gap:4px;align-items:center;padding-bottom:8px;"><input type="checkbox" id="brOnly" ${BR.only ? "checked" : ""}> सिर्फ़ बाकी (Unreconciled)</label>
       </div>
-
-      <div class="tally-sheet-grid">
-        <!-- LEFT COLUMN: LIABILITIES -->
-        <div class="tally-sheet-col">
-          <div>
-            <div class="tally-col-head">
-              <span>${isTrust ? "FUNDS & LIABILITIES" : "LIABILITIES & CAPITAL"}</span>
-              <span>AMOUNT (₹)</span>
-            </div>
-
-            ${renderGroupBlocks(liabGroups) || `<div style="padding:14px; color:var(--muted);">No active liabilities.</div>`}
-
-            ${pnl.netProfit >= 0 ? `
-              <div class="tally-grp-block clickable" style="background:#ecfdf5;" onclick="navigate('pnl_report')">
-                <div class="tally-grp-title" style="color:var(--pri-dark);">
-                  <span>📈 ${isTrust ? "Income & Expenditure A/c (Surplus)" : "Profit & Loss A/c (Net Profit)"} <small style="font-size:11px;">(Click for P&L ↗)</small></span>
-                  <span class="num">₹${fmtINR(pnl.netProfit)}</span>
-                </div>
-              </div>
-            ` : ""}
-
-            ${diffLiab > 0 ? `
-              <div class="tally-grp-block" style="background:#fefce8;">
-                <div class="tally-grp-title" style="color:#b45309;">
-                  <span>Difference in Opening Balances</span>
-                  <span class="num">₹${fmtINR(diffLiab)}</span>
-                </div>
-              </div>
-            ` : ""}
-          </div>
-
-          <div class="tally-col-foot">
-            <span>Total Liabilities</span>
-            <span class="num">₹${fmtINR(totalLiab)}</span>
-          </div>
-        </div>
-
-        <!-- RIGHT COLUMN: ASSETS -->
-        <div class="tally-sheet-col">
-          <div>
-            <div class="tally-col-head">
-              <span>ASSETS &amp; PROPERTIES</span>
-              <span>AMOUNT (₹)</span>
-            </div>
-
-            ${renderGroupBlocks(assetGroups) || `<div style="padding:14px; color:var(--muted);">No active assets.</div>`}
-
-            ${pnl.netProfit < 0 ? `
-              <div class="tally-grp-block clickable" style="background:#fef2f2;" onclick="navigate('pnl_report')">
-                <div class="tally-grp-title" style="color:var(--danger);">
-                  <span>📉 ${isTrust ? "Income & Expenditure A/c (Deficit)" : "Profit & Loss A/c (Net Loss)"} <small style="font-size:11px;">(Click for P&L ↗)</small></span>
-                  <span class="num">₹${fmtINR(Math.abs(pnl.netProfit))}</span>
-                </div>
-              </div>
-            ` : ""}
-
-            ${diffAsset > 0 ? `
-              <div class="tally-grp-block" style="background:#fefce8;">
-                <div class="tally-grp-title" style="color:#b45309;">
-                  <span>Difference in Opening Balances</span>
-                  <span class="num">₹${fmtINR(diffAsset)}</span>
-                </div>
-              </div>
-            ` : ""}
-          </div>
-
-          <div class="tally-col-foot">
-            <span>Total Assets</span>
-            <span class="num">₹${fmtINR(totalAsset)}</span>
-          </div>
-        </div>
-      </div>
-    `;
-  };
-
-  window.openBsGroupDrill = function(grpName) {
-    BS_ACTIVE_GROUP_DRILL = grpName;
-    renderBalanceSheetScreen();
-  };
-
-  window.closeBsGroupDrill = function() {
-    BS_ACTIVE_GROUP_DRILL = null;
-    renderBalanceSheetScreen();
-  };
-
-  window.toggleBsDetailedMode = function() {
-    BS_DETAILED_MODE = !BS_DETAILED_MODE;
-    renderBalanceSheetScreen();
-  };
-
-  // ============================================================================
-  // 4. BANK RECONCILIATION STATEMENT (BRS) MODULE (ALT+R)
-  // ============================================================================
-  function getBankLedgers() {
-    return (DB.ledgers || []).filter(l => l.group === "Bank Accounts" || l.group === "Bank OD A/c");
+      <div class="form-card" style="padding:0;overflow:hidden;">
+        <table class="tally-tbl"><thead><tr><th style="width:34px;">✔</th><th>Date</th><th>Particulars</th><th>Vch Type</th><th>Vch No.</th><th>Instrument / Ref</th>
+          <th class="num">Deposit (Dr)</th><th class="num">Withdrawal (Cr)</th><th>Bank Date</th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="9" style="text-align:center;color:#64748b;padding:16px;">कोई एंट्री नहीं</td></tr>`}</tbody></table></div>
+      <div class="form-card" style="max-width:560px;">
+        <div class="info-row"><span>Balance as per Company Books (${fmtDate(asOn)})</span><span class="num"><b>${money(book)} ${book >= 0 ? "Dr" : "Cr"}</b></span></div>
+        <div class="info-row"><span>Add: Cheques issued, bank में अभी नहीं आए (Withdrawal uncleared)</span><span class="num">${money(uC)}</span></div>
+        <div class="info-row"><span>Less: Deposits, bank में अभी नहीं चढ़े (Deposit uncleared)</span><span class="num">${money(uD)}</span></div>
+        <div class="info-row" style="font-size:15px;font-weight:800;border-top:2px solid var(--pri);padding-top:6px;margin-top:6px;"><span>Balance as per Bank</span><span class="num">${money(bankBal)} ${bankBal >= 0 ? "Dr" : "Cr"}</span></div>
+        ${stmt === null ? "" : `<div class="info-row" style="font-weight:700;color:${Math.abs(stmt - bankBal) < 0.01 ? "var(--ok)" : "var(--danger)"};">
+          <span>${Math.abs(stmt - bankBal) < 0.01 ? "✔ पासबुक से मिल गया" : "⚠ पासबुक से अंतर"}</span><span class="num">${Math.abs(stmt - bankBal) < 0.01 ? "" : money(stmt - bankBal)}</span></div>`}
+      </div>`;
   }
+  window.renderBankReco = renderBankReco;
 
-  window.openBankReconScreen = function() {
-    const banks = getBankLedgers();
-    if (banks.length > 0 && !banks.some(b => b.id === SELECTED_BANK_LEDGER_ID)) {
-      SELECTED_BANK_LEDGER_ID = banks[0].id;
-    }
-    navigate("bank_recon");
-  };
-
-  window.renderBankReconScreen = function() {
-    document.getElementById("screenTitle").textContent = "🏦 Bank Reconciliation Statement (BRS)";
-    document.getElementById("screenSub").textContent = "Enter 'Bank Date' to reconcile Bank transactions | Alt+R: Bank Recon";
-
-    const banks = getBankLedgers();
-    if (banks.length === 0) {
-      document.getElementById("screenBody").innerHTML = `
-        <div class="form-card" style="text-align:center; padding:30px;">
-          <h3 style="color:var(--danger); margin-bottom:8px;">⚠ Koi Bank Ledger Nahi Mila!</h3>
-          <p style="color:var(--muted); margin-bottom:14px;">Bank Reconciliation ke liye pehle "Bank Accounts" ya "Bank OD A/c" group ke andar Ledger banayein.</p>
-          <button class="btn" onclick="navigate('masters_ledger')">➕ Create Bank Ledger</button>
-        </div>
-      `;
-      return;
-    }
-
-    if (!SELECTED_BANK_LEDGER_ID || !banks.some(b => b.id === SELECTED_BANK_LEDGER_ID)) {
-      SELECTED_BANK_LEDGER_ID = banks[0].id;
-    }
-
-    const bankOpts = banks.map(b =>
-      `<option value="${b.id}" ${b.id === SELECTED_BANK_LEDGER_ID ? "selected" : ""}>${escHtml(b.name)} [${escHtml(b.group)}]</option>`
-    ).join("");
-
-    const balMap = computeAllLedgerBalances();
-    const bBalObj = balMap[SELECTED_BANK_LEDGER_ID] || { netSigned: 0 };
-    const companyBookSigned = Number(bBalObj.netSigned) || 0;
-
-    const sortedVouchers = [...DB.vouchers]
-      .filter(v => isVoucherInPeriod(v, DB.company.fyFrom, DB.company.fyTo))
-      .sort((a, b) => (a.date > b.date ? 1 : -1));
-
-    let unclearedDr = 0;
-    let unclearedCr = 0;
-    let rowsHtml = "";
-    let rowIdx = 0;
-
-    sortedVouchers.forEach(v => {
-      const entries = getVoucherEntries(v);
-      const match = entries.find(e => e.ledgerId === SELECTED_BANK_LEDGER_ID);
-      if (!match) return;
-
-      if (!v.bankRecon) v.bankRecon = {};
-      const bankDate = v.bankRecon[SELECTED_BANK_LEDGER_ID] || "";
-      const isReconciled = Boolean(bankDate && bankDate <= DB.company.fyTo);
-
-      const drAmt = match.type === "Dr" ? match.amount : 0;
-      const crAmt = match.type === "Cr" ? match.amount : 0;
-
-      if (!isReconciled) {
-        unclearedDr = +(unclearedDr + drAmt).toFixed(2);
-        unclearedCr = +(unclearedCr + crAmt).toFixed(2);
+  document.addEventListener("change", function(e){
+    if(CURRENT_SCREEN !== "bank_reco") return;
+    const t = e.target, id = t.id, k = t.dataset && t.dataset.k;
+    let refocus = null;
+    if(id === "brBank"){ BR.bank = t.value; }
+    else if(id === "brAsOn"){ BR.asOn = t.value; }
+    else if(id === "brStmt"){ BR.stmt = t.value; refocus = "brStmt"; }
+    else if(id === "brOnly"){ BR.only = t.checked; }
+    else if(t.classList.contains("br-chk") || t.classList.contains("br-date")){
+      DB.bankReco = DB.bankReco || {};
+      const m = DB.bankReco[BR.bank] || (DB.bankReco[BR.bank] = {});
+      if(t.classList.contains("br-chk")){
+        if(t.checked){
+          const vid = k.split("|")[0], v = DB.vouchers.find(x => x.id === vid);
+          m[k] = v ? v.date : (BR.asOn || todayStr());
+        }else delete m[k];
+      }else{
+        if(t.value) m[k] = t.value; else delete m[k];
       }
-
-      if (!SHOW_RECONCILED_ENTRIES && isReconciled) return;
-
-      rowIdx++;
-      const opp = getOppositeParticulars(v, SELECTED_BANK_LEDGER_ID);
-
-      rowsHtml += `
-        <tr style="background:${isReconciled ? '#f0fdf4' : '#ffffff'};">
-          <td>${rowIdx}</td>
-          <td><b>${fmtDate(v.date)}</b></td>
-          <td>
-            <span class="kbd" style="margin-right:4px;">${opp.prefix}</span>
-            <b>${escHtml(opp.mainName)}</b>
-            ${v.narration ? `<div style="font-size:11px;color:var(--muted);font-style:italic;">(${escHtml(v.narration)})</div>` : ""}
-          </td>
-          <td><span class="kbd">${escHtml(v.type)}</span></td>
-          <td><b>${escHtml(v.vchNo)}</b></td>
-          <td>${escHtml(v.refNo || "-")}</td>
-          <td>
-            <div style="display:flex; align-items:center; gap:4px;">
-              <input type="date" value="${bankDate}" 
-                style="padding:4px 6px; border:1px solid ${isReconciled ? '#16a34a' : '#d97706'}; background:${isReconciled ? '#dcfce7' : '#fefce8'}; border-radius:3px; font-weight:600;"
-                onchange="window.updateBankReconDate('${v.id}', '${SELECTED_BANK_LEDGER_ID}', this.value)">
-              ${!bankDate
-                ? `<button class="btn btn-sec" style="padding:2px 5px; font-size:10px;" title="Set Same as Voucher Date" onclick="window.updateBankReconDate('${v.id}', '${SELECTED_BANK_LEDGER_ID}', '${v.date}')">=Vch</button>`
-                : `<button class="btn btn-sec" style="padding:2px 5px; font-size:10px; color:var(--danger);" title="Clear Date" onclick="window.updateBankReconDate('${v.id}', '${SELECTED_BANK_LEDGER_ID}', '')">✕</button>`}
-            </div>
-          </td>
-          <td class="num" style="color:var(--ok); font-weight:700;">${drAmt ? `₹${fmtINR(drAmt)}` : "-"}</td>
-          <td class="num" style="color:var(--danger); font-weight:700;">${crAmt ? `₹${fmtINR(crAmt)}` : "-"}</td>
-        </tr>
-      `;
-    });
-
-    const bankBalanceSigned = +(companyBookSigned - unclearedDr + unclearedCr).toFixed(2);
-    const fmtSigned = (val) => `₹${fmtINR(Math.abs(val))} ${val >= 0 ? "Dr (Favourable)" : "Cr (Overdraft)"}`;
-
-    document.getElementById("screenBody").innerHTML = `
-      <div class="form-card" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-          <label style="font-weight:700; color:var(--pri-dark);">🏦 Select Bank A/c:</label>
-          <select style="padding:6px 12px; font-size:13px; font-weight:700; border:2px solid var(--pri); border-radius:4px;" onchange="window.onBankReconSelectChange(this.value)">
-            ${bankOpts}
-          </select>
-          <label style="display:flex; align-items:center; gap:5px; font-size:12px; cursor:pointer; margin-left:8px;">
-            <input type="checkbox" ${SHOW_RECONCILED_ENTRIES ? "checked" : ""} onchange="window.toggleShowReconciled(this.checked)">
-            Show Reconciled Transactions
-          </label>
-        </div>
-        <div style="display:flex; gap:6px;">
-          <button class="btn btn-sec" onclick="window.autoReconcileAllDates()">⚡ Auto-Reconcile All (=Vch Date)</button>
-          <button class="btn" onclick="saveDB(); toast('✅ Bank Reconciliation Saved!')">💾 Save BRS (Ctrl+A)</button>
-        </div>
-      </div>
-
-      <div class="form-card" style="padding:0; overflow-x:auto;">
-        <table class="tally-tbl">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Voucher Date</th>
-              <th>Particulars (Opposite Party / Account)</th>
-              <th>Voucher Type</th>
-              <th>Vch No.</th>
-              <th>Chq / UTR Ref</th>
-              <th>Bank Date (Clearing Date)</th>
-              <th class="num">Deposit / Debit (₹)</th>
-              <th class="num">Withdrawal / Credit (₹)</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rowsHtml || `<tr><td colspan="9" style="text-align:center; padding:22px; color:var(--muted);">Is Bank Account me koi transaction nahi hai.</td></tr>`}
-          </tbody>
-        </table>
-      </div>
-
-      <div style="display:grid; grid-template-columns: 1fr 340px; gap:12px;">
-        <div class="form-card" style="background:#f8fafc; border-top:3px solid var(--pri);">
-          <h4 style="font-size:12.5px; text-transform:uppercase; color:var(--pri-dark); margin-bottom:8px; border-bottom:1px solid var(--border); padding-bottom:4px;">
-            📊 Tally Bank Reconciliation Summary
-          </h4>
-          <div class="info-row" style="font-size:13px; padding:5px 0;">
-            <span><b>Balance as per Company Books</b> (as on ${fmtDate(DB.company.fyTo)}):</span>
-            <span class="num"><b>${fmtSigned(companyBookSigned)}</b></span>
-          </div>
-          <div class="info-row" style="font-size:12.5px; padding:5px 0; color:#b45309;">
-            <span><b>Amounts not reflected in Bank</b> (Uncleared Deposits Dr / Cheques Issued Cr):</span>
-            <span class="num"><b>Dr: ₹${fmtINR(unclearedDr)} &nbsp;|&nbsp; Cr: ₹${fmtINR(unclearedCr)}</b></span>
-          </div>
-          <div class="info-row" style="font-size:14.5px; font-weight:800; color:var(--pri-dark); border-top:2px solid var(--pri); margin-top:6px; padding-top:8px;">
-            <span>Balance as per Bank (Calculated):</span>
-            <span class="num">${fmtSigned(bankBalanceSigned)}</span>
-          </div>
-        </div>
-
-        <div class="form-card" style="background:#ecfdf5; border-color:var(--pri);">
-          <h4 style="font-size:12px; text-transform:uppercase; color:var(--pri-dark); margin-bottom:6px;">🔍 Match Actual Bank Passbook</h4>
-          <div class="field">
-            <label>Enter Actual Bank Statement Balance (₹)</label>
-            <input type="number" step="0.01" class="num" placeholder="e.g. 7060" value="${ACTUAL_STATEMENT_BAL}" oninput="window.onActualStmtBalInput(this.value, ${bankBalanceSigned})">
-          </div>
-          <div id="brsDiffStatus" style="margin-top:10px; font-size:12.5px; font-weight:700; color:var(--pri-dark);">
-            Passbook ka closing balance dalkar difference check karein.
-          </div>
-        </div>
-      </div>
-    `;
-  };
-
-  window.onBankReconSelectChange = function(ledId) { SELECTED_BANK_LEDGER_ID = ledId; renderBankReconScreen(); };
-  window.toggleShowReconciled = function(checked) { SHOW_RECONCILED_ENTRIES = checked; renderBankReconScreen(); };
-  window.updateBankReconDate = function(vid, bankLedgerId, dateStr) {
-    const v = DB.vouchers.find(x => x.id === vid);
-    if (!v) return;
-    if (!v.bankRecon) v.bankRecon = {};
-    if (dateStr) v.bankRecon[bankLedgerId] = dateStr;
-    else delete v.bankRecon[bankLedgerId];
-    saveDB();
-    renderBankReconScreen();
-  };
-  window.autoReconcileAllDates = function() {
-    let count = 0;
-    DB.vouchers.forEach(v => {
-      if (getVoucherEntries(v).some(e => e.ledgerId === SELECTED_BANK_LEDGER_ID)) {
-        if (!v.bankRecon) v.bankRecon = {};
-        if (!v.bankRecon[SELECTED_BANK_LEDGER_ID]) { v.bankRecon[SELECTED_BANK_LEDGER_ID] = v.date; count++; }
-      }
-    });
-    saveDB();
-    renderBankReconScreen();
-    toast(`⚡ ${count} Transactions Reconciled!`);
-  };
-  window.onActualStmtBalInput = function(val, calcSigned) {
-    ACTUAL_STATEMENT_BAL = val;
-    const box = document.getElementById("brsDiffStatus");
-    if (!box || val === "") return;
-    const diff = +((Number(val) || 0) - Math.abs(calcSigned)).toFixed(2);
-    box.style.color = Math.abs(diff) < 0.01 ? "var(--ok)" : "var(--danger)";
-    box.innerHTML = Math.abs(diff) < 0.01
-      ? "✔ 100% Matched! Bank Balance aur Passbook barabar hain."
-      : `⚠ Difference: ₹${fmtINR(Math.abs(diff))}`;
-  };
-
-  // ============================================================================
-  // 5. REGISTER BRS IN GATEWAY, RIGHT BAR & HANDLE ESCAPE FROM GROUP DRILL
-  // ============================================================================
-  if (!GATEWAY_MENU.some(m => m.screen === "bank_recon")) {
-    const repIdx = GATEWAY_MENU.findIndex(m => m.section === "Accounting Reports");
-    GATEWAY_MENU.splice(repIdx >= 0 ? repIdx + 1 : 7, 0, {
-      section: "Accounting Reports",
-      label: "Bank Reconciliation (BRS)",
-      hk: "R",
-      screen: "bank_recon"
-    });
-  }
-
-  const prevRenderScreen = window.renderScreen;
-  window.renderScreen = function(screen) {
-    if (screen === "bank_recon") {
-      closeModal();
-      window.renderBankReconScreen();
-    } else {
-      prevRenderScreen(screen);
-    }
-  };
-
-  const origGoBack = window.goBack;
-  window.goBack = function() {
-    if (CURRENT_SCREEN === "balance_sheet" && BS_ACTIVE_GROUP_DRILL) {
-      BS_ACTIVE_GROUP_DRILL = null;
-      renderBalanceSheetScreen();
-      return;
-    }
-    origGoBack();
-  };
-
-  const rb = document.querySelector(".right-bar");
-  if (rb && !document.getElementById("fnBrsBtn")) {
-    const brsBtn = document.createElement("button");
-    brsBtn.id = "fnBrsBtn";
-    brsBtn.className = "fn-btn";
-    brsBtn.style.borderLeftColor = "#0284c7";
-    brsBtn.innerHTML = `<span class="fn-key">Alt+R</span><span>Bank Recon</span>`;
-    brsBtn.onclick = () => window.openBankReconScreen();
-    rb.appendChild(brsBtn);
-  }
-
-  document.addEventListener("keydown", (e) => {
-    if (e.altKey && (e.key === "r" || e.key === "R")) {
-      e.preventDefault();
-      window.openBankReconScreen();
+      saveDB();
+      refocus = (t.classList.contains("br-chk") ? ".br-chk" : ".br-date") + '[data-k="' + k + '"]';
+    } else return;
+    const sc = scroller(), top = sc ? sc.scrollTop : 0;
+    renderBankReco();
+    if(sc) sc.scrollTop = top;
+    if(refocus){
+      const el = refocus.charAt(0) === "." ? document.querySelector(refocus) : document.getElementById(refocus);
+      if(el) el.focus();
     }
   });
 
-  if (typeof renderScreen === "function" && CURRENT_SCREEN) {
-    renderScreen(CURRENT_SCREEN);
-  }
+  /* ---------- नई स्क्रीन को ऐप में जोड़ना ---------- */
+  (function(){
+    const _rs = window.renderScreen;
+    window.renderScreen = function(screen){
+      if(screen === "bank_reco"){ closeModal(); renderBankReco(); return; }
+      return _rs.apply(this, arguments);
+    };
+    try{
+      let i = GATEWAY_MENU.findIndex(m => m.screen === "outstanding");
+      if(i < 0) i = GATEWAY_MENU.findIndex(m => m.screen === "balance_sheet");
+      if(i >= 0 && !GATEWAY_MENU.some(m => m.screen === "bank_reco")){
+        GATEWAY_MENU.splice(i + 1, 0, { section: GATEWAY_MENU[i].section, label: "Bank Reconciliation (BRS)", hk: "R", screen: "bank_reco" });
+      }
+      const rb = document.querySelector(".right-bar");
+      if(rb && !document.getElementById("fnBrsBtn")){
+        const b = document.createElement("button");
+        b.id = "fnBrsBtn"; b.className = "fn-btn";
+        b.innerHTML = '<span class="fn-key">Alt+R</span><span>Bank Reco</span>';
+        b.onclick = () => navigate("bank_reco");
+        rb.appendChild(b);
+      }
+      if(CURRENT_SCREEN === "gateway") renderGateway();
+    }catch(e){ console.error(e); }
+    window.addEventListener("keydown", e => {
+      const m = document.getElementById("appModal");
+      if(m && m.classList.contains("open")) return;
+      if(e.altKey && !e.ctrlKey && (e.key === "r" || e.key === "R")){ e.preventDefault(); e.stopImmediatePropagation(); navigate("bank_reco"); }
+    }, true);
+  })();
 })();
 </script>
 </body>
