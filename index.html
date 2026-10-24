@@ -6772,7 +6772,7 @@ window.renderStockSummaryScreen = function() {
   })();
 })();
 </script>
-  <script>
+ <script>
 (function(){
   /* =====================================================================
      TALLY-STYLE REPORTS : Ledger (Particulars) | Balance Sheet | P&L | Trial Balance
@@ -6804,8 +6804,6 @@ window.renderStockSummaryScreen = function() {
     .lv-more{font-size:11px;color:#64748b;font-weight:400;}
     tr.lv-sum td{background:#f1f5f9;font-weight:700;} tr.lv-open td{background:#f8fafc;font-weight:600;}
     tr.br-ok td{background:#f0fdf4;color:#166534;}
-    .lv-sub{display:flex;justify-content:space-between;gap:16px;font-size:12px;color:#334155;padding:2px 0 2px 18px;border-left:2px solid #cbd5e1;margin:2px 0;max-width:520px;}
-    a.lv-more{color:#0f6e4e;font-weight:700;text-decoration:underline;cursor:pointer;}
   `;
   document.head.appendChild(st);
 
@@ -7026,9 +7024,9 @@ window.renderStockSummaryScreen = function() {
   }, true);
 
   /* =====================================================================
-     LEDGER VIEW (Tally जैसा: Particulars में सामने वाला लेजर) + As per Details
+     LEDGER VIEW (Tally जैसा: Particulars में सामने वाला लेजर)
      ===================================================================== */
-  const LV = { from: "", to: "", det: false, open: {} };
+  const LV = { from: "", to: "" };
   function statement(id, from, to){
     const l = getLedger(id);
     let op = (l && l.opType === "Dr" ? 1 : -1) * num(l && l.opBal);
@@ -7052,14 +7050,20 @@ window.renderStockSummaryScreen = function() {
     });
     return { op: r2(op), rows: rows };
   }
-  const okDate = d => /^\d{4}-\d{2}-\d{2}$/.test(d) && +d.slice(0, 4) >= 1990 && +d.slice(0, 4) <= 2100;
-
-  function fillLv(){
-    const area = document.getElementById("lvArea"); if(!area) return;
+  window.lvSet = function(){
+    LV.from = (document.getElementById("lvFrom") || {}).value || "";
+    LV.to = (document.getElementById("lvTo") || {}).value || "";
+    window.renderLedgersViewScreen();
+  };
+  window.renderLedgersViewScreen = function(){
+    document.getElementById("screenTitle").textContent = "Ledger Vouchers";
+    document.getElementById("screenSub").textContent = "↑ ↓ चुनें | Enter / E = वाउचर खोलें | Esc = वापस";
+    if(!SELECTED_LEDGER_FOR_VIEW && DB.ledgers.length) SELECTED_LEDGER_FOR_VIEW = DB.ledgers[0].id;
     const id = SELECTED_LEDGER_FOR_VIEW, led = getLedger(id);
     const from = LV.from || DB.company.fyFrom, to = LV.to || DB.company.fyTo;
     const S = statement(id, from, to);
-    let totDr = 0, totCr = 0, run = S.op, body = "";
+    let totDr = 0, totCr = 0, run = S.op;
+    let body = "";
     const opDr = S.op > 0 ? S.op : 0, opCr = S.op < 0 ? -S.op : 0;
     body += `<tr class="lv-open"><td>${fmtDate(from)}</td><td colspan="3">Opening Balance</td>
       <td class="num">${opDr ? money(opDr) : ""}</td><td class="num">${opCr ? money(opCr) : ""}</td><td class="num">${money(S.op)} ${S.op >= 0 ? "Dr" : "Cr"}</td></tr>`;
@@ -7068,17 +7072,14 @@ window.renderStockSummaryScreen = function() {
       const side = r.dr >= r.cr ? "To" : "By";
       const first = r.cps[0];
       const cpName = first ? esc((getLedger(first.id) || { name: "?" }).name) : "—";
-      const multi = r.cps.length > 1;
-      const showDet = multi && (LV.det || LV.open[r.v.id]);
-      const more = multi ? ` <a class="lv-more" href="javascript:void(0)" onclick="lvRowDet('${r.v.id}',event)">(as per details ${showDet ? "▴" : "▾"})</a>` : "";
+      const more = r.cps.length > 1 ? ` <span class="lv-more">(as per details)</span>` : "";
       const tip = r.cps.map(c => ((getLedger(c.id) || {}).name || "?") + " " + (c.amt > 0 ? "Dr " : "Cr ") + money(c.amt)).join("\n");
-      const det = showDet ? r.cps.map(c => `<div class="lv-sub"><span>${c.amt > 0 ? "Dr" : "Cr"} &nbsp;${esc((getLedger(c.id) || { name: "?" }).name)}</span><span>${money(c.amt)}</span></div>`).join("") : "";
       body += `<tr data-vid="${r.v.id}" onclick="kbSetRow(this,false)" ondblclick="kbEditSelected()" style="cursor:pointer;" title="${esc(tip)}">
-        <td style="white-space:nowrap;vertical-align:top;">${fmtDate(r.v.date)}</td>
-        <td><span class="lv-cp">${side} ${cpName}</span>${more}${det}${r.v.narration ? `<span class="lv-nar">${esc(r.v.narration)}</span>` : ""}</td>
-        <td style="vertical-align:top;">${esc(r.v.type)}</td><td style="vertical-align:top;"><b>${esc(r.v.vchNo)}</b></td>
-        <td class="num" style="vertical-align:top;">${r.dr ? money(r.dr) : ""}</td><td class="num" style="vertical-align:top;">${r.cr ? money(r.cr) : ""}</td>
-        <td class="num" style="vertical-align:top;">${money(run)} ${run >= 0 ? "Dr" : "Cr"}</td></tr>`;
+        <td style="white-space:nowrap;">${fmtDate(r.v.date)}</td>
+        <td><span class="lv-cp">${side} ${cpName}</span>${more}${r.v.narration ? `<span class="lv-nar">${esc(r.v.narration)}</span>` : ""}</td>
+        <td>${esc(r.v.type)}</td><td><b>${esc(r.v.vchNo)}</b></td>
+        <td class="num">${r.dr ? money(r.dr) : ""}</td><td class="num">${r.cr ? money(r.cr) : ""}</td>
+        <td class="num">${money(run)} ${run >= 0 ? "Dr" : "Cr"}</td></tr>`;
     });
     totDr = r2(totDr); totCr = r2(totCr);
     const close = r2(S.op + totDr - totCr);
@@ -7087,45 +7088,22 @@ window.renderStockSummaryScreen = function() {
       <tr class="lv-open"><td colspan="4" style="text-align:right;">Closing Balance</td>
         <td class="num">${close < 0 ? money(close) : ""}</td><td class="num">${close > 0 ? money(close) : ""}</td><td class="num">${money(close)} ${close >= 0 ? "Dr" : "Cr"}</td></tr>
       <tr class="lv-sum"><td colspan="4" style="text-align:right;">Total</td><td class="num">${money(gDr)}</td><td class="num">${money(gCr)}</td><td></td></tr>`;
-    area.innerHTML = `<div class="form-card" style="padding:0;overflow:hidden;" id="kbTableWrap">
+    const opts = DB.ledgers.map(l => `<option value="${l.id}" ${l.id === id ? "selected" : ""}>${esc(l.name)} [${esc(l.group)}]</option>`).join("");
+    document.getElementById("screenBody").innerHTML = `
+      <div class="form-card" style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;">
+        <div class="field" style="flex:1;min-width:260px;"><label>Ledger Account</label>
+          <select style="padding:6px;font-size:13px;font-weight:600;" onchange="SELECTED_LEDGER_FOR_VIEW=this.value; LV_RESET();">${opts}</select></div>
+        <div class="field"><label>From</label><input type="date" id="lvFrom" value="${from}" onchange="lvSet()"></div>
+        <div class="field"><label>To</label><input type="date" id="lvTo" value="${to}" onchange="lvSet()"></div>
+        <div><div style="font-size:11.5px;color:var(--muted);">${led ? esc(led.group) : ""} — Closing Balance</div>
+          <div style="font-size:16px;font-weight:800;color:var(--pri-dark);">${money(close)} ${close >= 0 ? "Dr" : "Cr"}</div></div>
+      </div>
+      <div class="form-card" style="padding:0;overflow:hidden;" id="kbTableWrap">
         <table class="tally-tbl"><thead><tr><th>Date</th><th>Particulars</th><th>Vch Type</th><th>Vch No.</th>
           <th class="num">Debit (₹)</th><th class="num">Credit (₹)</th><th class="num">Balance</th></tr></thead>
         <tbody>${body}</tbody></table></div>`;
-    const c = document.getElementById("lvClose");
-    if(c) c.innerHTML = `<div style="font-size:11.5px;color:var(--muted);">${led ? esc(led.group) : ""} — Closing Balance</div>
-      <div style="font-size:16px;font-weight:800;color:var(--pri-dark);">${money(close)} ${close >= 0 ? "Dr" : "Cr"}</div>`;
-    const b = document.getElementById("lvDetBtn");
-    if(b) b.className = "btn " + (LV.det ? "" : "btn-sec");
     if(typeof kbReapplyRow === "function") kbReapplyRow();
-  }
-  window.renderLedgersViewScreen = function(){
-    document.getElementById("screenTitle").textContent = "Ledger Vouchers";
-    document.getElementById("screenSub").textContent = "↑ ↓ चुनें | Enter / E = वाउचर खोलें | T = रसीद | Shift+P = वाउचर प्रिंट | Esc = वापस";
-    if(!SELECTED_LEDGER_FOR_VIEW && DB.ledgers.length) SELECTED_LEDGER_FOR_VIEW = DB.ledgers[0].id;
-    const id = SELECTED_LEDGER_FOR_VIEW;
-    const opts = DB.ledgers.map(l => `<option value="${l.id}" ${l.id === id ? "selected" : ""}>${esc(l.name)} [${esc(l.group)}]</option>`).join("");
-    document.getElementById("screenBody").innerHTML = `
-      <div class="form-card no-print" style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;">
-        <div class="field" style="flex:1;min-width:260px;"><label>Ledger Account</label>
-          <select style="padding:6px;font-size:13px;font-weight:600;" onchange="SELECTED_LEDGER_FOR_VIEW=this.value; window.renderLedgersViewScreen();">${opts}</select></div>
-        <div class="field"><label>From</label><input type="date" id="lvFrom" value="${LV.from || DB.company.fyFrom}" onchange="lvSet()"></div>
-        <div class="field"><label>To</label><input type="date" id="lvTo" value="${LV.to || DB.company.fyTo}" onchange="lvSet()"></div>
-        <button class="btn ${LV.det ? "" : "btn-sec"}" id="lvDetBtn" onclick="lvToggleDet()" title="जिन वाउचर में कई लेजर हैं उनका पूरा ब्योरा">📋 As per Details</button>
-        <div id="lvClose"></div>
-      </div>
-      <div id="lvArea"></div>`;
-    fillLv();
   };
-  // तारीख़ बदलने पर सिर्फ़ तालिका बदलती है, ऊपर के खाने वैसे ही रहते हैं (इसलिए हाथ से लिखना चलता है)
-  window.lvSet = function(){
-    const f = (document.getElementById("lvFrom") || {}).value || "", t = (document.getElementById("lvTo") || {}).value || "";
-    if(f && !okDate(f)) return;
-    if(t && !okDate(t)) return;
-    LV.from = f; LV.to = t;
-    fillLv();
-  };
-  window.lvToggleDet = function(){ LV.det = !LV.det; LV.open = {}; fillLv(); };
-  window.lvRowDet = function(vid, ev){ if(ev) ev.stopPropagation(); LV.open[vid] = !LV.open[vid]; fillLv(); };
   window.LV_RESET = function(){ LV.from = ""; LV.to = ""; window.renderLedgersViewScreen(); };
 
   /* =====================================================================
@@ -7139,142 +7117,105 @@ window.renderStockSummaryScreen = function() {
   }
   const bankLedgers = () => DB.ledgers.filter(l => underGroup(l.group, ["Bank Accounts", "Bank OD A/c"]));
 
-  function brData(){
+  function renderBankReco(){
+    document.getElementById("screenTitle").textContent = "Bank Reconciliation";
+    document.getElementById("screenSub").textContent = "☑ = बैंक में क्लियर | बैंक की तारीख़ ख़ुद भी लिख सकते हैं | Esc = वापस";
     const banks = bankLedgers();
-    if(!banks.length) return null;
+    if(!banks.length){
+      document.getElementById("screenBody").innerHTML = `<div class="form-card">कोई Bank ledger नहीं मिला। लेजर बनाते समय ग्रुप <b>Bank Accounts</b> चुनें।</div>`;
+      return;
+    }
     if(!BR.bank || !banks.some(b => b.id === BR.bank)) BR.bank = banks[0].id;
-    const asOn = (BR.asOn && okDate(BR.asOn)) ? BR.asOn : todayStr();
+    const asOn = BR.asOn || todayStr();
     DB.bankReco = DB.bankReco || {};
     const map = DB.bankReco[BR.bank] || {};
     const l = getLedger(BR.bank);
     let book = (l.opType === "Dr" ? 1 : -1) * num(l.opBal);
-    const items = [], lineCount = {};
+    const items = [];
     DB.vouchers.map((v, i) => ({ v: v, i: i })).filter(x => x.v && x.v.date && x.v.date <= asOn)
       .sort((a, b) => a.v.date === b.v.date ? a.i - b.i : (a.v.date > b.v.date ? 1 : -1))
       .forEach(x => {
         const v = x.v, ents = getVoucherEntries(v);
-        const bl = ents.filter(e => e.ledgerId === BR.bank);
         let n = 0;
-        bl.forEach(e => {
+        ents.forEach(e => {
+          if(e.ledgerId !== BR.bank) return;
           const key = v.id + "|" + (n++);
           book += e.type === "Dr" ? e.amount : -e.amount;
-          // इस लाइन के उलटी तरफ़ वाली सारी एंट्री
-          const cps = ents.filter(z => z.ledgerId !== BR.bank && z.type !== e.type);
-          items.push({ key: key, v: v, e: e, cps: cps, n: n, of: bl.length, bd: map[key] || "" });
+          const cp = ents.filter(z => z.ledgerId !== BR.bank).sort((a, b) => b.amount - a.amount)[0];
+          items.push({ key: key, v: v, e: e, cp: cp, bd: map[key] || "" });
         });
       });
     book = r2(book);
-    const cleared = it => !!(it.bd && it.bd <= asOn);
+    const cleared = it => it.bd && it.bd <= asOn;
     let uD = 0, uC = 0;
     items.forEach(it => { if(!cleared(it)){ if(it.e.type === "Dr") uD += it.e.amount; else uC += it.e.amount; } });
     uD = r2(uD); uC = r2(uC);
-    return { banks: banks, asOn: asOn, items: items, book: book, uD: uD, uC: uC, bankBal: r2(book - uD + uC), cleared: cleared };
-  }
-  function brSummaryHtml(D){
+    const bankBal = r2(book - uD + uC);
     const stmt = BR.stmt === "" ? null : num(BR.stmt);
-    return `<div class="info-row"><span>Balance as per Company Books (${fmtDate(D.asOn)})</span><span class="num"><b>${money(D.book)} ${D.book >= 0 ? "Dr" : "Cr"}</b></span></div>
-      <div class="info-row"><span>Add: Cheques issued, bank में अभी नहीं आए (Withdrawal uncleared)</span><span class="num">${money(D.uC)}</span></div>
-      <div class="info-row"><span>Less: Deposits, bank में अभी नहीं चढ़े (Deposit uncleared)</span><span class="num">${money(D.uD)}</span></div>
-      <div class="info-row" style="font-size:15px;font-weight:800;border-top:2px solid var(--pri);padding-top:6px;margin-top:6px;"><span>Balance as per Bank</span><span class="num">${money(D.bankBal)} ${D.bankBal >= 0 ? "Dr" : "Cr"}</span></div>
-      ${stmt === null ? "" : `<div class="info-row" style="font-weight:700;color:${Math.abs(stmt - D.bankBal) < 0.01 ? "var(--ok)" : "var(--danger)"};">
-        <span>${Math.abs(stmt - D.bankBal) < 0.01 ? "✔ पासबुक से मिल गया" : "⚠ पासबुक से अंतर"}</span><span class="num">${Math.abs(stmt - D.bankBal) < 0.01 ? "" : money(stmt - D.bankBal)}</span></div>`}`;
-  }
-  function brPart(it){
-    const names = it.cps.sort((a, b) => b.amount - a.amount).map(c => ((getLedger(c.ledgerId) || {}).name || "?") + " " + money(c.amount));
-    const show = names.slice(0, 3).map(esc).join("<br>") + (names.length > 3 ? `<br><span class="lv-more">+${names.length - 3} और</span>` : "");
-    const line = it.of > 1 ? ` <span class="lv-more">[बैंक लाइन ${it.n}/${it.of}]</span>` : "";
-    return `<b title="${esc(names.join("\n"))}">${show || "—"}</b>${line}${it.v.narration ? `<span class="lv-nar">${esc(it.v.narration)}</span>` : ""}`;
-  }
-  function fillBr(){
-    const area = document.getElementById("brArea"); if(!area) return;
-    const D = brData(); if(!D) return;
-    const shown = D.items.filter(it => !BR.only || !D.cleared(it));
+    const shown = items.filter(it => !BR.only || !cleared(it));
     const rows = shown.map(it => {
-      const ok = D.cleared(it);
+      const ok = cleared(it);
       const dr = it.e.type === "Dr" ? money(it.e.amount) : "", cr = it.e.type === "Cr" ? money(it.e.amount) : "";
-      return `<tr class="${ok ? "br-ok" : ""}" data-k="${esc(it.key)}">
-        <td style="vertical-align:top;"><input type="checkbox" class="br-chk" data-k="${esc(it.key)}" ${ok ? "checked" : ""}></td>
-        <td style="white-space:nowrap;vertical-align:top;">${fmtDate(it.v.date)}</td>
-        <td>${brPart(it)}</td>
-        <td style="vertical-align:top;">${esc(it.v.type)}</td><td style="vertical-align:top;">${esc(it.v.vchNo)}</td><td style="vertical-align:top;">${esc(it.v.refNo || "")}</td>
-        <td class="num" style="vertical-align:top;">${dr}</td><td class="num" style="vertical-align:top;">${cr}</td>
-        <td style="vertical-align:top;white-space:nowrap;"><input type="date" class="br-date" data-k="${esc(it.key)}" value="${it.bd}" style="padding:3px;">
-          ${it.of > 1 ? `<button type="button" class="btn btn-sec br-all" data-v="${esc(it.v.id)}" data-k="${esc(it.key)}" title="इस वाउचर की सारी बैंक लाइनें एक साथ क्लियर करें" style="padding:2px 6px;font-size:11px;">☑ सब लाइन</button>` : ""}</td></tr>`;
+      return `<tr class="${ok ? "br-ok" : ""}">
+        <td><input type="checkbox" class="br-chk" data-k="${esc(it.key)}" ${ok ? "checked" : ""}></td>
+        <td style="white-space:nowrap;">${fmtDate(it.v.date)}</td>
+        <td><b>${it.cp ? esc((getLedger(it.cp.ledgerId) || { name: "?" }).name) : "—"}</b>${it.v.narration ? `<span class="lv-nar">${esc(it.v.narration)}</span>` : ""}</td>
+        <td>${esc(it.v.type)}</td><td>${esc(it.v.vchNo)}</td><td>${esc(it.v.refNo || "")}</td>
+        <td class="num">${dr}</td><td class="num">${cr}</td>
+        <td><input type="date" class="br-date" data-k="${esc(it.key)}" value="${it.bd}" style="padding:3px;"></td></tr>`;
     }).join("");
-    area.innerHTML = `<div class="form-card" style="padding:0;overflow:hidden;">
-        <table class="tally-tbl"><thead><tr><th style="width:34px;">✔</th><th>Date</th><th>Particulars</th><th>Vch Type</th><th>Vch No.</th><th>Instrument / Ref</th>
-          <th class="num">Deposit (Dr)</th><th class="num">Withdrawal (Cr)</th><th>Bank Date</th></tr></thead>
-        <tbody>${rows || `<tr><td colspan="9" style="text-align:center;color:#64748b;padding:16px;">कोई एंट्री नहीं</td></tr>`}</tbody></table></div>
-      <div class="form-card" style="max-width:560px;" id="brSum">${brSummaryHtml(D)}</div>`;
-  }
-  function renderBankReco(){
-    document.getElementById("screenTitle").textContent = "Bank Reconciliation";
-    document.getElementById("screenSub").textContent = "☑ = बैंक में क्लियर | बैंक की तारीख़ ख़ुद भी लिख सकते हैं | Esc = वापस";
-    const D = brData();
-    if(!D){
-      document.getElementById("screenBody").innerHTML = `<div class="form-card">कोई Bank ledger नहीं मिला। लेजर बनाते समय ग्रुप <b>Bank Accounts</b> चुनें।</div>`;
-      return;
-    }
-    const opts = D.banks.map(b => `<option value="${b.id}" ${b.id === BR.bank ? "selected" : ""}>${esc(b.name)}</option>`).join("");
+    const opts = banks.map(b => `<option value="${b.id}" ${b.id === BR.bank ? "selected" : ""}>${esc(b.name)}</option>`).join("");
     document.getElementById("screenBody").innerHTML = `
-      <div class="form-card no-print" style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;">
+      <div class="form-card" style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;">
         <div class="field" style="min-width:240px;"><label>Bank Account</label><select id="brBank" style="padding:6px;font-weight:600;">${opts}</select></div>
-        <div class="field"><label>Reconciliation Date (as on)</label><input type="date" id="brAsOn" value="${D.asOn}"></div>
+        <div class="field"><label>Reconciliation Date (as on)</label><input type="date" id="brAsOn" value="${asOn}"></div>
         <div class="field"><label>Bank Statement Balance (वैकल्पिक)</label><input type="number" step="0.01" id="brStmt" value="${BR.stmt}" placeholder="जैसा पासबुक में" style="width:170px;"></div>
         <label style="font-size:12px;display:flex;gap:4px;align-items:center;padding-bottom:8px;"><input type="checkbox" id="brOnly" ${BR.only ? "checked" : ""}> सिर्फ़ बाकी (Unreconciled)</label>
       </div>
-      <div id="brArea"></div>`;
-    fillBr();
+      <div class="form-card" style="padding:0;overflow:hidden;">
+        <table class="tally-tbl"><thead><tr><th style="width:34px;">✔</th><th>Date</th><th>Particulars</th><th>Vch Type</th><th>Vch No.</th><th>Instrument / Ref</th>
+          <th class="num">Deposit (Dr)</th><th class="num">Withdrawal (Cr)</th><th>Bank Date</th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="9" style="text-align:center;color:#64748b;padding:16px;">कोई एंट्री नहीं</td></tr>`}</tbody></table></div>
+      <div class="form-card" style="max-width:560px;">
+        <div class="info-row"><span>Balance as per Company Books (${fmtDate(asOn)})</span><span class="num"><b>${money(book)} ${book >= 0 ? "Dr" : "Cr"}</b></span></div>
+        <div class="info-row"><span>Add: Cheques issued, bank में अभी नहीं आए (Withdrawal uncleared)</span><span class="num">${money(uC)}</span></div>
+        <div class="info-row"><span>Less: Deposits, bank में अभी नहीं चढ़े (Deposit uncleared)</span><span class="num">${money(uD)}</span></div>
+        <div class="info-row" style="font-size:15px;font-weight:800;border-top:2px solid var(--pri);padding-top:6px;margin-top:6px;"><span>Balance as per Bank</span><span class="num">${money(bankBal)} ${bankBal >= 0 ? "Dr" : "Cr"}</span></div>
+        ${stmt === null ? "" : `<div class="info-row" style="font-weight:700;color:${Math.abs(stmt - bankBal) < 0.01 ? "var(--ok)" : "var(--danger)"};">
+          <span>${Math.abs(stmt - bankBal) < 0.01 ? "✔ पासबुक से मिल गया" : "⚠ पासबुक से अंतर"}</span><span class="num">${Math.abs(stmt - bankBal) < 0.01 ? "" : money(stmt - bankBal)}</span></div>`}
+      </div>`;
   }
   window.renderBankReco = renderBankReco;
 
-  function setBank(key, date){
-    DB.bankReco = DB.bankReco || {};
-    const m = DB.bankReco[BR.bank] || (DB.bankReco[BR.bank] = {});
-    if(date) m[key] = date; else delete m[key];
-  }
-  // एक पंक्ति को जगह पर ही अपडेट करना (ताकि कर्सर और तारीख़ लिखना बना रहे)
-  function brRowUpdate(key){
-    const D = brData(); if(!D) return;
-    const it = D.items.find(x => x.key === key);
-    const tr = document.querySelector('#brArea tr[data-k="' + key.replace(/"/g, '\\"') + '"]');
-    if(it && tr){
-      const ok = D.cleared(it);
-      tr.classList.toggle("br-ok", ok);
-      const c = tr.querySelector(".br-chk"); if(c) c.checked = ok;
-      if(BR.only && ok) tr.remove();
-    }
-    const s = document.getElementById("brSum"); if(s) s.innerHTML = brSummaryHtml(D);
-  }
   document.addEventListener("change", function(e){
     if(CURRENT_SCREEN !== "bank_reco") return;
     const t = e.target, id = t.id, k = t.dataset && t.dataset.k;
-    if(id === "brBank"){ BR.bank = t.value; fillBr(); return; }
-    if(id === "brAsOn"){ if(okDate(t.value)){ BR.asOn = t.value; fillBr(); } return; }
-    if(id === "brStmt"){ BR.stmt = t.value; const D = brData(); const s = document.getElementById("brSum"); if(D && s) s.innerHTML = brSummaryHtml(D); return; }
-    if(id === "brOnly"){ BR.only = t.checked; fillBr(); return; }
-    if(t.classList.contains("br-chk")){
-      if(t.checked){ const vid = k.split("|")[0], v = DB.vouchers.find(x => x.id === vid); setBank(k, v ? v.date : (BR.asOn || todayStr())); }
-      else setBank(k, "");
-      const d = document.querySelector('#brArea .br-date[data-k="' + k.replace(/"/g, '\\"') + '"]');
-      if(d) d.value = (DB.bankReco[BR.bank] || {})[k] || "";
-      saveDB(); brRowUpdate(k); return;
+    let refocus = null;
+    if(id === "brBank"){ BR.bank = t.value; }
+    else if(id === "brAsOn"){ BR.asOn = t.value; }
+    else if(id === "brStmt"){ BR.stmt = t.value; refocus = "brStmt"; }
+    else if(id === "brOnly"){ BR.only = t.checked; }
+    else if(t.classList.contains("br-chk") || t.classList.contains("br-date")){
+      DB.bankReco = DB.bankReco || {};
+      const m = DB.bankReco[BR.bank] || (DB.bankReco[BR.bank] = {});
+      if(t.classList.contains("br-chk")){
+        if(t.checked){
+          const vid = k.split("|")[0], v = DB.vouchers.find(x => x.id === vid);
+          m[k] = v ? v.date : (BR.asOn || todayStr());
+        }else delete m[k];
+      }else{
+        if(t.value) m[k] = t.value; else delete m[k];
+      }
+      saveDB();
+      refocus = (t.classList.contains("br-chk") ? ".br-chk" : ".br-date") + '[data-k="' + k + '"]';
+    } else return;
+    const sc = scroller(), top = sc ? sc.scrollTop : 0;
+    renderBankReco();
+    if(sc) sc.scrollTop = top;
+    if(refocus){
+      const el = refocus.charAt(0) === "." ? document.querySelector(refocus) : document.getElementById(refocus);
+      if(el) el.focus();
     }
-    if(t.classList.contains("br-date")){
-      if(t.value && !okDate(t.value)) return;
-      setBank(k, t.value); saveDB(); brRowUpdate(k);
-    }
-  });
-  document.addEventListener("click", function(e){
-    if(CURRENT_SCREEN !== "bank_reco") return;
-    const b = e.target.closest && e.target.closest(".br-all"); if(!b) return;
-    const D = brData(); if(!D) return;
-    const vid = b.dataset.v;
-    const d = (document.querySelector('#brArea .br-date[data-k="' + b.dataset.k.replace(/"/g, '\\"') + '"]') || {}).value;
-    const v = DB.vouchers.find(x => x.id === vid);
-    const date = d || (v && v.date) || BR.asOn || todayStr();
-    D.items.filter(it => it.v.id === vid).forEach(it => setBank(it.key, date));
-    saveDB(); fillBr();
   });
 
   /* ---------- नई स्क्रीन को ऐप में जोड़ना ---------- */
@@ -7306,8 +7247,8 @@ window.renderStockSummaryScreen = function() {
       if(e.altKey && !e.ctrlKey && (e.key === "r" || e.key === "R")){ e.preventDefault(); e.stopImmediatePropagation(); navigate("bank_reco"); }
     }, true);
   })();
-</script>
-  <script>
+
+</script>  
 (function(){
   /* =====================================================================
      PRINT 2.0 (बढ़िया फ़ॉर्मैट)  +  वाउचर प्रिंट  +  दान की रसीद (Donation Receipt)
