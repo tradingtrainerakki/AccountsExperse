@@ -1,301 +1,4 @@
-<!DOCTYPE html>
-<html lang="hi">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AccountsExperse GST - Complete Accounting & ERP</title>
-<style>
-  :root {
-    --pri: #0f6e4e;
-    --pri-dark: #094d36;
-    --pri-light: #ecfdf5;
-    --tally-blue: #1e3a8a;
-    --tally-gold: #fef08a;
-    --tally-bg: #f1f5f0;
-    --panel-bg: #ffffff;
-    --border: #cbd5e1;
-    --text: #0f172a;
-    --muted: #64748b;
-    --danger: #dc2626;
-    --warn: #d97706;
-    --ok: #16a34a;
-    --font: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    --mono: 'Consolas', 'Courier New', monospace;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { height: 100%; width: 100%; overflow: hidden; font-family: var(--font); font-size: 13px; color: var(--text); background: var(--tally-bg); user-select: none; }
-  
-  /* Top Tally Header Bar */
-  .top-bar {
-    height: 36px; background: linear-gradient(90deg, var(--pri-dark), var(--pri));
-    color: #fff; display: flex; align-items: center; justify-content: space-between;
-    padding: 0 12px; border-bottom: 2px solid #fbbf24;
-  }
-  .brand-area { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 15px; letter-spacing: 0.4px; }
-  .brand-badge { background: #fbbf24; color: #0f172a; padding: 2px 7px; border-radius: 3px; font-size: 11px; font-weight: 800; }
-  .top-meta { display: flex; align-items: center; gap: 16px; font-size: 12px; }
-  .top-meta span { background: rgba(255,255,255,0.12); padding: 3px 8px; border-radius: 4px; cursor: pointer; }
-  .top-meta span:hover { background: rgba(255,255,255,0.24); }
-  .kbd {
-    display: inline-block; background: #e2e8f0; color: #0f172a; border: 1px solid #94a3b8;
-    border-bottom-width: 2px; border-radius: 3px; padding: 0 5px; font-family: var(--mono);
-    font-size: 11px; font-weight: 700; line-height: 16px;
-  }
-
-  /* Main App Shell: Left Info + Center Workspace + Right Function Bar */
-  .app-shell {
-    display: grid;
-    grid-template-columns: 270px 1fr 145px;
-    height: calc(100vh - 60px);
-    width: 100%;
-  }
-  
-  /* Left Company Info Panel (Gateway Left) */
-  .left-panel {
-    background: #f8fafc; border-right: 1px solid var(--border);
-    padding: 10px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto;
-  }
-  .info-box {
-    background: #fff; border: 1px solid var(--border); border-top: 3px solid var(--pri);
-    border-radius: 4px; padding: 8px 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.03);
-  }
-  .info-box h4 { font-size: 11px; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; letter-spacing: 0.5px; }
-  .info-row { display: flex; justify-content: space-between; font-size: 12px; padding: 3px 0; border-bottom: 1px dashed #e2e8f0; }
-  .info-row:last-child { border-bottom: none; }
-  .info-val { font-weight: 600; color: var(--pri-dark); text-align: right; }
-
-  /* Center Workspace */
-  .center-panel {
-    background: var(--panel-bg); display: flex; flex-direction: column; height: 100%; overflow: hidden; position: relative;
-  }
-  .screen-header {
-    background: var(--pri); color: #fff; padding: 6px 12px;
-    display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 13.5px;
-  }
-  .screen-header .sub-info { font-size: 11.5px; font-weight: 400; opacity: 0.92; }
-  .screen-body {
-    flex: 1; overflow-y: auto; padding: 12px; position: relative;
-  }
-
-  /* Gateway of  AccountsExperse Menu Box */
-  .gateway-wrap {
-    display: flex; align-items: center; justify-content: center; height: 100%;
-    background: radial-gradient(circle at center, #ffffff 0%, #eef6f2 100%);
-  }
-  .gateway-box {
-    width: 340px; border: 2px solid var(--pri); background: #fff;
-    box-shadow: 0 10px 25px rgba(15,110,78,0.12); border-radius: 4px; overflow: hidden;
-  }
-  .gateway-title {
-    background: var(--pri); color: #fff; text-align: center; padding: 8px;
-    font-weight: 700; font-size: 14px; letter-spacing: 0.6px; border-bottom: 2px solid #fbbf24;
-  }
-  .gateway-section {
-    padding: 6px 14px 3px; font-size: 10.5px; font-weight: 700; color: var(--muted);
-    text-transform: uppercase; letter-spacing: 0.8px; background: #f8fafc; border-top: 1px solid #e2e8f0;
-  }
-  .gw-item {
-    padding: 7px 18px; cursor: pointer; display: flex; justify-content: space-between;
-    align-items: center; font-size: 13px; border-left: 4px solid transparent;
-  }
-  .gw-item:hover { background: #f1f5f9; }
-  .gw-item.active {
-    background: #fef08a; color: #0f172a; font-weight: 700; border-left-color: var(--pri);
-  }
-  .gw-item .hk { color: #dc2626; font-weight: 800; text-decoration: underline; }
-
-  /* Right F-Key Bar */
-  .right-bar {
-    background: #e2e8f0; border-left: 1px solid #94a3b8;
-    padding: 4px; display: flex; flex-direction: column; gap: 3px; overflow-y: auto;
-  }
-  .fn-btn {
-    background: #fff; border: 1px solid #cbd5e1; border-left: 3px solid var(--pri);
-    padding: 5px 6px; text-align: left; font-size: 11.5px; cursor: pointer;
-    border-radius: 2px; display: flex; align-items: center; gap: 5px; color: var(--text);
-  }
-  .fn-btn:hover { background: var(--pri-light); border-color: var(--pri); }
-  .fn-btn .fn-key { font-weight: 700; color: var(--pri-dark); min-width: 34px; font-family: var(--mono); font-size: 11px; }
-
-  /* Tables & Keyboard Row Selection (Your exact kb-sel style!) */
-  table.tally-tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; background: #fff; }
-  table.tally-tbl th {
-    background: #f1f5f9; color: #1e293b; font-weight: 700; padding: 7px 8px;
-    border-top: 1px solid var(--border); border-bottom: 2px solid var(--pri); text-align: left;
-    position: sticky; top: 0; z-index: 2;
-  }
-  table.tally-tbl td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
-  table.tally-tbl tr:hover { background: #f8fafc; }
-  .num { text-align: right !important; font-family: var(--mono); }
-  
-  /* Your exact keyboard selection highlight */
-  tr.kb-sel > td{ background:#ecfdf5 !important; box-shadow:inset 0 2px 0 #0f6e4e, inset 0 -2px 0 #0f6e4e; }
-  tr.kb-sel > td:first-child{ box-shadow:inset 2px 2px 0 #0f6e4e, inset 0 -2px 0 #0f6e4e; }
-  tr.kb-sel > td:last-child{ box-shadow:inset -2px 2px 0 #0f6e4e, inset 0 -2px 0 #0f6e4e; }
-  .kb-rowhint{ font-size:11.5px; color:var(--muted); margin:0 0 8px; }
-  @media (max-width: 899px){ .kb-rowhint{ display:none; } }
-
-  /* Forms & Inputs */
-  .form-card {
-    background: #fff; border: 1px solid var(--border); border-radius: 4px; padding: 12px; margin-bottom: 12px;
-  }
-  .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
-  .field { display: flex; flex-direction: column; gap: 3px; }
-  .field label { font-size: 11.5px; font-weight: 600; color: #334155; }
-  .field input, .field select, .field textarea {
-    padding: 6px 8px; border: 1px solid #94a3b8; border-radius: 3px; font-size: 12.5px;
-    font-family: inherit; background: #fff; color: var(--text);
-  }
-  .field input:focus, .field select:focus, .field textarea:focus {
-    outline: none; border-color: var(--pri); background: #fefce8; box-shadow: 0 0 0 2px rgba(15,110,78,0.18);
-  }
-  .btn {
-    padding: 6px 12px; border: 1px solid var(--pri); background: var(--pri); color: #fff;
-    border-radius: 3px; font-weight: 600; font-size: 12px; cursor: pointer;
-  }
-  .btn:hover { background: var(--pri-dark); }
-  .btn-sec { background: #fff; color: var(--text); border-color: #94a3b8; }
-  .btn-sec:hover { background: #f1f5f9; }
-  .btn-danger { background: var(--danger); border-color: var(--danger); }
-
-  /* Bottom Status Bar */
-  .status-bar {
-    height: 24px; background: #0f172a; color: #cbd5e1; display: flex;
-    align-items: center; justify-content: space-between; padding: 0 12px; font-size: 11.5px;
-  }
-
-  /* Modal Overlay */
-  .modal-backdrop {
-    position: fixed; inset: 0; background: rgba(15,23,42,0.55);
-    display: none; align-items: center; justify-content: center; z-index: 1000;
-  }
-  .modal-backdrop.open { display: flex; }
-  .modal-card {
-    background: #fff; border: 2px solid var(--pri); width: 92%; max-width: 680px;
-    max-height: 88vh; display: flex; flex-direction: column; border-radius: 4px;
-    box-shadow: 0 20px 35px rgba(0,0,0,0.3);
-  }
-  .modal-head {
-    background: var(--pri); color: #fff; padding: 8px 12px; font-weight: 700;
-    display: flex; justify-content: space-between; align-items: center;
-  }
-  .modal-body { padding: 14px; overflow-y: auto; flex: 1; }
-  .modal-foot { padding: 8px 14px; background: #f8fafc; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
-
-  /* Toast Notification */
-  #toastBox {
-    position: fixed; bottom: 34px; right: 160px; background: #0f172a; color: #fff;
-    padding: 8px 14px; border-left: 4px solid #fbbf24; border-radius: 3px;
-    font-size: 12.5px; display: none; z-index: 2000; box-shadow: 0 5px 15px rgba(0,0,0,0.25);
-  }
-</style>
-</head>
-<body>
-
-<!-- TOP HEADER BAR -->
-<div class="top-bar">
-  <div class="brand-area">
-    <span class="brand-badge">PRIME GST</span>
-    <span id="topCmpName">AccountsExperse Accounting ERP</span>
-  </div>
-  <div class="top-meta">
-    <span onclick="openPeriodModal()" title="Alt+F2: Change Period">📅 Period: <b id="topPeriod">01-Apr-2026 to 31-Mar-2027</b></span>
-    <span onclick="openDateModal()" title="F2: Current Date">🕒 Date: <b id="topCurDate">21-Oct-2026</b></span>
-    <span onclick="openEntitySwitcherModal()" title="F3: Company Info">🏢 Company (<kbd class="kbd">F3</kbd>)</span>
-    <span onclick="openHelpModal()" title="Shortcut Help">❓ Help (<kbd class="kbd">?</kbd>)</span>
-  </div>
-</div>
-
-<!-- MAIN 3-COLUMN WORKSPACE -->
-<div class="app-shell">
-  <!-- LEFT PANEL: Company & Tax Snapshot -->
-  <aside class="left-panel">
-    <div class="info-box">
-      <h4>Current Company</h4>
-      <div class="info-row"><span>Name</span><span class="info-val" id="lpCmpName">-</span></div>
-      <div class="info-row"><span>GSTIN</span><span class="info-val" id="lpCmpGstin">-</span></div>
-      <div class="info-row"><span>State</span><span class="info-val" id="lpCmpState">-</span></div>
-      <div class="info-row"><span>Reg. Type</span><span class="info-val" id="lpCmpReg">Regular</span></div>
-    </div>
-
-    <div class="info-box">
-      <h4>Quick Financial Pulse</h4>
-      <div class="info-row"><span>Cash / Bank</span><span class="info-val" id="lpCashBal">₹0.00</span></div>
-      <div class="info-row"><span>Total Sales</span><span class="info-val" id="lpSalesTot">₹0.00</span></div>
-      <div class="info-row"><span>Total Purchase</span><span class="info-val" id="lpPurcTot">₹0.00</span></div>
-      <div class="info-row"><span>Net GST Payable</span><span class="info-val" id="lpGstNet">₹0.00</span></div>
-      <div class="info-row"><span>Vouchers Entered</span><span class="info-val" id="lpVchCount">0</span></div>
-    </div>
-
-    <div class="info-box">
-      <h4>Quick Shortcuts</h4>
-      <div style="font-size:11.5px; line-height:1.7; color:#334155;">
-        <div><span class="kbd">Alt+C</span> Ledger/Item On-Spot</div>
-        <div><span class="kbd">Ctrl+A</span> Accept / Save Screen</div>
-        <div><span class="kbd">Esc</span> Quit / Go Back</div>
-        <div><span class="kbd">↑</span> <span class="kbd">↓</span> Select Row &amp; <span class="kbd">Enter</span>/<span class="kbd">E</span> Edit</div>
-      </div>
-    </div>
-  </aside>
-
-  <!-- CENTER WORKSPACE -->
-  <main class="center-panel">
-    <div class="screen-header">
-      <span id="screenTitle">Gateway of  AccountsExperse</span>
-      <span class="sub-info" id="screenSub">Use ↑ ↓ &amp; Enter or Hotkeys | Esc to Go Back</span>
-    </div>
-    <div class="screen-body" id="screenBody">
-      <!-- Dynamic Screens Rendered Here -->
-    </div>
-  </main>
-
-  <!-- RIGHT FUNCTION BUTTON BAR (F2 - F12) -->
-  <aside class="right-bar">
-    <button class="fn-btn" onclick="navigate('gateway')"><span class="fn-key">Esc</span><span>Gateway</span></button>
-    <button class="fn-btn" onclick="openDateModal()"><span class="fn-key">F2</span><span>Date</span></button>
-    <button class="fn-btn" onclick="openPeriodModal()"><span class="fn-key">A+F2</span><span>Period</span></button>
-    <button class="fn-btn" onclick="openEntitySwitcherModal()"><span class="fn-key">F3</span><span>Company</span></button>
-    <hr style="border:none; border-top:1px solid #cbd5e1; margin:2px 0;">
-    <button class="fn-btn" onclick="openVoucherScreen('Contra')"><span class="fn-key">C</span><span>Contra</span></button>
-    <button class="fn-btn" onclick="openVoucherScreen('Payment')"><span class="fn-key">Y</span><span>Payment</span></button>
-    <button class="fn-btn" onclick="openVoucherScreen('Receipt')"><span class="fn-key">R</span><span>Receipt</span></button>
-    <button class="fn-btn" onclick="openVoucherScreen('Journal')"><span class="fn-key">J</span><span>Journal</span></button>
-    <button class="fn-btn" onclick="openVoucherScreen('Sales')"><span class="fn-key">S</span><span>Sales</span></button>
-    <button class="fn-btn" onclick="openVoucherScreen('Purchase')"><span class="fn-key">P</span><span>Purchase</span></button>
-    <button class="fn-btn" onclick="openVoucherScreen('Credit Note')"><span class="fn-key">K</span><span>Cr Note</span></button>
-    <button class="fn-btn" onclick="openVoucherScreen('Debit Note')"><span class="fn-key">D</span><span>Dr Note</span></button>
-    <hr style="border:none; border-top:1px solid #cbd5e1; margin:2px 0;">
-    <button class="fn-btn" onclick="navigate('daybook')"><span class="fn-key">Alt+D</span><span>Day Book</span></button>
-    <button class="fn-btn" onclick="navigate('ledgers_view')"><span class="fn-key">Alt+L</span><span>Ledger View</span></button>
-    <button class="fn-btn" onclick="navigate('gstr1')"><span class="fn-key">Alt+G</span><span>GSTR-1</span></button>
-    <button class="fn-btn" onclick="navigate('gstr3b')"><span class="fn-key">Alt+3</span><span>GSTR-3B</span></button>
-    <button class="fn-btn" onclick="exportBackupJSON()"><span class="fn-key">Ctrl+E</span><span>Backup</span></button>
-    <button class="fn-btn" onclick="openRestoreModal()"><span class="fn-key">Upload</span><span>Restore</span></button>
-  </aside>
-</div>
-
-<!-- BOTTOM STATUS BAR -->
-<div class="status-bar">
-  <div>AccountsExperse GST Core Engine v1.0 | Double-Entry + Auto IGST / CGST+SGST</div>
-  <div id="statusRight">Ready</div>
-</div>
-
-<!-- UNIVERSAL MODAL -->
-<div class="modal-backdrop" id="appModal">
-  <div class="modal-card">
-    <div class="modal-head">
-      <span id="modalTitle">Modal</span>
-      <button class="btn btn-sec" style="padding:2px 8px;" onclick="closeModal()">✕ Esc</button>
-    </div>
-    <div class="modal-body" id="modalBody"></div>
-    <div class="modal-foot" id="modalFoot"></div>
-  </div>
-</div>
-
-<div id="toastBox"></div>
-
-<script>
-// ============================================================================
+<!doctypehtml><html lang=hi><meta charset=UTF-8><meta content="width=device-width,initial-scale=1"name=viewport><title>AccountsExperse GST - Complete Accounting & ERP</title><style>:root{--pri:#0f6e4e;--pri-dark:#094d36;--pri-light:#ecfdf5;--tally-blue:#1e3a8a;--tally-gold:#fef08a;--tally-bg:#f1f5f0;--panel-bg:#ffffff;--border:#cbd5e1;--text:#0f172a;--muted:#64748b;--danger:#dc2626;--warn:#d97706;--ok:#16a34a;--font:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;--mono:'Consolas','Courier New',monospace}*{box-sizing:border-box;margin:0;padding:0}body,html{height:100%;width:100%;overflow:hidden;font-family:var(--font);font-size:13px;color:var(--text);background:var(--tally-bg);user-select:none}.top-bar{height:36px;background:linear-gradient(90deg,var(--pri-dark),var(--pri));color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 12px;border-bottom:2px solid #fbbf24}.brand-area{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px;letter-spacing:.4px}.brand-badge{background:#fbbf24;color:#0f172a;padding:2px 7px;border-radius:3px;font-size:11px;font-weight:800}.top-meta{display:flex;align-items:center;gap:16px;font-size:12px}.top-meta span{background:rgba(255,255,255,.12);padding:3px 8px;border-radius:4px;cursor:pointer}.top-meta span:hover{background:rgba(255,255,255,.24)}.kbd{display:inline-block;background:#e2e8f0;color:#0f172a;border:1px solid #94a3b8;border-bottom-width:2px;border-radius:3px;padding:0 5px;font-family:var(--mono);font-size:11px;font-weight:700;line-height:16px}.app-shell{display:grid;grid-template-columns:270px 1fr 145px;height:calc(100vh - 60px);width:100%}.left-panel{background:#f8fafc;border-right:1px solid var(--border);padding:10px;display:flex;flex-direction:column;gap:10px;overflow-y:auto}.info-box{background:#fff;border:1px solid var(--border);border-top:3px solid var(--pri);border-radius:4px;padding:8px 10px;box-shadow:0 1px 2px rgba(0,0,0,.03)}.info-box h4{font-size:11px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;letter-spacing:.5px}.info-row{display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px dashed #e2e8f0}.info-row:last-child{border-bottom:none}.info-val{font-weight:600;color:var(--pri-dark);text-align:right}.center-panel{background:var(--panel-bg);display:flex;flex-direction:column;height:100%;overflow:hidden;position:relative}.screen-header{background:var(--pri);color:#fff;padding:6px 12px;display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:13.5px}.screen-header .sub-info{font-size:11.5px;font-weight:400;opacity:.92}.screen-body{flex:1;overflow-y:auto;padding:12px;position:relative}.gateway-wrap{display:flex;align-items:center;justify-content:center;height:100%;background:radial-gradient(circle at center,#fff 0,#eef6f2 100%)}.gateway-box{width:340px;border:2px solid var(--pri);background:#fff;box-shadow:0 10px 25px rgba(15,110,78,.12);border-radius:4px;overflow:hidden}.gateway-title{background:var(--pri);color:#fff;text-align:center;padding:8px;font-weight:700;font-size:14px;letter-spacing:.6px;border-bottom:2px solid #fbbf24}.gateway-section{padding:6px 14px 3px;font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;background:#f8fafc;border-top:1px solid #e2e8f0}.gw-item{padding:7px 18px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-size:13px;border-left:4px solid transparent}.gw-item:hover{background:#f1f5f9}.gw-item.active{background:#fef08a;color:#0f172a;font-weight:700;border-left-color:var(--pri)}.gw-item .hk{color:#dc2626;font-weight:800;text-decoration:underline}.right-bar{background:#e2e8f0;border-left:1px solid #94a3b8;padding:4px;display:flex;flex-direction:column;gap:3px;overflow-y:auto}.fn-btn{background:#fff;border:1px solid #cbd5e1;border-left:3px solid var(--pri);padding:5px 6px;text-align:left;font-size:11.5px;cursor:pointer;border-radius:2px;display:flex;align-items:center;gap:5px;color:var(--text)}.fn-btn:hover{background:var(--pri-light);border-color:var(--pri)}.fn-btn .fn-key{font-weight:700;color:var(--pri-dark);min-width:34px;font-family:var(--mono);font-size:11px}table.tally-tbl{width:100%;border-collapse:collapse;font-size:12.5px;background:#fff}table.tally-tbl th{background:#f1f5f9;color:#1e293b;font-weight:700;padding:7px 8px;border-top:1px solid var(--border);border-bottom:2px solid var(--pri);text-align:left;position:sticky;top:0;z-index:2}table.tally-tbl td{padding:6px 8px;border-bottom:1px solid #e2e8f0}table.tally-tbl tr:hover{background:#f8fafc}.num{text-align:right!important;font-family:var(--mono)}tr.kb-sel>td{background:#ecfdf5!important;box-shadow:inset 0 2px 0 #0f6e4e,inset 0 -2px 0 #0f6e4e}tr.kb-sel>td:first-child{box-shadow:inset 2px 2px 0 #0f6e4e,inset 0 -2px 0 #0f6e4e}tr.kb-sel>td:last-child{box-shadow:inset -2px 2px 0 #0f6e4e,inset 0 -2px 0 #0f6e4e}.kb-rowhint{font-size:11.5px;color:var(--muted);margin:0 0 8px}@media (max-width:899px){.kb-rowhint{display:none}}.form-card{background:#fff;border:1px solid var(--border);border-radius:4px;padding:12px;margin-bottom:12px}.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}.field{display:flex;flex-direction:column;gap:3px}.field label{font-size:11.5px;font-weight:600;color:#334155}.field input,.field select,.field textarea{padding:6px 8px;border:1px solid #94a3b8;border-radius:3px;font-size:12.5px;font-family:inherit;background:#fff;color:var(--text)}.field input:focus,.field select:focus,.field textarea:focus{outline:0;border-color:var(--pri);background:#fefce8;box-shadow:0 0 0 2px rgba(15,110,78,.18)}.btn{padding:6px 12px;border:1px solid var(--pri);background:var(--pri);color:#fff;border-radius:3px;font-weight:600;font-size:12px;cursor:pointer}.btn:hover{background:var(--pri-dark)}.btn-sec{background:#fff;color:var(--text);border-color:#94a3b8}.btn-sec:hover{background:#f1f5f9}.btn-danger{background:var(--danger);border-color:var(--danger)}.status-bar{height:24px;background:#0f172a;color:#cbd5e1;display:flex;align-items:center;justify-content:space-between;padding:0 12px;font-size:11.5px}.modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.55);display:none;align-items:center;justify-content:center;z-index:1000}.modal-backdrop.open{display:flex}.modal-card{background:#fff;border:2px solid var(--pri);width:92%;max-width:680px;max-height:88vh;display:flex;flex-direction:column;border-radius:4px;box-shadow:0 20px 35px rgba(0,0,0,.3)}.modal-head{background:var(--pri);color:#fff;padding:8px 12px;font-weight:700;display:flex;justify-content:space-between;align-items:center}.modal-body{padding:14px;overflow-y:auto;flex:1}.modal-foot{padding:8px 14px;background:#f8fafc;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px}#toastBox{position:fixed;bottom:34px;right:160px;background:#0f172a;color:#fff;padding:8px 14px;border-left:4px solid #fbbf24;border-radius:3px;font-size:12.5px;display:none;z-index:2000;box-shadow:0 5px 15px rgba(0,0,0,.25)}</style><div class=top-bar><div class=brand-area><span class=brand-badge>PRIME GST</span> <span id=topCmpName>AccountsExperse Accounting ERP</span></div><div class=top-meta><span onclick=openPeriodModal() title="Alt+F2: Change Period">📅 Period: <b id=topPeriod>01-Apr-2026 to 31-Mar-2027</b></span> <span onclick=openDateModal() title="F2: Current Date">🕒 Date: <b id=topCurDate>21-Oct-2026</b></span> <span onclick=openEntitySwitcherModal() title="F3: Company Info">🏢 Company (<kbd class=kbd>F3</kbd>)</span> <span onclick=openHelpModal() title="Shortcut Help">❓ Help (<kbd class=kbd>?</kbd>)</span></div></div><div class=app-shell><aside class=left-panel><div class=info-box><h4>Current Company</h4><div class=info-row><span>Name</span><span class=info-val id=lpCmpName>-</span></div><div class=info-row><span>GSTIN</span><span class=info-val id=lpCmpGstin>-</span></div><div class=info-row><span>State</span><span class=info-val id=lpCmpState>-</span></div><div class=info-row><span>Reg. Type</span><span class=info-val id=lpCmpReg>Regular</span></div></div><div class=info-box><h4>Quick Financial Pulse</h4><div class=info-row><span>Cash / Bank</span><span class=info-val id=lpCashBal>₹0.00</span></div><div class=info-row><span>Total Sales</span><span class=info-val id=lpSalesTot>₹0.00</span></div><div class=info-row><span>Total Purchase</span><span class=info-val id=lpPurcTot>₹0.00</span></div><div class=info-row><span>Net GST Payable</span><span class=info-val id=lpGstNet>₹0.00</span></div><div class=info-row><span>Vouchers Entered</span><span class=info-val id=lpVchCount>0</span></div></div><div class=info-box><h4>Quick Shortcuts</h4><div style=font-size:11.5px;line-height:1.7;color:#334155><div><span class=kbd>Alt+C</span> Ledger/Item On-Spot</div><div><span class=kbd>Ctrl+A</span> Accept / Save Screen</div><div><span class=kbd>Esc</span> Quit / Go Back</div><div><span class=kbd>↑</span> <span class=kbd>↓</span> Select Row & <span class=kbd>Enter</span>/<span class=kbd>E</span> Edit</div></div></div></aside><main class=center-panel><div class=screen-header><span id=screenTitle>Gateway of AccountsExperse</span> <span class=sub-info id=screenSub>Use ↑ ↓ & Enter or Hotkeys | Esc to Go Back</span></div><div class=screen-body id=screenBody></div></main><aside class=right-bar><button class=fn-btn onclick='navigate("gateway")'><span class=fn-key>Esc</span><span>Gateway</span></button> <button class=fn-btn onclick=openDateModal()><span class=fn-key>F2</span><span>Date</span></button> <button class=fn-btn onclick=openPeriodModal()><span class=fn-key>A+F2</span><span>Period</span></button> <button class=fn-btn onclick=openEntitySwitcherModal()><span class=fn-key>F3</span><span>Company</span></button><hr style="border:none;border-top:1px solid #cbd5e1;margin:2px 0"><button class=fn-btn onclick='openVoucherScreen("Contra")'><span class=fn-key>C</span><span>Contra</span></button> <button class=fn-btn onclick='openVoucherScreen("Payment")'><span class=fn-key>Y</span><span>Payment</span></button> <button class=fn-btn onclick='openVoucherScreen("Receipt")'><span class=fn-key>R</span><span>Receipt</span></button> <button class=fn-btn onclick='openVoucherScreen("Journal")'><span class=fn-key>J</span><span>Journal</span></button> <button class=fn-btn onclick='openVoucherScreen("Sales")'><span class=fn-key>S</span><span>Sales</span></button> <button class=fn-btn onclick='openVoucherScreen("Purchase")'><span class=fn-key>P</span><span>Purchase</span></button> <button class=fn-btn onclick='openVoucherScreen("Credit Note")'><span class=fn-key>K</span><span>Cr Note</span></button> <button class=fn-btn onclick='openVoucherScreen("Debit Note")'><span class=fn-key>D</span><span>Dr Note</span></button><hr style="border:none;border-top:1px solid #cbd5e1;margin:2px 0"><button class=fn-btn onclick='navigate("daybook")'><span class=fn-key>Alt+D</span><span>Day Book</span></button> <button class=fn-btn onclick='navigate("ledgers_view")'><span class=fn-key>Alt+L</span><span>Ledger View</span></button> <button class=fn-btn onclick='navigate("gstr1")'><span class=fn-key>Alt+G</span><span>GSTR-1</span></button> <button class=fn-btn onclick='navigate("gstr3b")'><span class=fn-key>Alt+3</span><span>GSTR-3B</span></button> <button class=fn-btn onclick=exportBackupJSON()><span class=fn-key>Ctrl+E</span><span>Backup</span></button> <button class=fn-btn onclick=openRestoreModal()><span class=fn-key>Upload</span><span>Restore</span></button></aside></div><div class=status-bar><div>AccountsExperse GST Core Engine v1.0 | Double-Entry + Auto IGST / CGST+SGST</div><div id=statusRight>Ready</div></div><div class=modal-backdrop id=appModal><div class=modal-card><div class=modal-head><span id=modalTitle>Modal</span> <button class="btn btn-sec"onclick=closeModal() style="padding:2px 8px">✕ Esc</button></div><div class=modal-body id=modalBody></div><div class=modal-foot id=modalFoot></div></div></div><div id=toastBox></div><script>// ============================================================================
 // PART 1 JS: GST STATE CODES, 28 GROUPS, DB ENGINE, COMPANY & GATEWAY NAVIGATION
 // ============================================================================
 
@@ -3273,62 +2976,7 @@ function applyRestore(mode) {
   closeModal();
   navigate("gateway", false);
   toast(`✅ "${nm}" restore hokar nayi entity ban gayi`);
-}
-</script>
-<!-- ============================================================================ -->
-<!-- UPGRADE PATCH: LOGIN/LOGOUT + CUSTOM GROUPS + STOCK SUMMARY + INV VOUCHERS   -->
-<!-- ============================================================================ -->
-<style>
-  .login-overlay {
-    position: fixed; inset: 0; background: linear-gradient(135deg, #094d36 0%, #0f172a 100%);
-    display: none; align-items: center; justify-content: center; z-index: 5000;
-  }
-  .login-overlay.active { display: flex; }
-  .login-card {
-    background: #fff; width: 370px; border-radius: 6px; border: 2px solid #fbbf24;
-    box-shadow: 0 25px 50px rgba(0,0,0,0.45); overflow: hidden;
-  }
-  .login-head {
-    background: var(--pri); color: #fff; padding: 14px 16px; text-align: center;
-    border-bottom: 2px solid #fbbf24;
-  }
-  .login-body { padding: 18px; display: flex; flex-direction: column; gap: 12px; }
-</style>
-
-<!-- LOGIN LOCK OVERLAY -->
-<div class="login-overlay" id="loginOverlay">
-  <div class="login-card">
-    <div class="login-head">
-      <div style="font-size:16px; font-weight:800; letter-spacing:0.5px;">🔐 AccountsExperse ERP LOGIN</div>
-      <div style="font-size:11.5px; opacity:0.9; margin-top:3px;">Authorized User Access Only</div>
-    </div>
-    <div class="login-body">
-      <div class="field">
-        <label>Select User Role</label>
-        <select id="loginRoleInp">
-          <option value="admin">Administrator (Full Access)</option>
-          <option value="operator">Data Operator (Entry Only)</option>
-          <option value="viewer">Auditor / Viewer (Read Only)</option>
-        </select>
-      </div>
-      <div class="field">
-        <label>Username</label>
-        <input id="loginUserInp" value="admin" placeholder="Enter Username">
-      </div>
-      <div class="field">
-        <label>Password / PIN</label>
-        <input type="password" id="loginPassInp" value="" placeholder="Default: 1234" onkeydown="if(event.key==='Enter') doAppLogin()">
-      </div>
-      <button class="btn" style="padding:9px; font-size:13px; margin-top:4px;" onclick="doAppLogin()">🔓 Login to Software</button>
-      <div style="font-size:11px; color:var(--muted); text-align:center;">
-        Default PIN: <b>1234</b> (Aap login ke baad PIN badal sakte hain)
-      </div>
-    </div>
-  </div>
-</div>
-
-<script>
-// ============================================================================
+}</script><style>.login-overlay{position:fixed;inset:0;background:linear-gradient(135deg,#094d36 0,#0f172a 100%);display:none;align-items:center;justify-content:center;z-index:5000}.login-overlay.active{display:flex}.login-card{background:#fff;width:370px;border-radius:6px;border:2px solid #fbbf24;box-shadow:0 25px 50px rgba(0,0,0,.45);overflow:hidden}.login-head{background:var(--pri);color:#fff;padding:14px 16px;text-align:center;border-bottom:2px solid #fbbf24}.login-body{padding:18px;display:flex;flex-direction:column;gap:12px}</style><div class=login-overlay id=loginOverlay><div class=login-card><div class=login-head><div style=font-size:16px;font-weight:800;letter-spacing:.5px>🔐 AccountsExperse ERP LOGIN</div><div style=font-size:11.5px;opacity:.9;margin-top:3px>Authorized User Access Only</div></div><div class=login-body><div class=field><label>Select User Role</label> <select id=loginRoleInp><option value=admin>Administrator (Full Access)<option value=operator>Data Operator (Entry Only)<option value=viewer>Auditor / Viewer (Read Only)</select></div><div class=field><label>Username</label> <input id=loginUserInp placeholder="Enter Username"value=admin></div><div class=field><label>Password / PIN</label> <input id=loginPassInp placeholder="Default: 1234"onkeydown='"Enter"===event.key&&doAppLogin()'type=password></div><button class=btn onclick=doAppLogin() style=padding:9px;font-size:13px;margin-top:4px>🔓 Login to Software</button><div style=font-size:11px;color:var(--muted);text-align:center>Default PIN: <b>1234</b> (Aap login ke baad PIN badal sakte hain)</div></div></div></div><script>// ============================================================================
 // 1. LOGIN / LOGOUT & USER AUTHENTICATION SYSTEM
 // ============================================================================
 const AUTH_KEY = "TALLY_PRIME_AUTH_CONFIG";
@@ -3894,13 +3542,7 @@ function saveInventoryVoucherModal() {
 
   checkSessionOnStartup();
   if (CURRENT_SCREEN === "gateway") renderGateway();
-})();
-</script>
-  <!-- ============================================================================ -->
-<!-- UPGRADE PATCH 2: STOCK GROUPS (RAW, PACKING, FINISHED GOODS) + GST CATEGORY  -->
-<!-- ============================================================================ -->
-<script>
-// Default Standard Stock Groups with GST & ITC Categories
+})();</script><script>// Default Standard Stock Groups with GST & ITC Categories
 const DEFAULT_STOCK_GROUPS = [
   { id: "SG_RAW", name: "Raw Material", parent: "Primary", gstCategory: "Taxable", itcCategory: "Inputs", defaultHsn: "", defaultGst: 18, custom: false },
   { id: "SG_PACK", name: "Packing Material", parent: "Primary", gstCategory: "Taxable", itcCategory: "Inputs", defaultHsn: "4819", defaultGst: 18, custom: false },
@@ -4417,11 +4059,7 @@ window.renderStockSummaryScreen = function() {
   };
 
   if (CURRENT_SCREEN === "gateway") renderGateway();
-})();
-</script>
-<!-- ================= SUPABASE EMAIL LOGIN & ADMIN USER ACCESS MANAGER ================= -->
-<script>
-(function() {
+})();</script><script>(function() {
   // Aapka Asli Supabase Project URL & Anon Key (Screenshot aur Token se verified)
   const SUPABASE_URL = 'https://mjnqbmmyapusejymjchp.supabase.co';
   const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1qbnFibW15YXB1c2VqeW1qY2hwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI2MTQ4MjMsImV4cCI6MjEwODE5MDgyM30.196QHOcQ-bzbhgXGDwXZ6LXo6wpSh4yHNwIsJ4MuGJU';
@@ -4891,11 +4529,7 @@ window.renderStockSummaryScreen = function() {
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
     setTimeout(showSupabaseLoginScreen, 100);
   }
-})();
-</script>
-  <!-- ================= PART 2 & PART 3 UPGRADE: QUICK GROUPS + BOM & MANUFACTURING ENGINE ================= -->
-<script>
-(function() {
+})();</script><script>(function() {
   // 1. Ensure BOM & Stock Group structures exist in DB
   function ensureBomAndGroupsReady() {
     if (typeof ensureStockGroupsInitialized === "function") ensureStockGroupsInitialized();
@@ -5590,37 +5224,7 @@ window.renderStockSummaryScreen = function() {
 
   ensureBomAndGroupsReady();
   if (CURRENT_SCREEN === "gateway") renderGateway();
-})();
-</script>
-
-<!-- ===== PRINT BUTTON + ARROW-KEY DROPDOWN (सबसे आख़िर में </body> से ठीक पहले paste करें) ===== -->
-<style>
-  #printArea{display:none;}
-  @media print{
-    html,body{height:auto!important;overflow:visible!important;background:#fff!important;}
-    body.printing > *:not(#printArea){display:none!important;}
-    body.printing #printArea{display:block!important;position:static!important;padding:10mm;color:#000;font-family:'Segoe UI',Tahoma,sans-serif;font-size:12px;user-select:text;}
-    #printArea .no-print,#printArea button,#printArea .btn,#printArea .kb-rowhint{display:none!important;}
-    #printArea table{width:100%;border-collapse:collapse;}
-    #printArea th,#printArea td{border:1px solid #000!important;padding:4px 6px!important;color:#000!important;background:#fff!important;position:static!important;}
-    #printArea .pr-val{border-bottom:1px dotted #000;font-weight:600;}
-    #printArea .form-card,#printArea .info-box{border:none!important;box-shadow:none!important;background:#fff!important;}
-    @page{size:A4;margin:8mm;}
-  }
-  #kdPop{position:fixed;z-index:999999;background:#fff;border:2px solid #0f6e4e;border-radius:4px;box-shadow:0 10px 25px rgba(0,0,0,.25);display:none;flex-direction:column;min-width:260px;max-width:92vw;user-select:none;}
-  #kdPop input{border:none;border-bottom:1px solid #cbd5e1;padding:7px 9px;font-size:13px;outline:none;width:100%;}
-  #kdList{overflow-y:auto;max-height:260px;}
-  .kd-item{padding:6px 12px;cursor:pointer;font-size:13px;border-left:4px solid transparent;}
-  .kd-item.cur{color:#0f6e4e;font-weight:700;}
-  .kd-item.act{background:#fef08a;border-left-color:#0f6e4e;color:#0f172a;font-weight:700;}
-  .kd-none{padding:8px 12px;color:#64748b;font-size:12px;}
-</style>
-
-<div id="printArea"></div>
-<div id="kdPop"><input id="kdSearch" type="text" autocomplete="off" placeholder="टाइप करें / ↑ ↓ / Enter"><div id="kdList"></div></div>
-
-<script>
-(function(){
+})();</script><style>#printArea{display:none}@media print{body,html{height:auto!important;overflow:visible!important;background:#fff!important}body.printing>:not(#printArea){display:none!important}body.printing #printArea{display:block!important;position:static!important;padding:10mm;color:#000;font-family:'Segoe UI',Tahoma,sans-serif;font-size:12px;user-select:text}#printArea .btn,#printArea .kb-rowhint,#printArea .no-print,#printArea button{display:none!important}#printArea table{width:100%;border-collapse:collapse}#printArea td,#printArea th{border:1px solid #000!important;padding:4px 6px!important;color:#000!important;background:#fff!important;position:static!important}#printArea .pr-val{border-bottom:1px dotted #000;font-weight:600}#printArea .form-card,#printArea .info-box{border:none!important;box-shadow:none!important;background:#fff!important}@page{size:A4;margin:8mm}}#kdPop{position:fixed;z-index:999999;background:#fff;border:2px solid #0f6e4e;border-radius:4px;box-shadow:0 10px 25px rgba(0,0,0,.25);display:none;flex-direction:column;min-width:260px;max-width:92vw;user-select:none}#kdPop input{border:none;border-bottom:1px solid #cbd5e1;padding:7px 9px;font-size:13px;outline:0;width:100%}#kdList{overflow-y:auto;max-height:260px}.kd-item{padding:6px 12px;cursor:pointer;font-size:13px;border-left:4px solid transparent}.kd-item.cur{color:#0f6e4e;font-weight:700}.kd-item.act{background:#fef08a;border-left-color:#0f6e4e;color:#0f172a;font-weight:700}.kd-none{padding:8px 12px;color:#64748b;font-size:12px}</style><div id=printArea></div><div id=kdPop><input id=kdSearch placeholder="टाइप करें / ↑ ↓ / Enter"autocomplete=off><div id=kdList></div></div><script>(function(){
   /* ============ 1) PRINT ============ */
   const _origPrint = window.print.bind(window);
 
@@ -5819,30 +5423,7 @@ window.renderStockSummaryScreen = function() {
     }
   }, true);
   window.addEventListener("resize",()=>{ if(popOpen()) closePop(true); });
-})();
-</script>
-
-<!-- ===== TALLY STYLE ESC -> QUIT POPUP (पिछले कोड के बाद, </body> से पहले paste करें) ===== -->
-<style>
-  #quitBox{position:fixed;inset:0;z-index:1000000;background:rgba(15,23,42,.45);display:none;align-items:center;justify-content:center;}
-  #quitBox .qcard{background:#fff;border:2px solid #0f6e4e;border-radius:4px;width:300px;box-shadow:0 12px 30px rgba(0,0,0,.3);overflow:hidden;}
-  #quitBox .qhead{background:#0f6e4e;color:#fff;padding:7px 12px;font-weight:700;border-bottom:2px solid #fbbf24;}
-  #quitBox .qbody{padding:16px;text-align:center;font-size:14px;font-weight:600;}
-  #quitBox .qbtns{display:flex;gap:10px;justify-content:center;padding:0 16px 16px;}
-  #quitBox .qbtn{min-width:90px;padding:7px 12px;border:1px solid #94a3b8;background:#fff;border-radius:3px;cursor:pointer;font-size:13px;font-weight:600;}
-  #quitBox .qbtn.act{background:#fef08a;border-color:#0f6e4e;box-shadow:0 0 0 2px #0f6e4e inset;}
-</style>
-<div id="quitBox"><div class="qcard">
-  <div class="qhead">Quit?</div>
-  <div class="qbody">क्या आप बाहर निकलना चाहते हैं?</div>
-  <div class="qbtns">
-    <button class="qbtn" id="qYes"><u>Y</u>es</button>
-    <button class="qbtn act" id="qNo"><u>N</u>o</button>
-  </div>
-</div></div>
-
-<script>
-(function(){
+})();</script><style>#quitBox{position:fixed;inset:0;z-index:1000000;background:rgba(15,23,42,.45);display:none;align-items:center;justify-content:center}#quitBox .qcard{background:#fff;border:2px solid #0f6e4e;border-radius:4px;width:300px;box-shadow:0 12px 30px rgba(0,0,0,.3);overflow:hidden}#quitBox .qhead{background:#0f6e4e;color:#fff;padding:7px 12px;font-weight:700;border-bottom:2px solid #fbbf24}#quitBox .qbody{padding:16px;text-align:center;font-size:14px;font-weight:600}#quitBox .qbtns{display:flex;gap:10px;justify-content:center;padding:0 16px 16px}#quitBox .qbtn{min-width:90px;padding:7px 12px;border:1px solid #94a3b8;background:#fff;border-radius:3px;cursor:pointer;font-size:13px;font-weight:600}#quitBox .qbtn.act{background:#fef08a;border-color:#0f6e4e;box-shadow:0 0 0 2px #0f6e4e inset}</style><div id=quitBox><div class=qcard><div class=qhead>Quit?</div><div class=qbody>क्या आप बाहर निकलना चाहते हैं?</div><div class=qbtns><button class=qbtn id=qYes><u>Y</u>es</button> <button class="qbtn act"id=qNo><u>N</u>o</button></div></div></div><script>(function(){
   const box = document.getElementById("quitBox");
   const yes = document.getElementById("qYes"), no = document.getElementById("qNo");
   let sel = "no";                                   // शुरू में No चुना रहेगा (गलती से logout न हो)
@@ -5878,12 +5459,7 @@ window.renderStockSummaryScreen = function() {
       openQuit();
     }
   }, true);
-})();
-</script>
-
-<!-- ===== GATEWAY: ↑ ↓ Enter + HOTKEY (Tally style) ===== -->
-<script>
-(function(){
+})();</script><script>(function(){
   function gwActive(){
     if(typeof CURRENT_SCREEN === "undefined" || CURRENT_SCREEN !== "gateway") return false;
     const m = document.getElementById("appModal");
@@ -5921,10 +5497,7 @@ window.renderStockSummaryScreen = function() {
       if(i>=0){ e.preventDefault(); e.stopImmediatePropagation(); GW_INDEX=i; navigate(GATEWAY_MENU[i].screen); }
     }
   }, true);
-})();
-</script>
-<script>
-(function(){
+})();</script><script>(function(){
   // ====== यहाँ अपनी पसंद के अक्षर बदलें (छोटे अक्षर में लिखें) ======
   const VCH_KEYS = {
     c: "Contra",
@@ -5954,10 +5527,7 @@ window.renderStockSummaryScreen = function() {
     if(VCH_STATE && VCH_STATE.vchType === type && !VCH_STATE.editingId) return;
     openVoucherScreen(type);
   }, true);
-})();
-</script>
-  <script>
-(function(){
+})();</script><script>(function(){
   // ====== वाउचर टाइप और उनके अक्षर (अपनी पसंद से बदल सकते हैं) ======
   const VCH_TYPES = [
     { k: "c", t: "Contra" },
@@ -6106,10 +5676,7 @@ window.renderStockSummaryScreen = function() {
       if(i >= 0){ e.preventDefault(); e.stopImmediatePropagation(); chooseType(i); }
     }
   }, true);
-})();
-</script>
-  <script>
-(function(){
+})();</script><script>(function(){
   const KEY = "VCH_NO_MODE";                       // auto / manual (याद रहेगा)
   let mode = "auto";
   try{ mode = localStorage.getItem(KEY) || "auto"; }catch(e){}
@@ -6182,10 +5749,7 @@ window.renderStockSummaryScreen = function() {
       toggleMode();
     }
   }, true);
-})();
-</script>
-  <script>
-(function(){
+})();</script><script>(function(){
   function acctMode(){
     return typeof VCH_STATE !== "undefined" && VCH_STATE &&
       !(VCH_STATE.mode === "item" && isItemCapableVoucher(VCH_STATE.vchType));
@@ -6285,10 +5849,7 @@ window.renderStockSummaryScreen = function() {
       }
     }, 30);
   });
-})();
-</script>
-  <script>
-(function(){
+})();</script><script>(function(){
   /* =====================================================================
      BILL-WISE (Sundry Debtors / Creditors) + OUTSTANDING REPORT
      ===================================================================== */
@@ -6770,43 +6331,7 @@ window.renderStockSummaryScreen = function() {
       else if(e.key === "/"){ e.preventDefault(); e.stopImmediatePropagation(); const i = document.getElementById("osQ"); if(i) i.focus(); }
     }, true);
   })();
-})();
-</script>
- <!-- ================= MASTER TALLY-PRIME UPGRADE: BRS + LEDGER DR/CR + B/S 3-STEP DRILL-DOWN ================= -->
-<style>
-  .tally-sheet-grid {
-    display: grid; grid-template-columns: 1fr 1fr; border: 2px solid #0f172a; background: #fff;
-  }
-  .tally-sheet-col {
-    display: flex; flex-direction: column; justify-content: space-between; min-height: 430px;
-  }
-  .tally-sheet-col:first-child { border-right: 2px solid #0f172a; }
-  .tally-col-head {
-    background: #0f6e4e; color: #fff; font-weight: 800; padding: 7px 10px;
-    display: flex; justify-content: space-between; border-bottom: 2px solid #0f172a;
-    font-size: 13px; letter-spacing: 0.4px;
-  }
-  .tally-grp-block {
-    border-bottom: 1px dashed #cbd5e1; padding: 7px 10px; transition: background 0.15s;
-  }
-  .tally-grp-block.clickable:hover { background: #fef9c3; cursor: pointer; }
-  .tally-grp-title {
-    display: flex; justify-content: space-between; font-weight: 800; color: #0f172a;
-    font-size: 13px; padding: 2px 0;
-  }
-  .tally-sub-led {
-    display: flex; justify-content: space-between; font-size: 12px; color: #334155;
-    padding: 3px 6px 3px 18px; cursor: pointer; font-style: italic; border-radius: 3px;
-  }
-  .tally-sub-led:hover { background: #fef08a; color: #000; font-style: normal; font-weight: 700; }
-  .tally-col-foot {
-    background: #f1f5f9; border-top: 2px solid #0f172a; border-bottom: 3px double #0f172a;
-    padding: 8px 10px; display: flex; justify-content: space-between; font-weight: 800; font-size: 14px;
-  }
-</style>
-
-<script>
-(function() {
+})();</script><style>.tally-sheet-grid{display:grid;grid-template-columns:1fr 1fr;border:2px solid #0f172a;background:#fff}.tally-sheet-col{display:flex;flex-direction:column;justify-content:space-between;min-height:430px}.tally-sheet-col:first-child{border-right:2px solid #0f172a}.tally-col-head{background:#0f6e4e;color:#fff;font-weight:800;padding:7px 10px;display:flex;justify-content:space-between;border-bottom:2px solid #0f172a;font-size:13px;letter-spacing:.4px}.tally-grp-block{border-bottom:1px dashed #cbd5e1;padding:7px 10px;transition:background .15s}.tally-grp-block.clickable:hover{background:#fef9c3;cursor:pointer}.tally-grp-title{display:flex;justify-content:space-between;font-weight:800;color:#0f172a;font-size:13px;padding:2px 0}.tally-sub-led{display:flex;justify-content:space-between;font-size:12px;color:#334155;padding:3px 6px 3px 18px;cursor:pointer;font-style:italic;border-radius:3px}.tally-sub-led:hover{background:#fef08a;color:#000;font-style:normal;font-weight:700}.tally-col-foot{background:#f1f5f9;border-top:2px solid #0f172a;border-bottom:3px double #0f172a;padding:8px 10px;display:flex;justify-content:space-between;font-weight:800;font-size:14px}</style><script>(function() {
   let SHOW_NARRATION_IN_LEDGER = true;
   let SHOW_ZERO_BALANCES = false;
   let BS_DETAILED_MODE = false;      // Alt+F1: Condensed (Groups only) vs Detailed (Groups + Ledgers)
@@ -7649,11 +7174,7 @@ window.renderStockSummaryScreen = function() {
   if (typeof renderScreen === "function" && CURRENT_SCREEN) {
     renderScreen(CURRENT_SCREEN);
   }
-})();
-  
-</script>
-  <script>
-(function(){
+})();</script><script>(function(){
   /* =====================================================================
      PRINT 2.0 + दान की रसीद + SAB REPORTS KA FIXED HEADER/FOOTER + LEDGER (As per Details) + BANK RECONCILIATION (सारी लाइनें)
      ===================================================================== */
@@ -8475,11 +7996,7 @@ window.renderStockSummaryScreen = function() {
     D.items.filter(it => it.v.id === vid).forEach(it => setBank(it.key, date));
     saveDB(); fillBr();
   });
-})();
-</script>
-  <!-- ================= DAY BOOK FIX: EXACT DR/CR LEDGER NAMES + FROM/TO DATE FILTER + FROZEN SCROLL ================= -->
-<script>
-(function() {
+})();</script><script>(function() {
   let DBK_FROM_DATE = "";
   let DBK_TO_DATE = "";
   let DBK_VCH_TYPE = "ALL";
@@ -8676,11 +8193,7 @@ window.renderStockSummaryScreen = function() {
   if (CURRENT_SCREEN === "daybook") {
     renderDayBookScreen();
   }
-})();
-</script>
-  <!-- ================= UNIVERSAL ACCOUNT / LEDGER RECONCILIATION (BANK, CUSTOMER, VENDOR & SPLIT VOUCHERS) ================= -->
-<script>
-(function() {
+})();</script><script>(function() {
   let RECON_GROUP_FILTER = "ALL"; // ALL, BANK, DEBTORS, CREDITORS, OTHER
   let SELECTED_RECON_LEDGER_ID = "";
   let SHOW_RECONCILED_ENTRIES = true;
@@ -9155,7 +8668,4 @@ window.renderStockSummaryScreen = function() {
   if (CURRENT_SCREEN === "bank_recon") {
     renderBankReconScreen();
   }
-})();
-</script>
-</body>
-</html>
+})();</script>
