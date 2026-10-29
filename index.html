@@ -8477,5 +8477,206 @@ window.renderStockSummaryScreen = function() {
   });
 })();
 </script>
+  <!-- ================= DAY BOOK FIX: EXACT DR/CR LEDGER NAMES + FROM/TO DATE FILTER + FROZEN SCROLL ================= -->
+<script>
+(function() {
+  let DBK_FROM_DATE = "";
+  let DBK_TO_DATE = "";
+  let DBK_VCH_TYPE = "ALL";
+  let DBK_DETAILED = true;
+
+  // Helper: Extract real Debit & Credit ledger names from voucher entries
+  function getDayBookLedgerDisplay(v, showDetailed) {
+    const entries = (typeof getVoucherEntries === "function") ? getVoucherEntries(v) : (v.entries || []);
+    
+    if (!entries || entries.length === 0) {
+      const fallback = getLedgerName(v.drLedgerId || v.crLedgerId || v.partyLedgerId);
+      return `<b>${escHtml(fallback)}</b>`;
+    }
+
+    const drList = entries.filter(e => e.type === "Dr");
+    const crList = entries.filter(e => e.type === "Cr");
+
+    // Primary Ledger to highlight based on Voucher Type
+    let primaryLine = "";
+    if (v.type === "Receipt") {
+      // Receipt me Paisa dene wala (Cr) upar aur Cash/Bank (Dr) neeche
+      const givers = crList.map(c => getLedgerName(c.ledgerId)).join(", ");
+      const receivers = drList.map(d => getLedgerName(d.ledgerId)).join(", ");
+      primaryLine = `
+        <div><span class="kbd" style="background:#fef3c7; color:#92400e;">Cr</span> <b style="color:#0f172a; font-size:13px;">${escHtml(givers || "-")}</b></div>
+        <div style="padding-left:18px; font-size:12px; color:#0f6e4e; font-weight:600;">↳ Dr ${escHtml(receivers || "-")}</div>
+      `;
+    } else {
+      // Payment, Contra, Journal, Sales, Purchase me Dr upar aur Cr neeche
+      const drNames = drList.map(d => getLedgerName(d.ledgerId)).join(", ");
+      const crNames = crList.map(c => getLedgerName(c.ledgerId)).join(", ");
+      primaryLine = `
+        <div><span class="kbd" style="background:#dbeafe; color:#1e3a8a;">Dr</span> <b style="color:#0f172a; font-size:13px;">${escHtml(drNames || "-")}</b></div>
+        <div style="padding-left:18px; font-size:12px; color:#0f6e4e; font-weight:600;">↳ To ${escHtml(crNames || "-")}</div>
+      `;
+    }
+
+    // If multi-line voucher (like multiple donors in 1 receipt) & Detailed Mode is ON
+    let breakdownHtml = "";
+    if (showDetailed && entries.length > 2) {
+      breakdownHtml = `<div style="padding-left:22px; margin-top:3px; font-size:11px; color:#475569; border-left:2px solid #cbd5e1;">` +
+        entries.map(e => `<div>• <b>${e.type}</b> ${escHtml(getLedgerName(e.ledgerId))} : <span style="font-family:var(--mono);">₹${fmtINR(e.amount)}</span></div>`).join("") +
+        `</div>`;
+    }
+
+    return primaryLine + breakdownHtml;
+  }
+
+  // Override Day Book Screen Renderer
+  window.renderDayBookScreen = function() {
+    document.getElementById("screenTitle").textContent = "Day Book (All Transactions)";
+    document.getElementById("screenSub").textContent = "Filter by From-To Date | ↑ ↓ to select | Enter / E to Edit | Esc to Gateway";
+
+    // Default View Dates (Does NOT alter DB.company.fyFrom/fyTo)
+    const activeFrom = DBK_FROM_DATE || DB.company.fyFrom || "";
+    const activeTo = DBK_TO_DATE || DB.company.fyTo || "";
+
+    // Filter Vouchers by Date Range & Voucher Type
+    const filtered = [...DB.vouchers].filter(v => {
+      if (!v || !v.date) return true;
+      if (activeFrom && v.date < activeFrom) return false;
+      if (activeTo && v.date > activeTo) return false;
+      if (DBK_VCH_TYPE !== "ALL" && v.type !== DBK_VCH_TYPE) return false;
+      return true;
+    }).sort((a, b) => (a.date > b.date ? 1 : (a.date < b.date ? -1 : 0)));
+
+    let totAmt = 0;
+
+    const rowsHtml = filtered.map((v, idx) => {
+      const amt = Number(v.amount) || 0;
+      totAmt = +(totAmt + amt).toFixed(2);
+      const ledgerParticulars = getDayBookLedgerDisplay(v, DBK_DETAILED);
+
+      return `
+        <tr data-vid="${v.id}" onclick="kbSetRow(this, false)" ondblclick="openVoucherScreen('${v.type}', '${v.id}')" style="cursor:pointer;">
+          <td style="vertical-align:top;">${idx + 1}</td>
+          <td style="vertical-align:top; white-space:nowrap;"><b>${fmtDate(v.date)}</b></td>
+          <td style="vertical-align:top;"><span class="kbd">${escHtml(v.type)}</span></td>
+          <td style="vertical-align:top;"><b>${escHtml(v.vchNo)}</b></td>
+          <td style="vertical-align:top;">${ledgerParticulars}</td>
+          <td style="vertical-align:top; color:#334155; font-size:12px;">${escHtml(v.narration || "-")}</td>
+          <td class="num" style="vertical-align:top; font-size:13px;"><b>₹${fmtINR(amt)}</b></td>
+          <td style="vertical-align:top; white-space:nowrap;">
+            <button class="btn btn-sec" style="padding:2px 7px; font-size:11px;" onclick="event.stopPropagation(); openVoucherScreen('${v.type}', '${v.id}')">Edit</button>
+            <button class="btn btn-sec" style="padding:2px 7px; font-size:11px;" title="Print Voucher / Receipt" onclick="event.stopPropagation(); printTaxInvoice('${v.id}')">🖨️</button>
+            <button class="btn btn-danger" style="padding:2px 7px; font-size:11px;" onclick="event.stopPropagation(); deleteVoucher('${v.id}')">Del</button>
+          </td>
+        </tr>
+      `;
+    }).join("");
+
+    const vchTypes = ["ALL", "Receipt", "Payment", "Contra", "Journal", "Sales", "Purchase", "Credit Note", "Debit Note", "Stock Journal"];
+    const typeOpts = vchTypes.map(t => `<option value="${t}" ${DBK_VCH_TYPE === t ? "selected" : ""}>${t === "ALL" ? "All Voucher Types" : t}</option>`).join("");
+
+    document.getElementById("screenBody").innerHTML = `
+      <div style="display:flex; flex-direction:column; height:calc(100vh - 125px);">
+        
+        <!-- TOP FILTER BAR (FIXED) -->
+        <div class="form-card" style="margin-bottom:8px; padding:8px 12px; background:#f8fafc; border-top:3px solid var(--pri); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <label style="font-weight:700; color:var(--pri-dark);">📅 From:</label>
+            <input type="date" id="dbkFromInp" value="${activeFrom}" style="padding:4px 8px; border:1px solid #94a3b8; border-radius:4px; font-weight:600;">
+            
+            <label style="font-weight:700; color:var(--pri-dark);">To:</label>
+            <input type="date" id="dbkToInp" value="${activeTo}" style="padding:4px 8px; border:1px solid #94a3b8; border-radius:4px; font-weight:600;">
+            
+            <button class="btn" style="padding:5px 10px;" onclick="window.applyDayBookFilter()">🔍 Filter</button>
+            <button class="btn btn-sec" style="padding:5px 8px;" onclick="window.resetDayBookFilter()">Reset</button>
+          </div>
+
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <select style="padding:5px 8px; border:1px solid #94a3b8; border-radius:4px; font-weight:600;" onchange="window.onDbkTypeChange(this.value)">
+              ${typeOpts}
+            </select>
+
+            <label style="display:flex; align-items:center; gap:5px; font-size:12px; font-weight:600; cursor:pointer;">
+              <input type="checkbox" ${DBK_DETAILED ? "checked" : ""} onchange="window.toggleDbkDetailed(this.checked)">
+              As per Details (Breakup)
+            </label>
+          </div>
+        </div>
+
+        <!-- MIDDLE TABLE AREA (SCROLLABLE WITH FROZEN HEADER) -->
+        <div class="form-card" style="flex:1; padding:0; overflow-y:auto; margin-bottom:0; border-bottom:none; border-radius:4px 4px 0 0;" id="kbTableWrap">
+          <table class="tally-tbl">
+            <thead>
+              <tr>
+                <th style="width:40px; position:sticky; top:0; z-index:5; background:#f1f5f9;">#</th>
+                <th style="width:95px; position:sticky; top:0; z-index:5; background:#f1f5f9;">Date</th>
+                <th style="width:90px; position:sticky; top:0; z-index:5; background:#f1f5f9;">Type</th>
+                <th style="width:95px; position:sticky; top:0; z-index:5; background:#f1f5f9;">Voucher No</th>
+                <th style="position:sticky; top:0; z-index:5; background:#f1f5f9;">Particulars (Debit / Credit Ledgers)</th>
+                <th style="position:sticky; top:0; z-index:5; background:#f1f5f9;">Narration</th>
+                <th class="num" style="width:125px; position:sticky; top:0; z-index:5; background:#f1f5f9;">Amount (₹)</th>
+                <th style="width:135px; position:sticky; top:0; z-index:5; background:#f1f5f9;">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml || `<tr><td colspan="8" style="text-align:center; padding:26px; color:var(--muted);">Chune gaye Date Range (${fmtDate(activeFrom)} to ${fmtDate(activeTo)}) me koi Voucher nahi mila.</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- BOTTOM TOTAL BAR (FIXED) -->
+        <div style="background:#f1f5f9; border:1px solid var(--border); border-top:2px solid var(--pri); border-radius:0 0 4px 4px; padding:8px 14px; display:flex; justify-content:space-between; align-items:center; font-weight:800; font-size:13.5px;">
+          <span style="color:var(--muted); font-size:12px;">Showing <b>${filtered.length}</b> Vouchers (${fmtDate(activeFrom)} to ${fmtDate(activeTo)})</span>
+          <div>
+            <span>Total Day Book Amount: </span>
+            <span style="font-family:var(--mono); color:var(--pri-dark); margin-left:8px;">₹${fmtINR(totAmt)}</span>
+          </div>
+        </div>
+
+      </div>
+    `;
+
+    setTimeout(() => {
+      const list = kbRowList();
+      if (list.length && !KB_ROW) kbSetRow(list[0], false);
+      else kbReapplyRow();
+    }, 40);
+  };
+
+  window.applyDayBookFilter = function() {
+    const f = document.getElementById("dbkFromInp").value;
+    const t = document.getElementById("dbkToInp").value;
+    if (f && t && t < f) {
+      toast("⚠ 'To Date' 'From Date' se pehle ki nahi ho sakti!");
+      return;
+    }
+    DBK_FROM_DATE = f;
+    DBK_TO_DATE = t;
+    renderDayBookScreen();
+    toast(`📅 Filtered: ${fmtDate(f)} to ${fmtDate(t)}`);
+  };
+
+  window.resetDayBookFilter = function() {
+    DBK_FROM_DATE = "";
+    DBK_TO_DATE = "";
+    DBK_VCH_TYPE = "ALL";
+    renderDayBookScreen();
+    toast("📅 Showing Full Financial Year");
+  };
+
+  window.onDbkTypeChange = function(val) {
+    DBK_VCH_TYPE = val;
+    renderDayBookScreen();
+  };
+
+  window.toggleDbkDetailed = function(chk) {
+    DBK_DETAILED = chk;
+    renderDayBookScreen();
+  };
+
+  if (CURRENT_SCREEN === "daybook") {
+    renderDayBookScreen();
+  }
+})();
+</script>
 </body>
 </html>
