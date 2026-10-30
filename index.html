@@ -8849,10 +8849,40 @@ window.renderStockSummaryScreen = function() {
   }
 })();
 </script>
-<!-- ================= 1-CLICK WHATSAPP SHARE & REMINDER PATCH (FIXED + MULTI-DONOR SUPPORT) ================= -->
+<!-- ================= DIRECT WHATSAPP WEB SENDER PATCH (100% WORKING ON PC & MOBILE) ================= -->
 <script>
 (function() {
-  // 1. Send Voucher / Donation Receipt on WhatsApp (Supports Single & Combined Multi-Donor Vouchers)
+  // Helper: Ledger ke andar kisi bhi naam se mobile number save ho, use dhoondh nikale
+  function extractLedgerPhone(led) {
+    if (!led) return "";
+    const raw = led.mobile || led.phone || led.contact || led.phoneNo || led.mobileNo || led.tel || led.whatsapp || "";
+    if (raw && String(raw).replace(/\D/g, "").length >= 10) {
+      return String(raw).replace(/\D/g, "").slice(-10);
+    }
+    // Fallback: Check all fields of ledger object for any 10-digit Indian mobile number (starting with 6,7,8,9)
+    for (const k in led) {
+      if (k === "id" || k === "gstin" || k === "pan" || k === "openingBal") continue;
+      const val = String(led[k] || "").replace(/\D/g, "");
+      if (val.length === 10 && /^[6-9]/.test(val)) return val;
+      if (val.length === 12 && /^91[6-9]/.test(val)) return val.slice(-10);
+    }
+    return "";
+  }
+
+  // Open WhatsApp directly in Browser (web.whatsapp.com on Laptop/PC, wa.me on Mobile)
+  function launchWhatsAppChat(tenDigitPhone, messageText) {
+    const fullPhone = "91" + tenDigitPhone.slice(-10);
+    const encodedMsg = encodeURIComponent(messageText);
+    const isMobileDevice = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+    const url = isMobileDevice
+      ? `https://wa.me/${fullPhone}?text=${encodedMsg}`
+      : `https://web.whatsapp.com/send?phone=${fullPhone}&text=${encodedMsg}`;
+
+    window.open(url, "_blank");
+  }
+
+  // 1. Send Voucher / Donation Receipt on WhatsApp
   window.sendVoucherWhatsApp = function(vid) {
     const v = (DB.vouchers || []).find(x => x.id === vid);
     if (!v) { toast("⚠ Voucher nahi mila!"); return; }
@@ -8861,7 +8891,6 @@ window.renderStockSummaryScreen = function() {
     const entries = (typeof getVoucherEntries === "function") ? getVoucherEntries(v) : (v.entries || []);
     const isTrust = c.entityType === "Trust" || (c.name || "").toLowerCase().includes("trust");
 
-    // Identify opposite party lines (Cr lines for Receipt, Dr lines for Payment/Sales)
     const partyLines = v.type === "Receipt"
       ? entries.filter(e => e.type === "Cr")
       : entries.filter(e => e.type === "Dr");
@@ -8875,10 +8904,9 @@ window.renderStockSummaryScreen = function() {
       chosenName = getLedgerName(chosenLedgerId);
       chosenAmt = Number(partyLines[0].amount) || chosenAmt;
     } else if (partyLines.length > 1) {
-      // Combined voucher (like RCT/0001 with 5 donors): Let user pick which donor to message!
       const menuText = partyLines.map((p, idx) => `${idx + 1}. ${getLedgerName(p.ledgerId)} (₹${fmtINR(p.amount)})`).join("\n");
       const pick = prompt(
-        `📲 Is Voucher me ${partyLines.length} parties hain. Kisko WhatsApp bhejna hai? Number chunein (1-${partyLines.length}):\n\n${menuText}`,
+        `📲 Is Voucher me ${partyLines.length} parties hain. Kisko WhatsApp bhejna hai? Number type karein (1-${partyLines.length}):\n\n${menuText}`,
         "1"
       );
       if (!pick) return;
@@ -8892,23 +8920,28 @@ window.renderStockSummaryScreen = function() {
     }
 
     const partyLed = getLedger(chosenLedgerId) || {};
-    let phone = String(partyLed.mobile || partyLed.phone || "").replace(/\D/g, "");
+    let phone = extractLedgerPhone(partyLed);
 
-    if (!phone || phone.length < 10) {
-      const ask = prompt(`📲 ${chosenName} ka 10-digit WhatsApp Mobile Number dalein:`, "");
+    if (!phone) {
+      const ask = prompt(`📲 "${chosenName}" ka 10-digit WhatsApp Number dalein:`, "");
       if (!ask) return;
-      phone = ask.replace(/\D/g, "");
-      if (partyLed && partyLed.id && phone.length >= 10) {
-        partyLed.mobile = phone.slice(-10);
+      const clean = ask.replace(/\D/g, "");
+      if (clean.length < 10) {
+        alert("⚠ Kripya valid 10-digit mobile number dalein!");
+        return;
+      }
+      phone = clean.slice(-10);
+      if (partyLed && partyLed.id) {
+        partyLed.mobile = phone;
+        partyLed.phone = phone;
         saveDB();
       }
     }
-    if (phone.length === 10) phone = "91" + phone;
 
     let msg = "";
     if (v.type === "Receipt") {
       msg = isTrust
-        ? `🙏 *Namaskar ${chosenName}*,\n\n*${c.name}* ko *₹${fmtINR(chosenAmt)}/-* ka amulya sahyog / daan dene ke liye aapka hardik dhanyawad! 🌸\n\n🧾 *Receipt Details:*\n• Receipt No: *${v.vchNo}*\n• Date: *${fmtDate(v.date)}*\n• Amount Received: *₹${fmtINR(chosenAmt)}/-*\n• Purpose: ${v.narration || "Voluntary Contribution"}\n\nThank you for your generous support!\n— *${c.name}*${c.mobile ? `\n📞 ${c.mobile}` : ""}`
+        ? `🙏 *Namaskar ${chosenName}*,\n\n*${c.name}* ko *₹${fmtINR(chosenAmt)}/-* ka amulya sahyog / daan dene ke liye aapka hardik dhanyawad! 🌸\n\n🧾 *Receipt Details:*\n• Receipt No: *${v.vchNo}*\n• Date: *${fmtDate(v.date)}*\n• Amount Received: *₹${fmtINR(chosenAmt)}/-*\n• Purpose: ${v.narration || "Voluntary Contribution"}\n\nThank you for your generous support!\n— *${c.name}*${c.mobile || c.phone ? `\n📞 ${c.mobile || c.phone}` : ""}`
         : `✅ *Payment Receipt Confirmation*\n\nDear *${chosenName}*,\nWe have received *₹${fmtINR(chosenAmt)}/-* with thanks.\n\n• Receipt No: *${v.vchNo}*\n• Date: *${fmtDate(v.date)}*\n• Details: ${v.narration || "-"}\n\nRegards,\n*${c.name}*`;
     } else if (v.type === "Sales") {
       msg = `🧾 *Tax Invoice from ${c.name}*\n\nDear *${chosenName}*,\nYour Invoice has been generated:\n\n• Invoice No: *${v.vchNo}*\n• Date: *${fmtDate(v.date)}*\n• Bill Amount: *₹${fmtINR(chosenAmt)}/-*\n\nThank you for your business!\n— *${c.name}*`;
@@ -8916,14 +8949,14 @@ window.renderStockSummaryScreen = function() {
       msg = `📌 *Voucher Details (${v.type})*\n\nAccount: *${chosenName}*\nVoucher No: *${v.vchNo}*\nDate: *${fmtDate(v.date)}*\nAmount: *₹${fmtINR(chosenAmt)}/-*\nNarration: ${v.narration || "-"}\n\n— *${c.name}*`;
     }
 
-    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, "_blank");
+    launchWhatsAppChat(phone, msg);
   };
 
   // 2. Send Ledger Balance / Payment Reminder on WhatsApp
   window.sendLedgerBalanceWhatsApp = function(ledgerId) {
     const ledId = ledgerId || (typeof SELECTED_LEDGER_FOR_VIEW !== "undefined" ? SELECTED_LEDGER_FOR_VIEW : "");
     const led = getLedger(ledId);
-    if (!led) { toast("⚠ Pehle कोई Ledger chunein!"); return; }
+    if (!led) { toast("⚠ Pehle koi Ledger chunein!"); return; }
 
     const c = DB.company || {};
     const balMap = computeAllLedgerBalances();
@@ -8931,33 +8964,32 @@ window.renderStockSummaryScreen = function() {
     const amt = Math.abs(b.netSigned || 0);
     const drCr = (b.netSigned >= 0) ? "Dr (Receivable)" : "Cr (Payable)";
 
-    let phone = String(led.mobile || led.phone || "").replace(/\D/g, "");
-    if (!phone || phone.length < 10) {
-      const ask = prompt(`📲 ${led.name} ka 10-digit WhatsApp Mobile Number dalein:`, "");
+    let phone = extractLedgerPhone(led);
+    if (!phone) {
+      const ask = prompt(`📲 "${led.name}" ka 10-digit WhatsApp Number dalein:`, "");
       if (!ask) return;
-      phone = ask.replace(/\D/g, "");
-      if (phone.length >= 10) { led.mobile = phone.slice(-10); saveDB(); }
+      const clean = ask.replace(/\D/g, "");
+      if (clean.length < 10) { alert("⚠ Valid 10-digit number dalein!"); return; }
+      phone = clean.slice(-10);
+      led.mobile = phone;
+      led.phone = phone;
+      saveDB();
     }
-    if (phone.length === 10) phone = "91" + phone;
 
     const msg = (b.netSigned > 0)
-      ? `🔔 *Gentle Payment Reminder*\n\nDear *${led.name}*,\nAs per our books of accounts (*${c.name}*), an amount of *₹${fmtINR(amt)}/-* is currently outstanding in your account.\n\nKindly arrange for the payment at your earliest convenience.\n\nRegards,\n*${c.name}*${c.mobile ? `\n📞 ${c.mobile}` : ""}`
+      ? `🔔 *Gentle Payment Reminder*\n\nDear *${led.name}*,\nAs per our books of accounts (*${c.name}*), an amount of *₹${fmtINR(amt)}/-* is currently outstanding in your account.\n\nKindly arrange for the payment at your earliest convenience.\n\nRegards,\n*${c.name}*${c.mobile || c.phone ? `\n📞 ${c.mobile || c.phone}` : ""}`
       : `📒 *Account Balance Statement*\n\nDear *${led.name}*,\nYour current closing balance with *${c.name}* is *₹${fmtINR(amt)}/- (${drCr})*.\n\nRegards,\n*${c.name}*`;
 
-    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, "_blank");
+    launchWhatsAppChat(phone, msg);
   };
 
-  // 3. Inject "📲 WA" Button Directly into Day Book Rows & Ledger View (Without relying on window.CURRENT_SCREEN)
+  // 3. Inject "📲 WA" Button into Day Book & Ledger View
   function injectWhatsAppButtons() {
-    // A. Day Book / Any Voucher Table rows that have Edit/Print/Del buttons
     document.querySelectorAll("tr[data-vid]").forEach(tr => {
       const vid = tr.getAttribute("data-vid");
       const actionTd = tr.lastElementChild;
       if (!actionTd) return;
-
-      // Only add inside Action column (where buttons exist) and avoid duplicates
-      const hasActionButtons = actionTd.querySelector("button");
-      if (hasActionButtons && !actionTd.querySelector(".wa-vch-btn")) {
+      if (actionTd.querySelector("button") && !actionTd.querySelector(".wa-vch-btn")) {
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className = "btn wa-vch-btn";
@@ -8972,7 +9004,6 @@ window.renderStockSummaryScreen = function() {
       }
     });
 
-    // B. Ledger View Top Bar: Check if Ledger selector dropdown exists
     const titleEl = document.getElementById("screenTitle");
     if (titleEl && titleEl.textContent.includes("Ledger Vouchers") && !document.getElementById("waLedBtn")) {
       const topCard = document.querySelector("#screenBody .form-card");
@@ -8990,22 +9021,6 @@ window.renderStockSummaryScreen = function() {
         topCard.appendChild(btn);
       }
     }
-  }
-
-  // Hook into Day Book & Ledger View functions + DOM Observer
-  if (typeof window.renderDayBookScreen === "function") {
-    const origDbk = window.renderDayBookScreen;
-    window.renderDayBookScreen = function() {
-      origDbk();
-      injectWhatsAppButtons();
-    };
-  }
-  if (typeof window.renderLedgersViewScreen === "function") {
-    const origLed = window.renderLedgersViewScreen;
-    window.renderLedgersViewScreen = function() {
-      origLed();
-      injectWhatsAppButtons();
-    };
   }
 
   const obs = new MutationObserver(() => injectWhatsAppButtons());
