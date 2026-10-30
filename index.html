@@ -8669,3 +8669,258 @@ window.renderStockSummaryScreen = function() {
     renderBankReconScreen();
   }
 })();</script>
+<!-- ================= AUTO DYNAMIC BANK/UPI QR CODE + WHATSAPP SHARE PATCH ================= -->
+<script>
+(function() {
+  // 1. Build NPCI Standard UPI Payment String from either UPI ID OR (Bank A/c + IFSC)
+  window.getCompanyUpiUri = function(amount = 0, vchNo = "") {
+    const c = DB.company || {};
+    const upiId = (c.upiId || "").trim();
+    const acc = (c.bankAcc || "").replace(/\s+/g, "");
+    const ifsc = (c.bankIfsc || "").trim().toUpperCase();
+    const payeeName = encodeURIComponent((c.mailName || c.name || "Merchant").slice(0, 45));
+    const note = encodeURIComponent(vchNo ? `Bill ${vchNo}` : `Payment to ${c.name || ''}`);
+
+    let pa = "";
+    if (upiId && upiId.includes("@")) {
+      // Priority 1: Direct UPI VPA
+      pa = upiId;
+    } else if (acc && ifsc && /^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifsc)) {
+      // Priority 2: NPCI Standard Account+IFSC address (Works on GPay, PhonePe, Paytm, BHIM)
+      pa = `${acc}@${ifsc}.ifsc.npci`;
+    }
+
+    if (!pa) return "";
+    const amtParam = (Number(amount) > 0) ? `&am=${Number(amount).toFixed(2)}` : "";
+    return `upi://pay?pa=${pa}&pn=${payeeName}${amtParam}&cu=INR&tn=${note}`;
+  };
+
+  // Generate QR Image HTML Block for Printouts (Invoice & Receipts)
+  window.getAutoQrPrintHtml = function(amount = 0, vchNo = "") {
+    const c = DB.company || {};
+    const upiUri = window.getCompanyUpiUri(amount, vchNo);
+    if (!upiUri) {
+      return `<div style="font-size:11px; color:#64748b; border:1px dashed #cbd5e1; padding:6px 10px; border-radius:4px;">
+        💡 <i>Tip: Company (F3) me Bank A/c + IFSC ya UPI ID bharne par yahan Auto Scan &amp; Pay QR Code chhap kar aayega.</i>
+      </div>`;
+    }
+
+    const qrImgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=130x130&margin=2&data=${encodeURIComponent(upiUri)}`;
+    const modeLabel = (c.upiId && c.upiId.includes("@"))
+      ? `UPI ID: <b>${escHtml(c.upiId)}</b>`
+      : `A/c: <b>${escHtml(c.bankAcc)}</b> (${escHtml(c.bankIfsc)})`;
+
+    return `
+      <div style="display:flex; align-items:center; gap:10px; border:1.5px solid #0f6e4e; background:#f0fdf4; padding:8px 12px; border-radius:6px;">
+        <img src="${qrImgUrl}" alt="Scan to Pay QR" style="width:86px; height:86px; border:1px solid #cbd5e1; background:#fff; padding:2px; border-radius:4px;">
+        <div style="font-size:11.5px; line-height:1.45; color:#0f172a;">
+          <div style="font-weight:800; color:#0f6e4e; font-size:12.5px;">📱 SCAN TO PAY ₹${fmtINR(amount)}</div>
+          <div>${modeLabel}</div>
+          ${c.bankName ? `<div>Bank: ${escHtml(c.bankName)}</div>` : ""}
+          <div style="font-size:10px; color:#475569; margin-top:2px;">GPay • PhonePe • Paytm • BHIM</div>
+        </div>
+      </div>
+    `;
+  };
+
+  // 2. Add "UPI ID (Optional)" field automatically into F3 Company Create / Alter Form
+  const origEntityForm = window.entityDetailsFormHtml;
+  if (typeof origEntityForm === "function") {
+    window.entityDetailsFormHtml = function(p, c, type) {
+      let html = origEntityForm(p, c, type);
+      const upiFieldHtml = `
+        <div class="field">
+          <label>UPI ID (Optional - Auto QR ke liye)</label>
+          <input id="${p}UpiInp" value="${escHtml(c.upiId || '')}" placeholder="e.g. merchant@sbi (Ya khali chhodein, A/c+IFSC se ban jayega)">
+        </div>
+      `;
+      // Inject right after IFSC Code field
+      const targetStr = `id="${p}BankIfscInp"`;
+      const idx = html.indexOf(targetStr);
+      if (idx !== -1) {
+        const closeDivIdx = html.indexOf("</div>", idx);
+        if (closeDivIdx !== -1) {
+          html = html.slice(0, closeDivIdx + 6) + upiFieldHtml + html.slice(closeDivIdx + 6);
+        }
+      }
+      return html;
+    };
+  }
+
+  const origReadEntity = window.readEntityDetails;
+  if (typeof origReadEntity === "function") {
+    window.readEntityDetails = function(p) {
+      const data = origReadEntity(p);
+      const upiEl = document.getElementById(p + "UpiInp");
+      data.upiId = upiEl ? upiEl.value.trim() : (DB.company.upiId || "");
+      return data;
+    };
+  }
+
+  // 3. Upgrade Print Function so every Invoice & Donation Receipt automatically includes the QR Code & Full Company Details
+  window.printTaxInvoice = function(vid, overrideVoucherObj = null) {
+    const v = overrideVoucherObj || DB.vouchers.find(x => x.id === vid);
+    if (!v) { toast("⚠ Pehle voucher ko Save karein!"); return; }
+
+    const entries = (typeof getVoucherEntries === "function") ? getVoucherEntries(v) : (v.entries || []);
+    const party = getLedger(v.partyLedgerId || v.drLedgerId || (entries[0] && entries[0].ledgerId));
+    const c = DB.company || {};
+    const isTrust = c.entityType === "Trust" || (c.name || "").toLowerCase().includes("trust");
+    const qrBlockHtml = window.getAutoQrPrintHtml(v.amount, v.vchNo);
+
+    // Full Company / Trust Header Details (Address, PAN, GSTIN/Reg, Phone, Email, Website)
+    const fullContactLine = [
+      c.address ? escHtml(c.address) : "",
+      c.city ? escHtml(c.city) : "",
+      c.pin ? `Pin: ${escHtml(c.pin)}` : ""
+    ].filter(Boolean).join(", ");
+
+    const commLine = [
+      (c.mobile || c.phone) ? `📞 ${escHtml(c.mobile || c.phone)}` : "",
+      c.email ? `✉️ ${escHtml(c.email)}` : "",
+      c.website ? `🌐 ${escHtml(c.website)}` : ""
+    ].filter(Boolean).join(" &nbsp;|&nbsp; ");
+
+    const taxIdsLine = [
+      c.gstin ? `GSTIN: <b>${escHtml(c.gstin)}</b>` : "",
+      c.pan ? `PAN: <b>${escHtml(c.pan)}</b>` : "",
+      c.cin ? `CIN/Reg: <b>${escHtml(c.cin)}</b>` : "",
+      c.regNo ? `Trust Reg: <b>${escHtml(c.regNo)}</b>` : "",
+      c.reg12A ? `12A: <b>${escHtml(c.reg12A)}</b>` : "",
+      c.reg80G ? `80G: <b>${escHtml(c.reg80G)}</b>` : ""
+    ].filter(Boolean).join(" &nbsp;|&nbsp; ");
+
+    // CASE A: DONATION RECEIPT / PAYMENT / CONTRA / JOURNAL VOUCHER
+    if (["Receipt", "Payment", "Contra", "Journal"].includes(v.type) || !Array.isArray(v.itemLines) || v.itemLines.length === 0) {
+      const crList = entries.filter(e => e.type === "Cr");
+      const drList = entries.filter(e => e.type === "Dr");
+      const mainPartyNames = (v.type === "Receipt" ? crList : drList).map(x => getLedgerName(x.ledgerId)).join(", ") || (party ? party.name : "-");
+      const modeNames = (v.type === "Receipt" ? drList : crList).map(x => getLedgerName(x.ledgerId)).join(", ") || "Cash / Bank";
+
+      const multiBreakup = entries.length > 2
+        ? `<table style="margin-top:10px;"><thead><tr><th>#</th><th>Account Head</th><th>Dr / Cr</th><th class="num">Amount (₹)</th></tr></thead><tbody>` +
+          entries.map((e, idx) => `<tr><td>${idx+1}</td><td><b>${escHtml(getLedgerName(e.ledgerId))}</b></td><td>${e.type}</td><td class="num">₹${fmtINR(e.amount)}</td></tr>`).join("") +
+          `</tbody></table>`
+        : "";
+
+      const receiptHtml = `
+        <div class="receipt-box" style="border:2px solid #0f6e4e; padding:22px; border-radius:8px; background:#fff;">
+          <div style="text-align:center; border-bottom:2px solid #0f6e4e; padding-bottom:10px; margin-bottom:14px;">
+            <h2 style="font-size:22px; color:#0f6e4e; margin:0 0 4px; text-transform:uppercase; letter-spacing:0.5px;">${escHtml(c.mailName || c.name)}</h2>
+            ${fullContactLine ? `<div style="font-size:12.5px; color:#1e293b;">${fullContactLine}</div>` : ""}
+            ${commLine ? `<div style="font-size:12px; color:#334155; margin-top:2px;">${commLine}</div>` : ""}
+            ${taxIdsLine ? `<div style="font-size:11.5px; color:#0f172a; margin-top:4px; background:#f8fafc; display:inline-block; padding:2px 10px; border-radius:4px; border:1px solid #cbd5e1;">${taxIdsLine}</div>` : ""}
+          </div>
+
+          <div style="text-align:center; margin-bottom:14px;">
+            <span style="background:#0f6e4e; color:#fff; font-weight:800; font-size:14px; padding:4px 16px; border-radius:20px; letter-spacing:0.8px; text-transform:uppercase;">
+              ${v.type === "Receipt" ? (isTrust ? "DONATION / CONTRIBUTION RECEIPT" : "OFFICIAL PAYMENT RECEIPT") : `${escHtml(v.type)} VOUCHER`}
+            </span>
+          </div>
+
+          <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:12px; background:#f8fafc; padding:8px 12px; border:1px solid #cbd5e1; border-radius:4px;">
+            <div>
+              <div>Voucher / Receipt No: <b>${escHtml(v.vchNo)}</b></div>
+              <div style="margin-top:3px;">Mode / A/c: <b>${escHtml(modeNames)}</b></div>
+            </div>
+            <div style="text-align:right;">
+              <div>Date: <b>${fmtDate(v.date)}</b></div>
+              <div style="margin-top:3px;">Ref / Chq / UTR: <b>${escHtml(v.refNo || "-")}</b></div>
+            </div>
+          </div>
+
+          <div style="font-size:14px; line-height:1.8; padding:12px 14px; border:1px dashed #0f6e4e; background:#fcfdfc; border-radius:4px;">
+            <div><b>${v.type === "Receipt" ? "Received with thanks from:" : "Paid / Adjusted To:"}</b> <span style="font-size:15px; font-weight:800; color:#0f172a; border-bottom:1px solid #0f172a; padding:0 4px;">${escHtml(mainPartyNames)}</span></div>
+            <div><b>Purpose / Narration:</b> ${escHtml(v.narration || (isTrust ? "Voluntary Contribution / Trust Objects" : "Account Settlement"))}</div>
+          </div>
+
+          ${multiBreakup}
+
+          <div style="margin-top:14px; display:flex; justify-content:space-between; align-items:center; background:#ecfdf5; padding:10px 16px; border:2px solid #0f6e4e; border-radius:6px;">
+            <span style="font-size:15px; font-weight:800; color:#094d36;">TOTAL AMOUNT:</span>
+            <span style="font-size:20px; font-weight:900; color:#0f6e4e; font-family:monospace;">₹${fmtINR(v.amount)}/-</span>
+          </div>
+
+          <div style="margin-top:18px; display:flex; justify-content:space-between; align-items:flex-end; gap:14px; flex-wrap:wrap;">
+            ${qrBlockHtml}
+            <div style="text-align:center; min-width:170px;">
+              <div style="font-size:11.5px; font-weight:700; color:#334155; margin-bottom:38px;">For ${escHtml(c.name)}</div>
+              <div style="border-top:1.5px solid #0f172a; padding-top:4px; font-size:12px; font-weight:800;">Authorised Signatory</div>
+            </div>
+          </div>
+        </div>
+      `;
+      tallyGlobalPrint(`${v.type.toUpperCase()} - ${v.vchNo}`, receiptHtml);
+      return;
+    }
+
+    // CASE B: GST TAX INVOICE (WITH AUTO QR CODE & FULL COMPANY HEADER)
+    let itemsHtml = (v.itemLines || []).map((ln, i) => `
+      <tr>
+        <td style="text-align:center;">${i + 1}</td>
+        <td><b>${escHtml(ln.itemName || '')}</b></td>
+        <td style="text-align:center;">${escHtml(ln.hsn || '')}</td>
+        <td class="num">${ln.qty} ${escHtml(ln.uom || 'NOS')}</td>
+        <td class="num">₹${fmtINR(ln.rate)}</td>
+        <td class="num">₹${fmtINR(ln.taxable)}</td>
+        <td class="num">${ln.gstRate}%</td>
+        <td class="num"><b>₹${fmtINR(ln.lineTotal)}</b></td>
+      </tr>
+    `).join("");
+
+    const invoiceHtml = `
+      <div style="border:2px solid #0f172a; padding:18px; background:#fff;">
+        <div style="text-align:center; border-bottom:2px solid #0f172a; padding-bottom:10px; margin-bottom:12px;">
+          <div style="font-size:12px; font-weight:800; color:#0f6e4e; letter-spacing:1px;">TAX INVOICE</div>
+          <h2 style="font-size:21px; margin:2px 0;">${escHtml(c.mailName || c.name)}</h2>
+          ${fullContactLine ? `<div style="font-size:12px;">${fullContactLine}</div>` : ""}
+          ${commLine ? `<div style="font-size:11.5px; margin-top:2px;">${commLine}</div>` : ""}
+          ${taxIdsLine ? `<div style="font-size:11.5px; margin-top:4px;">${taxIdsLine}</div>` : ""}
+        </div>
+
+        <div style="display:flex; justify-content:space-between; margin-bottom:12px; border:1px solid #000; padding:8px 12px; background:#f8fafc;">
+          <div>
+            <b>Billed To (Buyer):</b><br>
+            <b style="font-size:14px;">${escHtml(party ? party.name : "-")}</b><br>
+            GSTIN: <b>${escHtml(party ? party.gstin || "Unregistered" : "-")}</b> | State Code: ${escHtml(party ? party.stateCode || "-" : "-")}
+          </div>
+          <div style="text-align:right;">
+            Invoice No: <b>${escHtml(v.vchNo)}</b><br>
+            Date: <b>${fmtDate(v.date)}</b><br>
+            Ref / Order No: ${escHtml(v.refNo || "-")}
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Description of Goods / Services</th>
+              <th>HSN/SAC</th>
+              <th class="num">Qty</th>
+              <th class="num">Rate</th>
+              <th class="num">Taxable</th>
+              <th class="num">GST%</th>
+              <th class="num">Total (₹)</th>
+            </tr>
+          </thead>
+          <tbody>${itemsHtml}</tbody>
+        </table>
+
+        <div style="text-align:right; font-size:16px; font-weight:900; margin-top:8px; padding:6px 10px; background:#ecfdf5; border:1px solid #0f6e4e;">
+          Grand Total: ₹${fmtINR(v.amount)}/-
+        </div>
+
+        <div style="margin-top:16px; display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap;">
+          ${qrBlockHtml}
+          <div style="text-align:center; min-width:170px;">
+            <div style="font-size:11.5px; font-weight:700; margin-bottom:38px;">For ${escHtml(c.name)}</div>
+            <div style="border-top:1.5px solid #000; padding-top:4px; font-size:12px; font-weight:800;">Authorised Signatory</div>
+          </div>
+        </div>
+      </div>
+    `;
+    tallyGlobalPrint(`INVOICE - ${v.vchNo}`, invoiceHtml);
+  };
+})();
+</script>
