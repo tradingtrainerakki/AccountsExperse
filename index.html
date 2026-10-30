@@ -8849,10 +8849,10 @@ window.renderStockSummaryScreen = function() {
   }
 })();
 </script>
-<!-- ================= 1-CLICK WHATSAPP SHARE & REMINDER PATCH ================= -->
+<!-- ================= 1-CLICK WHATSAPP SHARE & REMINDER PATCH (FIXED + MULTI-DONOR SUPPORT) ================= -->
 <script>
 (function() {
-  // 1. Helper: Send Formatted Voucher / Donation Receipt on WhatsApp
+  // 1. Send Voucher / Donation Receipt on WhatsApp (Supports Single & Combined Multi-Donor Vouchers)
   window.sendVoucherWhatsApp = function(vid) {
     const v = (DB.vouchers || []).find(x => x.id === vid);
     if (!v) { toast("⚠ Voucher nahi mila!"); return; }
@@ -8861,18 +8861,43 @@ window.renderStockSummaryScreen = function() {
     const entries = (typeof getVoucherEntries === "function") ? getVoucherEntries(v) : (v.entries || []);
     const isTrust = c.entityType === "Trust" || (c.name || "").toLowerCase().includes("trust");
 
-    // Find Party Ledger & Mobile Number
-    const targetEntries = v.type === "Receipt" ? entries.filter(e => e.type === "Cr") : entries.filter(e => e.type === "Dr");
-    const primaryLedgerId = (targetEntries[0] && targetEntries[0].ledgerId) || v.partyLedgerId || v.drLedgerId || v.crLedgerId;
-    const partyLed = getLedger(primaryLedgerId) || {};
-    const partyName = targetEntries.map(e => getLedgerName(e.ledgerId)).join(", ") || partyLed.name || "Sir/Madam";
+    // Identify opposite party lines (Cr lines for Receipt, Dr lines for Payment/Sales)
+    const partyLines = v.type === "Receipt"
+      ? entries.filter(e => e.type === "Cr")
+      : entries.filter(e => e.type === "Dr");
 
+    let chosenLedgerId = v.partyLedgerId || v.drLedgerId || v.crLedgerId;
+    let chosenName = "Sir/Madam";
+    let chosenAmt = Number(v.amount) || 0;
+
+    if (partyLines.length === 1) {
+      chosenLedgerId = partyLines[0].ledgerId;
+      chosenName = getLedgerName(chosenLedgerId);
+      chosenAmt = Number(partyLines[0].amount) || chosenAmt;
+    } else if (partyLines.length > 1) {
+      // Combined voucher (like RCT/0001 with 5 donors): Let user pick which donor to message!
+      const menuText = partyLines.map((p, idx) => `${idx + 1}. ${getLedgerName(p.ledgerId)} (₹${fmtINR(p.amount)})`).join("\n");
+      const pick = prompt(
+        `📲 Is Voucher me ${partyLines.length} parties hain. Kisko WhatsApp bhejna hai? Number chunein (1-${partyLines.length}):\n\n${menuText}`,
+        "1"
+      );
+      if (!pick) return;
+      const pIdx = parseInt(pick, 10) - 1;
+      const selLine = partyLines[pIdx] || partyLines[0];
+      chosenLedgerId = selLine.ledgerId;
+      chosenName = getLedgerName(chosenLedgerId);
+      chosenAmt = Number(selLine.amount) || chosenAmt;
+    } else if (chosenLedgerId) {
+      chosenName = getLedgerName(chosenLedgerId);
+    }
+
+    const partyLed = getLedger(chosenLedgerId) || {};
     let phone = String(partyLed.mobile || partyLed.phone || "").replace(/\D/g, "");
+
     if (!phone || phone.length < 10) {
-      const ask = prompt(`📲 ${partyName} ka 10-digit WhatsApp Mobile Number dalein:`, "98");
+      const ask = prompt(`📲 ${chosenName} ka 10-digit WhatsApp Mobile Number dalein:`, "");
       if (!ask) return;
       phone = ask.replace(/\D/g, "");
-      // Save mobile number in Ledger Master for next time!
       if (partyLed && partyLed.id && phone.length >= 10) {
         partyLed.mobile = phone.slice(-10);
         saveDB();
@@ -8883,23 +8908,22 @@ window.renderStockSummaryScreen = function() {
     let msg = "";
     if (v.type === "Receipt") {
       msg = isTrust
-        ? `🙏 *Namaskar ${partyName}*, \n\n*${c.name}* me *₹${fmtINR(v.amount)}/-* ka amulya sahyog / daan dene ke liye aapka hardik dhanyawad! 🌸\n\n🧾 *Receipt Details:*\n• Receipt No: *${v.vchNo}*\n• Date: *${fmtDate(v.date)}*\n• Amount: *₹${fmtINR(v.amount)}/-*\n• Particulars: ${v.narration || "Voluntary Contribution"}\n\nThank you for your generous support!\n— *${c.name}*`
-        : `✅ *Payment Receipt Confirmation*\n\nDear *${partyName}*,\nWe have received *₹${fmtINR(v.amount)}/-* with thanks.\n\n• Receipt No: *${v.vchNo}*\n• Date: *${fmtDate(v.date)}*\n• Narration: ${v.narration || "-"}\n\nRegards,\n*${c.name}*`;
+        ? `🙏 *Namaskar ${chosenName}*,\n\n*${c.name}* ko *₹${fmtINR(chosenAmt)}/-* ka amulya sahyog / daan dene ke liye aapka hardik dhanyawad! 🌸\n\n🧾 *Receipt Details:*\n• Receipt No: *${v.vchNo}*\n• Date: *${fmtDate(v.date)}*\n• Amount Received: *₹${fmtINR(chosenAmt)}/-*\n• Purpose: ${v.narration || "Voluntary Contribution"}\n\nThank you for your generous support!\n— *${c.name}*${c.mobile ? `\n📞 ${c.mobile}` : ""}`
+        : `✅ *Payment Receipt Confirmation*\n\nDear *${chosenName}*,\nWe have received *₹${fmtINR(chosenAmt)}/-* with thanks.\n\n• Receipt No: *${v.vchNo}*\n• Date: *${fmtDate(v.date)}*\n• Details: ${v.narration || "-"}\n\nRegards,\n*${c.name}*`;
     } else if (v.type === "Sales") {
-      msg = `🧾 *Tax Invoice from ${c.name}*\n\nDear *${partyName}*,\nYour Invoice has been generated:\n\n• Invoice No: *${v.vchNo}*\n• Date: *${fmtDate(v.date)}*\n• Bill Amount: *₹${fmtINR(v.amount)}/-*\n\nThank you for your business!\n— *${c.name}*`;
+      msg = `🧾 *Tax Invoice from ${c.name}*\n\nDear *${chosenName}*,\nYour Invoice has been generated:\n\n• Invoice No: *${v.vchNo}*\n• Date: *${fmtDate(v.date)}*\n• Bill Amount: *₹${fmtINR(chosenAmt)}/-*\n\nThank you for your business!\n— *${c.name}*`;
     } else {
-      msg = `📌 *Voucher Intimation (${v.type})*\n\nParty: *${partyName}*\nVoucher No: *${v.vchNo}*\nDate: *${fmtDate(v.date)}*\nAmount: *₹${fmtINR(v.amount)}/-*\nDetails: ${v.narration || "-"}\n\n— *${c.name}*`;
+      msg = `📌 *Voucher Details (${v.type})*\n\nAccount: *${chosenName}*\nVoucher No: *${v.vchNo}*\nDate: *${fmtDate(v.date)}*\nAmount: *₹${fmtINR(chosenAmt)}/-*\nNarration: ${v.narration || "-"}\n\n— *${c.name}*`;
     }
 
-    const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
-    window.open(waUrl, "_blank");
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, "_blank");
   };
 
-  // 2. Helper: Send Ledger Balance / Payment Reminder on WhatsApp
+  // 2. Send Ledger Balance / Payment Reminder on WhatsApp
   window.sendLedgerBalanceWhatsApp = function(ledgerId) {
-    const ledId = ledgerId || window.SELECTED_LEDGER_FOR_VIEW;
+    const ledId = ledgerId || (typeof SELECTED_LEDGER_FOR_VIEW !== "undefined" ? SELECTED_LEDGER_FOR_VIEW : "");
     const led = getLedger(ledId);
-    if (!led) return;
+    if (!led) { toast("⚠ Pehle कोई Ledger chunein!"); return; }
 
     const c = DB.company || {};
     const balMap = computeAllLedgerBalances();
@@ -8909,7 +8933,7 @@ window.renderStockSummaryScreen = function() {
 
     let phone = String(led.mobile || led.phone || "").replace(/\D/g, "");
     if (!phone || phone.length < 10) {
-      const ask = prompt(`📲 ${led.name} ka 10-digit WhatsApp Number dalein:`, "");
+      const ask = prompt(`📲 ${led.name} ka 10-digit WhatsApp Mobile Number dalein:`, "");
       if (!ask) return;
       phone = ask.replace(/\D/g, "");
       if (phone.length >= 10) { led.mobile = phone.slice(-10); saveDB(); }
@@ -8917,48 +8941,75 @@ window.renderStockSummaryScreen = function() {
     if (phone.length === 10) phone = "91" + phone;
 
     const msg = (b.netSigned > 0)
-      ? `🔔 *Gentle Payment Reminder*\n\nDear *${led.name}*,\nAs per our books of accounts (*${c.name}*), an amount of *₹${fmtINR(amt)}/-* is currently outstanding in your account.\n\nKindly arrange for the payment at your earliest convenience.\n\nRegards,\n*${c.name}*\n📞 ${c.mobile || c.phone || ""}`
+      ? `🔔 *Gentle Payment Reminder*\n\nDear *${led.name}*,\nAs per our books of accounts (*${c.name}*), an amount of *₹${fmtINR(amt)}/-* is currently outstanding in your account.\n\nKindly arrange for the payment at your earliest convenience.\n\nRegards,\n*${c.name}*${c.mobile ? `\n📞 ${c.mobile}` : ""}`
       : `📒 *Account Balance Statement*\n\nDear *${led.name}*,\nYour current closing balance with *${c.name}* is *₹${fmtINR(amt)}/- (${drCr})*.\n\nRegards,\n*${c.name}*`;
 
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, "_blank");
   };
 
-  // 3. Auto-Inject "📲 WA" Button into Day Book Rows & Ledger View Header
+  // 3. Inject "📲 WA" Button Directly into Day Book Rows & Ledger View (Without relying on window.CURRENT_SCREEN)
   function injectWhatsAppButtons() {
-    // A. In Day Book rows: add WA button next to Print button
-    if (window.CURRENT_SCREEN === "daybook") {
-      document.querySelectorAll("tr[data-vid]").forEach(tr => {
-        const vid = tr.getAttribute("data-vid");
-        const actionTd = tr.lastElementChild;
-        if (actionTd && !actionTd.querySelector(".wa-vch-btn")) {
-          const btn = document.createElement("button");
-          btn.className = "btn wa-vch-btn";
-          btn.style.cssText = "padding:2px 6px; font-size:11px; background:#16a34a; border-color:#15803d; color:#fff; margin-left:2px;";
-          btn.title = "Send Receipt/Invoice on WhatsApp";
-          btn.innerHTML = "📲 WA";
-          btn.onclick = (e) => { e.stopPropagation(); window.sendVoucherWhatsApp(vid); };
-          actionTd.insertBefore(btn, actionTd.lastElementChild);
-        }
-      });
-    }
+    // A. Day Book / Any Voucher Table rows that have Edit/Print/Del buttons
+    document.querySelectorAll("tr[data-vid]").forEach(tr => {
+      const vid = tr.getAttribute("data-vid");
+      const actionTd = tr.lastElementChild;
+      if (!actionTd) return;
 
-    // B. In Ledger View: add "📲 WhatsApp Balance/Reminder" button in top bar
-    if (window.CURRENT_SCREEN === "ledgers_view" && !document.getElementById("waLedBtn")) {
+      // Only add inside Action column (where buttons exist) and avoid duplicates
+      const hasActionButtons = actionTd.querySelector("button");
+      if (hasActionButtons && !actionTd.querySelector(".wa-vch-btn")) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "btn wa-vch-btn";
+        btn.style.cssText = "padding:2px 7px; font-size:11px; background:#16a34a; border-color:#15803d; color:#fff; margin:0 2px;";
+        btn.title = "Send Receipt / Details on WhatsApp";
+        btn.innerHTML = "📲 WA";
+        btn.onclick = function(e) {
+          e.stopPropagation();
+          window.sendVoucherWhatsApp(vid);
+        };
+        actionTd.insertBefore(btn, actionTd.lastElementChild);
+      }
+    });
+
+    // B. Ledger View Top Bar: Check if Ledger selector dropdown exists
+    const titleEl = document.getElementById("screenTitle");
+    if (titleEl && titleEl.textContent.includes("Ledger Vouchers") && !document.getElementById("waLedBtn")) {
       const topCard = document.querySelector("#screenBody .form-card");
       if (topCard) {
         const btn = document.createElement("button");
+        btn.type = "button";
         btn.id = "waLedBtn";
         btn.className = "btn";
         btn.style.cssText = "background:#16a34a; border-color:#15803d; color:#fff; padding:5px 10px; font-size:12px;";
-        btn.innerHTML = "📲 WhatsApp Statement / Reminder";
-        btn.onclick = () => window.sendLedgerBalanceWhatsApp(window.SELECTED_LEDGER_FOR_VIEW);
+        btn.innerHTML = "📲 WhatsApp Reminder / Bal";
+        btn.onclick = function() {
+          const sel = topCard.querySelector("select");
+          window.sendLedgerBalanceWhatsApp(sel ? sel.value : "");
+        };
         topCard.appendChild(btn);
       }
     }
   }
 
+  // Hook into Day Book & Ledger View functions + DOM Observer
+  if (typeof window.renderDayBookScreen === "function") {
+    const origDbk = window.renderDayBookScreen;
+    window.renderDayBookScreen = function() {
+      origDbk();
+      injectWhatsAppButtons();
+    };
+  }
+  if (typeof window.renderLedgersViewScreen === "function") {
+    const origLed = window.renderLedgersViewScreen;
+    window.renderLedgersViewScreen = function() {
+      origLed();
+      injectWhatsAppButtons();
+    };
+  }
+
   const obs = new MutationObserver(() => injectWhatsAppButtons());
-  obs.observe(document.getElementById("screenBody") || document.body, { childList: true, subtree: true });
+  obs.observe(document.body, { childList: true, subtree: true });
   injectWhatsAppButtons();
 })();
 </script>
