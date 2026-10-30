@@ -9028,3 +9028,648 @@ window.renderStockSummaryScreen = function() {
   injectWhatsAppButtons();
 })();
 </script>
+<!-- ================= SMART INVENTORY (REORDER/BATCH/EXPIRY) + STATUTORY (E-WAY BILL, AUTO TDS, 80G 10BD & EXCEL) ================= -->
+<script>
+(function() {
+  // ============================================================================
+  // 1. SMART INVENTORY: REORDER LEVEL, BATCH NO, EXPIRY DATE & LOW STOCK ALERTS
+  // ============================================================================
+  function injectSmartInventoryFields() {
+    // A. Inject Min Reorder Qty, Batch No & Expiry Date into Stock Item Master Form
+    const itemNameInp = document.getElementById("itmName") || document.querySelector("input[placeholder*='Item Name']");
+    if (itemNameInp) {
+      const formGrid = itemNameInp.closest(".form-grid") || itemNameInp.parentElement.parentElement;
+      if (formGrid && !document.getElementById("smartInvReorderInp")) {
+        const extraFieldsHtml = `
+          <div class="field">
+            <label style="color:#b45309; font-weight:700;">⚠️ Min Reorder Level (Low Stock Alert)</label>
+            <input type="number" id="smartInvReorderInp" placeholder="e.g. 10" step="0.01">
+          </div>
+          <div class="field">
+            <label>🏷️ Default Batch / Lot No.</label>
+            <input type="text" id="smartInvBatchInp" placeholder="e.g. BATCH-2026-A">
+          </div>
+          <div class="field">
+            <label>⏳ Expiry Date (Optional)</label>
+            <input type="date" id="smartInvExpiryInp">
+          </div>
+        `;
+        formGrid.insertAdjacentHTML("beforeend", extraFieldsHtml);
+
+        // Hook into Item Select / Edit if an item is being edited
+        const saveBtn = formGrid.parentElement.querySelector("button.btn");
+        if (saveBtn && !saveBtn.dataset.smartHooked) {
+          saveBtn.dataset.smartHooked = "1";
+          saveBtn.addEventListener("click", () => {
+            const nameVal = (itemNameInp.value || "").trim().toLowerCase();
+            const reorderVal = parseFloat(document.getElementById("smartInvReorderInp")?.value) || 0;
+            const batchVal = (document.getElementById("smartInvBatchInp")?.value || "").trim();
+            const expVal = document.getElementById("smartInvExpiryInp")?.value || "";
+            setTimeout(() => {
+              const itm = (DB.items || []).find(x => (x.name || "").trim().toLowerCase() === nameVal);
+              if (itm) {
+                itm.reorderLevel = reorderVal;
+                itm.batchNo = batchVal;
+                itm.expiryDate = expVal;
+                saveDB();
+              }
+            }, 60);
+          }, true);
+        }
+      }
+    }
+
+    // B. Enhance Stock Summary Screen with Low Stock & Expiry Alerts
+    const titleEl = document.getElementById("screenTitle");
+    if (titleEl && titleEl.textContent.toLowerCase().includes("stock summary")) {
+      const bodyEl = document.getElementById("screenBody");
+      if (bodyEl && !document.getElementById("smartStockAlertBanner")) {
+        const items = DB.items || [];
+        const today = new Date().toISOString().slice(0, 10);
+        let lowStockList = [];
+        let expiredList = [];
+
+        // Enhance table rows if present
+        const rows = bodyEl.querySelectorAll("table.tally-tbl tbody tr");
+        rows.forEach((tr) => {
+          const firstCell = tr.querySelector("td:nth-child(2), td:first-child");
+          if (!firstCell) return;
+          const rowText = tr.innerText || "";
+          const matchedItem = items.find(it => rowText.includes(it.name));
+          if (!matchedItem) return;
+
+          // Extract closing qty from row or item calculation
+          const numCells = tr.querySelectorAll("td.num");
+          let curQty = matchedItem.openingQty || 0;
+          if (numCells.length > 0) {
+            const parsed = parseFloat(numCells[0].innerText.replace(/[^0-9.-]/g, ""));
+            if (!isNaN(parsed)) curQty = parsed;
+          }
+
+          const minQty = Number(matchedItem.reorderLevel) || 0;
+          const isLow = minQty > 0 && curQty <= minQty;
+          const isOut = curQty <= 0;
+          const isExp = matchedItem.expiryDate && matchedItem.expiryDate < today;
+
+          if (isLow || isOut) lowStockList.push(`${matchedItem.name} (Qty: ${curQty} / Min: ${minQty})`);
+          if (isExp) expiredList.push(`${matchedItem.name} (Exp: ${fmtDate(matchedItem.expiryDate)})`);
+
+          if (!tr.querySelector(".smart-inv-badge")) {
+            let badge = "";
+            if (isExp) {
+              badge += `<span class="kbd smart-inv-badge" style="background:#fee2e2; color:#991b1b; border-color:#f87171; margin-left:6px;">⏰ EXPIRED (${fmtDate(matchedItem.expiryDate)})</span>`;
+            }
+            if (isOut) {
+              badge += `<span class="kbd smart-inv-badge" style="background:#fef2f2; color:#dc2626; margin-left:6px;">❌ OUT OF STOCK</span>`;
+            } else if (isLow) {
+              badge += `<span class="kbd smart-inv-badge" style="background:#fef3c7; color:#b45309; margin-left:6px;">⚠️ LOW STOCK (Min: ${minQty})</span>`;
+            } else {
+              badge += `<span class="kbd smart-inv-badge" style="background:#dcfce7; color:#166534; margin-left:6px;">✅ OK</span>`;
+            }
+            if (matchedItem.batchNo) {
+              badge += `<span class="kbd" style="margin-left:4px;">Batch: ${escHtml(matchedItem.batchNo)}</span>`;
+            }
+            const nameTd = tr.children[1] || tr.children[0];
+            if (nameTd) nameTd.insertAdjacentHTML("beforeend", badge);
+          }
+        });
+
+        // Insert Top Alert Banner inside Stock Summary
+        const bannerHtml = `
+          <div id="smartStockAlertBanner" class="form-card" style="margin-bottom:10px; padding:10px 14px; background:${(lowStockList.length || expiredList.length) ? '#fffbeb' : '#f0fdf4'}; border-left:4px solid ${(lowStockList.length || expiredList.length) ? '#f59e0b' : '#16a34a'}; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <div style="font-size:12.5px;">
+              ${lowStockList.length > 0
+                ? `<div style="color:#b45309; font-weight:700;">⚠️ Low / Reorder Stock Alert (${lowStockList.length} Items): <span style="font-weight:600;">${escHtml(lowStockList.join(" | "))}</span></div>`
+                : `<div style="color:#166534; font-weight:700;">✅ All Inventory Items are above Minimum Reorder Level.</div>`}
+              ${expiredList.length > 0
+                ? `<div style="color:#dc2626; font-weight:700; margin-top:3px;">⏰ Expired Batch Alert: ${escHtml(expiredList.join(" | "))}</div>`
+                : ""}
+            </div>
+            <button class="btn btn-sec" style="padding:4px 10px; font-size:11.5px;" onclick="window.openSetReorderModal()">⚙️ Set Reorder / Batch / Expiry</button>
+          </div>
+        `;
+        bodyEl.insertAdjacentHTML("afterbegin", bannerHtml);
+      }
+    }
+  }
+
+  // Quick Modal to Set Reorder Level, Batch & Expiry for All Items at Once
+  window.openSetReorderModal = function() {
+    const items = DB.items || [];
+    if (!items.length) { toast("⚠ Pehle Stock Items banayein!"); return; }
+
+    const rows = items.map((it, idx) => `
+      <tr>
+        <td><b>${escHtml(it.name)}</b></td>
+        <td><input type="number" id="ro_min_${idx}" value="${it.reorderLevel || 0}" style="width:90px; padding:3px 6px;"></td>
+        <td><input type="text" id="ro_bat_${idx}" value="${escHtml(it.batchNo || '')}" placeholder="BATCH-01" style="width:120px; padding:3px 6px;"></td>
+        <td><input type="date" id="ro_exp_${idx}" value="${it.expiryDate || ''}" style="padding:3px 6px;"></td>
+      </tr>
+    `).join("");
+
+    const body = `
+      <div style="max-height:360px; overflow-y:auto;">
+        <table class="tally-tbl">
+          <thead>
+            <tr>
+              <th>Stock Item Name</th>
+              <th>Min Reorder Qty</th>
+              <th>Batch / Lot No.</th>
+              <th>Expiry Date</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    `;
+    const foot = `
+      <button class="btn btn-sec" onclick="closeModal()">Cancel</button>
+      <button class="btn" onclick="window.saveBulkReorderSettings()">💾 Save Inventory Settings</button>
+    `;
+    showModal("📦 Smart Inventory Settings (Reorder Level, Batch & Expiry)", body, foot);
+  };
+
+  window.saveBulkReorderSettings = function() {
+    (DB.items || []).forEach((it, idx) => {
+      const m = document.getElementById(`ro_min_${idx}`);
+      const b = document.getElementById(`ro_bat_${idx}`);
+      const e = document.getElementById(`ro_exp_${idx}`);
+      if (m) it.reorderLevel = parseFloat(m.value) || 0;
+      if (b) it.batchNo = b.value.trim();
+      if (e) it.expiryDate = e.value;
+    });
+    saveDB();
+    closeModal();
+    renderScreen(CURRENT_SCREEN);
+    toast("✅ Smart Inventory Settings Saved!");
+  };
+
+
+  // ============================================================================
+  // 2. STATUTORY ADDITION 1: E-WAY BILL (PART-A & PART-B) + GOVT JSON EXPORT
+  // ============================================================================
+  function injectEwayBillAndTdsControls() {
+    const titleEl = document.getElementById("screenTitle");
+    if (!titleEl) return;
+    const tText = titleEl.textContent || "";
+
+    // A. E-WAY BILL BAR IN SALES / PURCHASE VOUCHER
+    if ((tText.includes("Sales") || tText.includes("Purchase")) && !document.getElementById("ewayBillBar")) {
+      const screenBody = document.getElementById("screenBody");
+      if (screenBody) {
+        const ewbHtml = `
+          <div id="ewayBillBar" class="form-card" style="margin-top:8px; padding:8px 12px; background:#eff6ff; border:1px solid #93c5fd; border-left:4px solid #2563eb;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:6px;">
+              <span style="font-weight:800; color:#1e3a8a; font-size:12.5px;">🚚 Statutory E-Way Bill &amp; Transport Details (Required if Invoice ≥ ₹50,000)</span>
+              <button type="button" class="btn btn-sec" style="padding:3px 8px; font-size:11px; background:#dbeafe; color:#1e3a8a;" onclick="window.exportCurrentEwayBillJson()">📥 Export E-Way Bill JSON</button>
+            </div>
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap:8px;">
+              <div class="field"><label>E-Way Bill No. (12-Digit)</label><input id="ewbNoInp" placeholder="e.g. 181002345678"></div>
+              <div class="field"><label>Transport Mode</label>
+                <select id="ewbModeInp"><option value="Road">1 - Road</option><option value="Rail">2 - Rail</option><option value="Air">3 - Air</option><option value="Ship">4 - Ship</option></select>
+              </div>
+              <div class="field"><label>Vehicle No. (Part-B)</label><input id="ewbVehInp" placeholder="e.g. UK08CA1234" style="text-transform:uppercase;"></div>
+              <div class="field"><label>Transporter Name / ID</label><input id="ewbTransInp" placeholder="Name or GSTIN"></div>
+              <div class="field"><label>Approx Distance (KM)</label><input type="number" id="ewbDistInp" placeholder="e.g. 45"></div>
+            </div>
+          </div>
+        `;
+        screenBody.insertAdjacentHTML("beforeend", ewbHtml);
+      }
+    }
+
+    // B. AUTO TDS DEDUCTION CALCULATOR IN PAYMENT / JOURNAL VOUCHER
+    if ((tText.includes("Payment") || tText.includes("Journal")) && !document.getElementById("autoTdsBar")) {
+      const screenBody = document.getElementById("screenBody");
+      if (screenBody) {
+        const tdsHtml = `
+          <div id="autoTdsBar" class="form-card" style="margin-top:8px; padding:8px 12px; background:#fefce8; border:1px solid #fde047; border-left:4px solid #ca8a04;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+              <div>
+                <span style="font-weight:800; color:#854d0e; font-size:12.5px;">🧾 Statutory Auto-TDS Deduction Calculator (Sec 194C / 194J / 194I / 194H)</span>
+                <div style="font-size:11px; color:#713f12;">Gross bill par 1%, 2%, 5% ya 10% TDS kaat kar Net Payable aur TDS Payable ledger auto-fill karein.</div>
+              </div>
+              <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                <input type="number" id="tdsGrossAmtInp" placeholder="Gross Bill ₹" style="width:115px; padding:4px 7px; font-weight:700; border:1px solid #ca8a04; border-radius:4px;">
+                <select id="tdsSecRateInp" style="padding:4px 7px; font-weight:700; border:1px solid #ca8a04; border-radius:4px;">
+                  <option value="1|194C (1% Individual Contractor)">194C - Contractor (Ind/HUF) @ 1%</option>
+                  <option value="2|194C (2% Co/Firm Contractor)">194C - Contractor (Co/Firm) @ 2%</option>
+                  <option value="10|194J (10% Professional Fees)">194J - Professional / CA / Tech @ 10%</option>
+                  <option value="10|194I (10% Rent Building/Land)">194I - Rent (Land/Building) @ 10%</option>
+                  <option value="5|194H (5% Commission/Brokerage)">194H - Commission / Brokerage @ 5%</option>
+                </select>
+                <button type="button" class="btn" style="padding:4px 10px; font-size:11.5px; background:#ca8a04; border-color:#a16207;" onclick="window.applyAutoTdsCalculation()">⚡ Calculate &amp; Create TDS Ledger</button>
+              </div>
+            </div>
+            <div id="tdsCalcPreview" style="margin-top:6px; font-size:12px; font-weight:700; color:#0f6e4e; display:none;"></div>
+          </div>
+        `;
+        screenBody.insertAdjacentHTML("beforeend", tdsHtml);
+      }
+    }
+  }
+
+  // Export Govt Standard NIC E-Way Bill JSON
+  window.exportCurrentEwayBillJson = function() {
+    const c = DB.company || {};
+    const veh = (document.getElementById("ewbVehInp")?.value || "UK08XX0000").toUpperCase();
+    const dist = parseInt(document.getElementById("ewbDistInp")?.value, 10) || 25;
+    const trans = document.getElementById("ewbTransInp")?.value || "";
+    const ewbNo = document.getElementById("ewbNoInp")?.value || "";
+
+    const ewbPayload = {
+      version: "1.0.0621",
+      billLists: [{
+        userGstin: c.gstin || "05AAAAA0000A1Z5",
+        supplyType: "O",
+        subSupplyType: 1,
+        docType: "INV",
+        docNo: document.getElementById("vchNo")?.value || "INV/001",
+        docDate: fmtDate(c.curDate || new Date().toISOString().slice(0, 10)),
+        fromGstin: c.gstin || "URP",
+        fromTrdName: c.name || "AccountsExpress User",
+        fromAddr1: c.address || "Roorkee",
+        fromPlace: c.city || "Roorkee",
+        fromPincode: parseInt(c.pin, 10) || 247667,
+        fromStateCode: parseInt(c.stateCode, 10) || 5,
+        transMode: 1,
+        transDistance: dist,
+        transporterName: trans,
+        vehicleNo: veh,
+        ewayBillNo: ewbNo
+      }]
+    };
+
+    const blob = new Blob([JSON.stringify(ewbPayload, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `EWayBill_${(ewbPayload.billLists[0].docNo || "INV").replace(/\W+/g, "_")}.json`;
+    a.click();
+    toast("📥 Govt E-Way Bill JSON Exported!");
+  };
+
+  // Auto TDS Calculation & Auto Ledger Creation
+  window.applyAutoTdsCalculation = function() {
+    const gross = parseFloat(document.getElementById("tdsGrossAmtInp")?.value) || 0;
+    if (gross <= 0) { toast("⚠ Pehle Gross Bill Amount (₹) dalein!"); return; }
+
+    const raw = (document.getElementById("tdsSecRateInp")?.value || "1|194C").split("|");
+    const rate = parseFloat(raw[0]) || 1;
+    const secLabel = raw[1] || "TDS";
+
+    const tdsAmt = Math.round((gross * rate) / 100);
+    const netPayable = +(gross - tdsAmt).toFixed(2);
+
+    // Ensure "TDS Payable" ledger exists under Duties & Taxes
+    let tdsLed = (DB.ledgers || []).find(l => l.name.toLowerCase().includes("tds payable"));
+    if (!tdsLed) {
+      tdsLed = {
+        id: "L_TDS_" + Date.now(),
+        name: "TDS Payable (Statutory)",
+        group: "Duties & Taxes",
+        openingBal: 0,
+        openType: "Cr"
+      };
+      DB.ledgers.push(tdsLed);
+      saveDB();
+    }
+
+    const prev = document.getElementById("tdsCalcPreview");
+    if (prev) {
+      prev.style.display = "block";
+      prev.innerHTML = `✅ <b>Gross Bill:</b> ₹${fmtINR(gross)} &nbsp;|&nbsp; <b>TDS (${secLabel}):</b> <span style="color:#dc2626;">₹${fmtINR(tdsAmt)} (Cr to ${escHtml(tdsLed.name)})</span> &nbsp;|&nbsp; <b>Net Payable to Party:</b> <span style="color:#1e3a8a;">₹${fmtINR(netPayable)}</span>`;
+    }
+
+    // Auto-fill Narration with TDS Breakup
+    const narrInp = document.getElementById("vchNarr") || document.querySelector("input[placeholder*='Narration'], textarea[placeholder*='Narration']");
+    if (narrInp) {
+      narrInp.value = `Being payment against Gross Bill ₹${fmtINR(gross)}, Less TDS @ ${rate}% (${secLabel}) = ₹${fmtINR(tdsAmt)}, Net Paid ₹${fmtINR(netPayable)}`;
+    }
+    toast(`🧾 TDS ₹${fmtINR(tdsAmt)} calculated! Ledger '${tdsLed.name}' ready.`);
+  };
+
+
+  // ============================================================================
+  // 3. STATUTORY 80G / FORM 10BD DONOR REPORT & 1-CLICK UNIVERSAL EXCEL EXPORT
+  // ============================================================================
+  window.exportCurrentTableToExcel = function() {
+    const tbl = document.querySelector("#screenBody table.tally-tbl");
+    if (!tbl) { toast("⚠ Is screen par export karne ke liye koi Table nahi hai!"); return; }
+
+    const title = (document.getElementById("screenTitle")?.textContent || "Report").replace(/[^a-zA-Z0-9]+/g, "_");
+    const rows = Array.from(tbl.querySelectorAll("tr"));
+    const csvLines = rows.map(tr => {
+      const cells = Array.from(tr.querySelectorAll("th, td")).filter(td => !td.innerText.includes("Edit") && !td.innerText.includes("Del"));
+      return cells.map(c => `"${(c.innerText || "").replace(/\r?\n+/g, " ").replace(/"/g, '""').trim()}"`).join(",");
+    });
+
+    const csvContent = "\uFEFF" + `"${(DB.company && DB.company.name) || 'AccountsExpress'} - ${title}"\n` + csvLines.join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${title}_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    toast("📊 Report Exported to Excel (.CSV)!");
+  };
+
+  // Income Tax Form 10BD (80G Donor Statement) Modal & Export
+  window.openForm10BDModal = function() {
+    const receipts = (DB.vouchers || []).filter(v => v.type === "Receipt");
+    let donorRows = [];
+    let sr = 0;
+    let totalDonation = 0;
+
+    receipts.forEach(v => {
+      const entries = (typeof getVoucherEntries === "function") ? getVoucherEntries(v) : (v.entries || []);
+      const crLines = entries.filter(e => e.type === "Cr");
+      const drLines = entries.filter(e => e.type === "Dr");
+      const payMode = drLines.map(d => getLedgerName(d.ledgerId)).join(", ") || "Cash/Bank";
+
+      if (crLines.length > 0) {
+        crLines.forEach(cLine => {
+          sr++;
+          const led = getLedger(cLine.ledgerId) || {};
+          const amt = Number(cLine.amount) || 0;
+          totalDonation += amt;
+          donorRows.push({
+            sr,
+            date: v.date,
+            vchNo: v.vchNo,
+            donorName: led.name || getLedgerName(cLine.ledgerId),
+            pan: led.pan || led.gstin || "URP",
+            mobile: led.mobile || led.phone || "-",
+            address: led.address || led.state || "India",
+            mode: payMode,
+            amt
+          });
+        });
+      }
+    });
+
+    const trHtml = donorRows.map(r => `
+      <tr>
+        <td>${r.sr}</td>
+        <td><b>${fmtDate(r.date)}</b></td>
+        <td>${escHtml(r.vchNo)}</td>
+        <td><b>${escHtml(r.donorName)}</b></td>
+        <td><span class="kbd">${escHtml(r.pan)}</span></td>
+        <td>${escHtml(r.mobile)}</td>
+        <td>${escHtml(r.mode)}</td>
+        <td class="num"><b>₹${fmtINR(r.amt)}</b></td>
+      </tr>
+    `).join("");
+
+    const body = `
+      <div style="margin-bottom:8px; font-size:12px; color:#334155; display:flex; justify-content:space-between; align-items:center;">
+        <span>🏛️ <b>Income Tax Section 80G / Form 10BD Statement of Particulars of Donations</b></span>
+        <span style="font-weight:800; color:#0f6e4e;">Total Donations: ₹${fmtINR(totalDonation)} (${donorRows.length} Entries)</span>
+      </div>
+      <div style="max-height:380px; overflow-y:auto;" id="form10BdTableWrap">
+        <table class="tally-tbl" id="form10BdTable">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Date</th>
+              <th>Receipt No</th>
+              <th>Donor Name</th>
+              <th>PAN / ID</th>
+              <th>Mobile</th>
+              <th>Receipt Mode</th>
+              <th class="num">Amount (₹)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${trHtml || `<tr><td colspan="8" style="text-align:center; padding:20px;">Koi Receipt / Donation entry nahi mili.</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    `;
+    const foot = `
+      <button class="btn btn-sec" onclick="closeModal()">Close</button>
+      <button class="btn" onclick="window.downloadForm10BDCsv()">📥 Download Form 10BD Excel (.CSV)</button>
+    `;
+    showModal("🏛️ Statutory 80G / Form 10BD Donor Register", body, foot);
+  };
+
+  window.downloadForm10BDCsv = function() {
+    const tbl = document.getElementById("form10BdTable");
+    if (!tbl) return;
+    const rows = Array.from(tbl.querySelectorAll("tr")).map(tr =>
+      Array.from(tr.querySelectorAll("th, td")).map(c => `"${(c.innerText || "").replace(/"/g, '""').trim()}"`).join(",")
+    );
+    const blob = new Blob(["\uFEFF" + rows.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `Form_10BD_80G_Donors_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    toast("📥 Form 10BD Excel Downloaded!");
+  };
+
+  // Inject "📊 Excel" and "🏛️ 80G / 10BD" quick buttons into the Top Bar
+  function injectTopStatutoryButtons() {
+    const topRight = document.querySelector(".top-bar") || document.querySelector("header");
+    if (topRight && !document.getElementById("topExcelExportBtn")) {
+      const wrap = document.createElement("div");
+      wrap.style.cssText = "display:inline-flex; gap:6px; align-items:center; margin-left:8px;";
+      wrap.innerHTML = `
+        <button type="button" id="topExcelExportBtn" class="btn btn-sec" style="padding:3px 8px; font-size:11.5px; background:#ecfdf5; color:#0f6e4e; border-color:#0f6e4e;" onclick="window.exportCurrentTableToExcel()" title="Export Current Screen Table to Excel (.CSV)">📊 Excel Export</button>
+        <button type="button" id="top10BdBtn" class="btn btn-sec" style="padding:3px 8px; font-size:11.5px; background:#eff6ff; color:#1e3a8a; border-color:#3b82f6;" onclick="window.openForm10BDModal()" title="Income Tax Form 10BD / 80G Donor Statement">🏛️ 80G / 10BD</button>
+      `;
+      topRight.appendChild(wrap);
+    }
+  }
+
+  const obs = new MutationObserver(() => {
+    injectSmartInventoryFields();
+    injectEwayBillAndTdsControls();
+    injectTopStatutoryButtons();
+  });
+  obs.observe(document.body, { childList: true, subtree: true });
+
+  injectSmartInventoryFields();
+  injectEwayBillAndTdsControls();
+  injectTopStatutoryButtons();
+})();
+</script>
+<!-- ================= SMART ESCAPE & DRILL-DOWN HISTORY STACK PATCH ================= -->
+<script>
+(function() {
+  // Stack to remember exact screen, active ledger, scroll position & selected row
+  window.NAV_BACK_STACK = [];
+  let isPoppingHistory = false;
+
+  // Helper: Capture current screen state before leaving
+  function captureCurrentScreenState() {
+    if (typeof CURRENT_SCREEN === "undefined" || !CURRENT_SCREEN) return null;
+
+    // Find currently selected ledger in Ledger View or Reconciliation
+    let activeLedger = (typeof SELECTED_LEDGER_FOR_VIEW !== "undefined") ? SELECTED_LEDGER_FOR_VIEW : "";
+    const ledSelectEl = document.querySelector("#screenBody select");
+    if (CURRENT_SCREEN === "ledgers_view" && ledSelectEl && ledSelectEl.value) {
+      activeLedger = ledSelectEl.value;
+    }
+
+    // Remember highlighted row index / voucher ID
+    let activeVid = "";
+    let activeRowIdx = -1;
+    if (typeof KB_ROW !== "undefined" && KB_ROW) {
+      activeVid = KB_ROW.getAttribute("data-vid") || "";
+      const allRows = Array.from(document.querySelectorAll("#screenBody tbody tr"));
+      activeRowIdx = allRows.indexOf(KB_ROW);
+    }
+
+    // Remember scroll position of table
+    const scrollWrap = document.getElementById("kbTableWrap") || document.querySelector("#screenBody .form-card[style*='overflow-y']");
+    const scrollTop = scrollWrap ? scrollWrap.scrollTop : 0;
+
+    return {
+      screen: CURRENT_SCREEN,
+      ledgerId: activeLedger,
+      vid: activeVid,
+      rowIdx: activeRowIdx,
+      scrollTop: scrollTop
+    };
+  }
+
+  // Helper: Restore previous screen state when pressing Esc or Cancel/Save
+  window.goBackToPreviousScreen = function() {
+    if (window.NAV_BACK_STACK.length === 0) {
+      if (typeof CURRENT_SCREEN !== "undefined" && CURRENT_SCREEN !== "gateway") {
+        navigate("gateway");
+      }
+      return;
+    }
+
+    const prevState = window.NAV_BACK_STACK.pop();
+    isPoppingHistory = true;
+
+    // Restore selected ledger if returning to Ledger View
+    if (prevState.ledgerId && typeof SELECTED_LEDGER_FOR_VIEW !== "undefined") {
+      SELECTED_LEDGER_FOR_VIEW = prevState.ledgerId;
+    }
+
+    navigate(prevState.screen);
+    isPoppingHistory = false;
+
+    // Restore exact highlighted row and scroll position
+    setTimeout(() => {
+      if (prevState.screen === "ledgers_view" && prevState.ledgerId) {
+        const sel = document.querySelector("#screenBody select");
+        if (sel && sel.value !== prevState.ledgerId) {
+          sel.value = prevState.ledgerId;
+          if (typeof onSelectLedgerForView === "function") {
+            onSelectLedgerForView(prevState.ledgerId);
+          }
+        }
+      }
+
+      const scrollWrap = document.getElementById("kbTableWrap") || document.querySelector("#screenBody .form-card[style*='overflow-y']");
+      if (scrollWrap && prevState.scrollTop) {
+        scrollWrap.scrollTop = prevState.scrollTop;
+      }
+
+      let targetRow = null;
+      if (prevState.vid) {
+        targetRow = document.querySelector(`#screenBody tr[data-vid="${prevState.vid}"]`);
+      }
+      if (!targetRow && prevState.rowIdx >= 0) {
+        const rows = document.querySelectorAll("#screenBody tbody tr");
+        targetRow = rows[prevState.rowIdx] || null;
+      }
+      if (targetRow && typeof kbSetRow === "function") {
+        kbSetRow(targetRow, true);
+      }
+    }, 55);
+  };
+
+  // 1. Hook into navigate() so drill-downs (BS -> TB -> Ledger -> Voucher) are recorded automatically
+  if (typeof window.navigate === "function") {
+    const origNavigate = window.navigate;
+    window.navigate = function(targetScreen) {
+      if (targetScreen === "gateway") {
+        // Reaching gateway clears history stack
+        window.NAV_BACK_STACK = [];
+      } else if (!isPoppingHistory && typeof CURRENT_SCREEN !== "undefined" && CURRENT_SCREEN !== targetScreen) {
+        // Save current screen in stack if moving from one report/screen to another
+        const state = captureCurrentScreenState();
+        if (state && state.screen !== "gateway") {
+          // Avoid duplicate consecutive entries
+          const last = window.NAV_BACK_STACK[window.NAV_BACK_STACK.length - 1];
+          if (!last || last.screen !== state.screen || last.ledgerId !== state.ledgerId) {
+            window.NAV_BACK_STACK.push(state);
+          }
+        }
+      }
+      return origNavigate.apply(this, arguments);
+    };
+  }
+
+  // 2. Hook into openVoucherScreen() so opening a voucher from Ledger/Daybook saves exact state
+  if (typeof window.openVoucherScreen === "function") {
+    const origOpenVch = window.openVoucherScreen;
+    window.openVoucherScreen = function(type, editId = null) {
+      if (!isPoppingHistory && typeof CURRENT_SCREEN !== "undefined" && CURRENT_SCREEN !== "voucher") {
+        const state = captureCurrentScreenState();
+        if (state && state.screen !== "gateway") {
+          const last = window.NAV_BACK_STACK[window.NAV_BACK_STACK.length - 1];
+          if (!last || last.screen !== state.screen || last.vid !== state.vid) {
+            window.NAV_BACK_STACK.push(state);
+          }
+        }
+      }
+      const res = origOpenVch.apply(this, arguments);
+
+      // Update any "Cancel / Back" button inside Voucher screen to go back to Ledger/Daybook instead of Gateway
+      setTimeout(() => {
+        document.querySelectorAll("#screenBody button").forEach(btn => {
+          const txt = (btn.innerText || "").toLowerCase();
+          if (txt.includes("cancel") || txt.includes("back") || txt.includes("quit")) {
+            btn.onclick = function(e) {
+              e.preventDefault();
+              window.goBackToPreviousScreen();
+            };
+          }
+        });
+      }, 40);
+
+      return res;
+    };
+  }
+
+  // 3. After Editing & Saving an existing voucher, return back to Ledger/Daybook automatically!
+  if (typeof window.saveCurrentVoucher === "function") {
+    const origSaveVch = window.saveCurrentVoucher;
+    window.saveCurrentVoucher = function() {
+      const wasEditing = (typeof EDITING_VOUCHER_ID !== "undefined" && Boolean(EDITING_VOUCHER_ID));
+      const hadBackHistory = window.NAV_BACK_STACK.length > 0;
+      const res = origSaveVch.apply(this, arguments);
+
+      if (wasEditing && hadBackHistory) {
+        setTimeout(() => {
+          window.goBackToPreviousScreen();
+        }, 50);
+      }
+      return res;
+    };
+  }
+
+  // 4. Intercept Escape Key in Capture Phase (Before old Escape handler forces Gateway)
+  window.addEventListener("keydown", function(e) {
+    if (e.key !== "Escape") return;
+
+    // Priority 1: If a popup modal is open, only close the modal
+    const modal = document.getElementById("modalBackdrop");
+    if (modal && modal.classList.contains("show")) {
+      return; // Let default modal close run
+    }
+
+    // Priority 2: If there is any drill-down history in stack (or sub-level inside BS/PL/TB), handle smartly
+    if (window.NAV_BACK_STACK.length > 0) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      window.goBackToPreviousScreen();
+    }
+  }, true); // true = Capture phase (runs BEFORE original keydown listener)
+})();
+</script>
