@@ -8669,72 +8669,21 @@ window.renderStockSummaryScreen = function() {
     renderBankReconScreen();
   }
 })();</script>
-<!-- ================= AUTO DYNAMIC BANK/UPI QR CODE + WHATSAPP SHARE PATCH ================= -->
+<!-- ================= COMBINED AUTO BANK/UPI QR CODE & ADVANCED PRINT ENGINE ================= -->
 <script>
 (function() {
-  // 1. Build NPCI Standard UPI Payment String from either UPI ID OR (Bank A/c + IFSC)
-  window.getCompanyUpiUri = function(amount = 0, vchNo = "") {
-    const c = DB.company || {};
-    const upiId = (c.upiId || "").trim();
-    const acc = (c.bankAcc || "").replace(/\s+/g, "");
-    const ifsc = (c.bankIfsc || "").trim().toUpperCase();
-    const payeeName = encodeURIComponent((c.mailName || c.name || "Merchant").slice(0, 45));
-    const note = encodeURIComponent(vchNo ? `Bill ${vchNo}` : `Payment to ${c.name || ''}`);
-
-    let pa = "";
-    if (upiId && upiId.includes("@")) {
-      // Priority 1: Direct UPI VPA
-      pa = upiId;
-    } else if (acc && ifsc && /^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifsc)) {
-      // Priority 2: NPCI Standard Account+IFSC address (Works on GPay, PhonePe, Paytm, BHIM)
-      pa = `${acc}@${ifsc}.ifsc.npci`;
-    }
-
-    if (!pa) return "";
-    const amtParam = (Number(amount) > 0) ? `&am=${Number(amount).toFixed(2)}` : "";
-    return `upi://pay?pa=${pa}&pn=${payeeName}${amtParam}&cu=INR&tn=${note}`;
-  };
-
-  // Generate QR Image HTML Block for Printouts (Invoice & Receipts)
-  window.getAutoQrPrintHtml = function(amount = 0, vchNo = "") {
-    const c = DB.company || {};
-    const upiUri = window.getCompanyUpiUri(amount, vchNo);
-    if (!upiUri) {
-      return `<div style="font-size:11px; color:#64748b; border:1px dashed #cbd5e1; padding:6px 10px; border-radius:4px;">
-        💡 <i>Tip: Company (F3) me Bank A/c + IFSC ya UPI ID bharne par yahan Auto Scan &amp; Pay QR Code chhap kar aayega.</i>
-      </div>`;
-    }
-
-    const qrImgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=130x130&margin=2&data=${encodeURIComponent(upiUri)}`;
-    const modeLabel = (c.upiId && c.upiId.includes("@"))
-      ? `UPI ID: <b>${escHtml(c.upiId)}</b>`
-      : `A/c: <b>${escHtml(c.bankAcc)}</b> (${escHtml(c.bankIfsc)})`;
-
-    return `
-      <div style="display:flex; align-items:center; gap:10px; border:1.5px solid #0f6e4e; background:#f0fdf4; padding:8px 12px; border-radius:6px;">
-        <img src="${qrImgUrl}" alt="Scan to Pay QR" style="width:86px; height:86px; border:1px solid #cbd5e1; background:#fff; padding:2px; border-radius:4px;">
-        <div style="font-size:11.5px; line-height:1.45; color:#0f172a;">
-          <div style="font-weight:800; color:#0f6e4e; font-size:12.5px;">📱 SCAN TO PAY ₹${fmtINR(amount)}</div>
-          <div>${modeLabel}</div>
-          ${c.bankName ? `<div>Bank: ${escHtml(c.bankName)}</div>` : ""}
-          <div style="font-size:10px; color:#475569; margin-top:2px;">GPay • PhonePe • Paytm • BHIM</div>
-        </div>
-      </div>
-    `;
-  };
-
-  // 2. Add "UPI ID (Optional)" field automatically into F3 Company Create / Alter Form
+  // 1. Add "UPI ID (Optional)" field inside F3 Company/Trust Create & Alter Form
   const origEntityForm = window.entityDetailsFormHtml;
   if (typeof origEntityForm === "function") {
     window.entityDetailsFormHtml = function(p, c, type) {
       let html = origEntityForm(p, c, type);
+      if (html.includes(`${p}UpiInp`)) return html;
       const upiFieldHtml = `
         <div class="field">
           <label>UPI ID (Optional - Auto QR ke liye)</label>
-          <input id="${p}UpiInp" value="${escHtml(c.upiId || '')}" placeholder="e.g. merchant@sbi (Ya khali chhodein, A/c+IFSC se ban jayega)">
+          <input id="${p}UpiInp" value="${escHtml(c.upiId || '')}" placeholder="e.g. trust@sbi (Khali chhodne par Bank A/c + IFSC se QR banega)">
         </div>
       `;
-      // Inject right after IFSC Code field
       const targetStr = `id="${p}BankIfscInp"`;
       const idx = html.indexOf(targetStr);
       if (idx !== -1) {
@@ -8752,175 +8701,264 @@ window.renderStockSummaryScreen = function() {
     window.readEntityDetails = function(p) {
       const data = origReadEntity(p);
       const upiEl = document.getElementById(p + "UpiInp");
-      data.upiId = upiEl ? upiEl.value.trim() : (DB.company.upiId || "");
+      data.upiId = upiEl ? upiEl.value.trim() : ((window.DB && DB.company && DB.company.upiId) || "");
       return data;
     };
   }
 
-  // 3. Upgrade Print Function so every Invoice & Donation Receipt automatically includes the QR Code & Full Company Details
-  window.printTaxInvoice = function(vid, overrideVoucherObj = null) {
-    const v = overrideVoucherObj || DB.vouchers.find(x => x.id === vid);
-    if (!v) { toast("⚠ Pehle voucher ko Save karein!"); return; }
+  // 2. Build NPCI Standard UPI Payment Info from DB.company OR Receipt HTML Text
+  window.buildUniversalUpiInfo = function(htmlText = "", explicitAmt = 0, vchNo = "") {
+    const c = (window.DB && DB.company) ? DB.company : {};
+    let upiId = String(c.upiId || c.upi || "").trim();
+    let acc = String(c.bankAcc || c.accNo || c.accountNo || "").replace(/\s+/g, "");
+    let ifsc = String(c.bankIfsc || c.ifsc || c.ifscCode || "").trim().toUpperCase();
+    let bankName = String(c.bankName || "").trim();
+    let payeeName = c.mailName || c.name || "Merchant";
 
-    const entries = (typeof getVoucherEntries === "function") ? getVoucherEntries(v) : (v.entries || []);
-    const party = getLedger(v.partyLedgerId || v.drLedgerId || (entries[0] && entries[0].ledgerId));
-    const c = DB.company || {};
-    const isTrust = c.entityType === "Trust" || (c.name || "").toLowerCase().includes("trust");
-    const qrBlockHtml = window.getAutoQrPrintHtml(v.amount, v.vchNo);
-
-    // Full Company / Trust Header Details (Address, PAN, GSTIN/Reg, Phone, Email, Website)
-    const fullContactLine = [
-      c.address ? escHtml(c.address) : "",
-      c.city ? escHtml(c.city) : "",
-      c.pin ? `Pin: ${escHtml(c.pin)}` : ""
-    ].filter(Boolean).join(", ");
-
-    const commLine = [
-      (c.mobile || c.phone) ? `📞 ${escHtml(c.mobile || c.phone)}` : "",
-      c.email ? `✉️ ${escHtml(c.email)}` : "",
-      c.website ? `🌐 ${escHtml(c.website)}` : ""
-    ].filter(Boolean).join(" &nbsp;|&nbsp; ");
-
-    const taxIdsLine = [
-      c.gstin ? `GSTIN: <b>${escHtml(c.gstin)}</b>` : "",
-      c.pan ? `PAN: <b>${escHtml(c.pan)}</b>` : "",
-      c.cin ? `CIN/Reg: <b>${escHtml(c.cin)}</b>` : "",
-      c.regNo ? `Trust Reg: <b>${escHtml(c.regNo)}</b>` : "",
-      c.reg12A ? `12A: <b>${escHtml(c.reg12A)}</b>` : "",
-      c.reg80G ? `80G: <b>${escHtml(c.reg80G)}</b>` : ""
-    ].filter(Boolean).join(" &nbsp;|&nbsp; ");
-
-    // CASE A: DONATION RECEIPT / PAYMENT / CONTRA / JOURNAL VOUCHER
-    if (["Receipt", "Payment", "Contra", "Journal"].includes(v.type) || !Array.isArray(v.itemLines) || v.itemLines.length === 0) {
-      const crList = entries.filter(e => e.type === "Cr");
-      const drList = entries.filter(e => e.type === "Dr");
-      const mainPartyNames = (v.type === "Receipt" ? crList : drList).map(x => getLedgerName(x.ledgerId)).join(", ") || (party ? party.name : "-");
-      const modeNames = (v.type === "Receipt" ? drList : crList).map(x => getLedgerName(x.ledgerId)).join(", ") || "Cash / Bank";
-
-      const multiBreakup = entries.length > 2
-        ? `<table style="margin-top:10px;"><thead><tr><th>#</th><th>Account Head</th><th>Dr / Cr</th><th class="num">Amount (₹)</th></tr></thead><tbody>` +
-          entries.map((e, idx) => `<tr><td>${idx+1}</td><td><b>${escHtml(getLedgerName(e.ledgerId))}</b></td><td>${e.type}</td><td class="num">₹${fmtINR(e.amount)}</td></tr>`).join("") +
-          `</tbody></table>`
-        : "";
-
-      const receiptHtml = `
-        <div class="receipt-box" style="border:2px solid #0f6e4e; padding:22px; border-radius:8px; background:#fff;">
-          <div style="text-align:center; border-bottom:2px solid #0f6e4e; padding-bottom:10px; margin-bottom:14px;">
-            <h2 style="font-size:22px; color:#0f6e4e; margin:0 0 4px; text-transform:uppercase; letter-spacing:0.5px;">${escHtml(c.mailName || c.name)}</h2>
-            ${fullContactLine ? `<div style="font-size:12.5px; color:#1e293b;">${fullContactLine}</div>` : ""}
-            ${commLine ? `<div style="font-size:12px; color:#334155; margin-top:2px;">${commLine}</div>` : ""}
-            ${taxIdsLine ? `<div style="font-size:11.5px; color:#0f172a; margin-top:4px; background:#f8fafc; display:inline-block; padding:2px 10px; border-radius:4px; border:1px solid #cbd5e1;">${taxIdsLine}</div>` : ""}
-          </div>
-
-          <div style="text-align:center; margin-bottom:14px;">
-            <span style="background:#0f6e4e; color:#fff; font-weight:800; font-size:14px; padding:4px 16px; border-radius:20px; letter-spacing:0.8px; text-transform:uppercase;">
-              ${v.type === "Receipt" ? (isTrust ? "DONATION / CONTRIBUTION RECEIPT" : "OFFICIAL PAYMENT RECEIPT") : `${escHtml(v.type)} VOUCHER`}
-            </span>
-          </div>
-
-          <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:12px; background:#f8fafc; padding:8px 12px; border:1px solid #cbd5e1; border-radius:4px;">
-            <div>
-              <div>Voucher / Receipt No: <b>${escHtml(v.vchNo)}</b></div>
-              <div style="margin-top:3px;">Mode / A/c: <b>${escHtml(modeNames)}</b></div>
-            </div>
-            <div style="text-align:right;">
-              <div>Date: <b>${fmtDate(v.date)}</b></div>
-              <div style="margin-top:3px;">Ref / Chq / UTR: <b>${escHtml(v.refNo || "-")}</b></div>
-            </div>
-          </div>
-
-          <div style="font-size:14px; line-height:1.8; padding:12px 14px; border:1px dashed #0f6e4e; background:#fcfdfc; border-radius:4px;">
-            <div><b>${v.type === "Receipt" ? "Received with thanks from:" : "Paid / Adjusted To:"}</b> <span style="font-size:15px; font-weight:800; color:#0f172a; border-bottom:1px solid #0f172a; padding:0 4px;">${escHtml(mainPartyNames)}</span></div>
-            <div><b>Purpose / Narration:</b> ${escHtml(v.narration || (isTrust ? "Voluntary Contribution / Trust Objects" : "Account Settlement"))}</div>
-          </div>
-
-          ${multiBreakup}
-
-          <div style="margin-top:14px; display:flex; justify-content:space-between; align-items:center; background:#ecfdf5; padding:10px 16px; border:2px solid #0f6e4e; border-radius:6px;">
-            <span style="font-size:15px; font-weight:800; color:#094d36;">TOTAL AMOUNT:</span>
-            <span style="font-size:20px; font-weight:900; color:#0f6e4e; font-family:monospace;">₹${fmtINR(v.amount)}/-</span>
-          </div>
-
-          <div style="margin-top:18px; display:flex; justify-content:space-between; align-items:flex-end; gap:14px; flex-wrap:wrap;">
-            ${qrBlockHtml}
-            <div style="text-align:center; min-width:170px;">
-              <div style="font-size:11.5px; font-weight:700; color:#334155; margin-bottom:38px;">For ${escHtml(c.name)}</div>
-              <div style="border-top:1.5px solid #0f172a; padding-top:4px; font-size:12px; font-weight:800;">Authorised Signatory</div>
-            </div>
-          </div>
-        </div>
-      `;
-      tallyGlobalPrint(`${v.type.toUpperCase()} - ${v.vchNo}`, receiptHtml);
-      return;
+    // Fallback: Read A/c No. and IFSC directly from printed receipt header if needed
+    if (!acc && htmlText) {
+      const accMatch = htmlText.match(/A\/c\s*No\.?\s*[:\-]?\s*([0-9]{6,20})/i);
+      if (accMatch) acc = accMatch[1];
+    }
+    if (!ifsc && htmlText) {
+      const ifscMatch = htmlText.match(/IFSC\s*[:\-]?\s*([A-Z]{4}0[A-Z0-9]{6})/i);
+      if (ifscMatch) ifsc = ifscMatch[1].toUpperCase();
     }
 
-    // CASE B: GST TAX INVOICE (WITH AUTO QR CODE & FULL COMPANY HEADER)
-    let itemsHtml = (v.itemLines || []).map((ln, i) => `
-      <tr>
-        <td style="text-align:center;">${i + 1}</td>
-        <td><b>${escHtml(ln.itemName || '')}</b></td>
-        <td style="text-align:center;">${escHtml(ln.hsn || '')}</td>
-        <td class="num">${ln.qty} ${escHtml(ln.uom || 'NOS')}</td>
-        <td class="num">₹${fmtINR(ln.rate)}</td>
-        <td class="num">₹${fmtINR(ln.taxable)}</td>
-        <td class="num">${ln.gstRate}%</td>
-        <td class="num"><b>₹${fmtINR(ln.lineTotal)}</b></td>
-      </tr>
-    `).join("");
+    let amt = Number(explicitAmt) || 0;
+    if (!amt && htmlText) {
+      const amtMatch = htmlText.match(/₹\s*([0-9,]+(?:\.[0-9]{1,2})?)/);
+      if (amtMatch) amt = parseFloat(amtMatch[1].replace(/,/g, "")) || 0;
+    }
 
-    const invoiceHtml = `
-      <div style="border:2px solid #0f172a; padding:18px; background:#fff;">
-        <div style="text-align:center; border-bottom:2px solid #0f172a; padding-bottom:10px; margin-bottom:12px;">
-          <div style="font-size:12px; font-weight:800; color:#0f6e4e; letter-spacing:1px;">TAX INVOICE</div>
-          <h2 style="font-size:21px; margin:2px 0;">${escHtml(c.mailName || c.name)}</h2>
-          ${fullContactLine ? `<div style="font-size:12px;">${fullContactLine}</div>` : ""}
-          ${commLine ? `<div style="font-size:11.5px; margin-top:2px;">${commLine}</div>` : ""}
-          ${taxIdsLine ? `<div style="font-size:11.5px; margin-top:4px;">${taxIdsLine}</div>` : ""}
-        </div>
+    let pa = "";
+    if (upiId && upiId.includes("@")) {
+      pa = upiId;
+    } else if (acc && ifsc) {
+      // Official NPCI Account+IFSC UPI routing format
+      pa = `${acc}@${ifsc}.ifsc.npci`;
+    }
 
-        <div style="display:flex; justify-content:space-between; margin-bottom:12px; border:1px solid #000; padding:8px 12px; background:#f8fafc;">
-          <div>
-            <b>Billed To (Buyer):</b><br>
-            <b style="font-size:14px;">${escHtml(party ? party.name : "-")}</b><br>
-            GSTIN: <b>${escHtml(party ? party.gstin || "Unregistered" : "-")}</b> | State Code: ${escHtml(party ? party.stateCode || "-" : "-")}
-          </div>
-          <div style="text-align:right;">
-            Invoice No: <b>${escHtml(v.vchNo)}</b><br>
-            Date: <b>${fmtDate(v.date)}</b><br>
-            Ref / Order No: ${escHtml(v.refNo || "-")}
-          </div>
-        </div>
+    if (!pa) return null;
 
-        <table>
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Description of Goods / Services</th>
-              <th>HSN/SAC</th>
-              <th class="num">Qty</th>
-              <th class="num">Rate</th>
-              <th class="num">Taxable</th>
-              <th class="num">GST%</th>
-              <th class="num">Total (₹)</th>
-            </tr>
-          </thead>
-          <tbody>${itemsHtml}</tbody>
-        </table>
+    const amtParam = amt > 0 ? `&am=${amt.toFixed(2)}` : "";
+    const noteParam = vchNo ? `&tn=${encodeURIComponent("Ref " + vchNo)}` : "";
+    const uri = `upi://pay?pa=${pa}&pn=${encodeURIComponent(payeeName.slice(0, 40))}${amtParam}&cu=INR${noteParam}`;
 
-        <div style="text-align:right; font-size:16px; font-weight:900; margin-top:8px; padding:6px 10px; background:#ecfdf5; border:1px solid #0f6e4e;">
-          Grand Total: ₹${fmtINR(v.amount)}/-
-        </div>
+    return { uri, acc, ifsc, upiId, bankName, amt };
+  };
 
-        <div style="margin-top:16px; display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap;">
-          ${qrBlockHtml}
-          <div style="text-align:center; min-width:170px;">
-            <div style="font-size:11.5px; font-weight:700; margin-bottom:38px;">For ${escHtml(c.name)}</div>
-            <div style="border-top:1.5px solid #000; padding-top:4px; font-size:12px; font-weight:800;">Authorised Signatory</div>
-          </div>
+  // 3. Create Compact QR Code HTML Box
+  window.createQrBoxHtml = function(info, compact = true) {
+    if (!info || !info.uri) return "";
+    const qrSize = compact ? 58 : 78;
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&margin=1&data=${encodeURIComponent(info.uri)}`;
+    const amtText = info.amt > 0 ? `₹${info.amt.toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "";
+
+    return `
+      <div class="auto-upi-qr-box" style="display:inline-flex; align-items:center; gap:8px; border:1.5px solid #0f6e4e; background:#f0fdf4; padding:${compact ? '4px 8px' : '6px 10px'}; border-radius:5px; vertical-align:middle; margin-top:4px;">
+        <img src="${qrUrl}" alt="Scan to Pay QR" style="width:${qrSize}px; height:${qrSize}px; display:block; background:#fff; padding:2px; border:1px solid #cbd5e1; border-radius:3px;">
+        <div style="text-align:left; font-size:${compact ? '9.5px' : '11px'}; line-height:1.35; color:#0f172a; font-family:sans-serif;">
+          <div style="font-weight:800; color:#0f6e4e; font-size:${compact ? '10.5px' : '12px'};">📱 SCAN &amp; PAY ${amtText}</div>
+          <div>${info.upiId ? `UPI: <b>${escHtml(info.upiId)}</b>` : `A/c: <b>${escHtml(info.acc)}</b>`}</div>
+          ${!info.upiId && info.ifsc ? `<div>IFSC: <b>${escHtml(info.ifsc)}</b></div>` : ""}
+          <div style="color:#475569; font-size:${compact ? '8.5px' : '9.5px'};">GPay • PhonePe • Paytm • BHIM</div>
         </div>
       </div>
     `;
-    tallyGlobalPrint(`INVOICE - ${v.vchNo}`, invoiceHtml);
   };
+
+  // 4. Automatically Inject QR Code into Donor Copy / Office Copy / Invoices
+  function injectQrIntoAnyPrintHtml(htmlContent) {
+    if (!htmlContent || typeof htmlContent !== "string") return htmlContent;
+    if (htmlContent.includes("auto-upi-qr-box") || htmlContent.includes("api.qrserver.com")) {
+      return htmlContent;
+    }
+
+    const info = window.buildUniversalUpiInfo(htmlContent);
+    if (!info) return htmlContent;
+
+    const qrBox = window.createQrBoxHtml(info, true);
+
+    // Target 1: Dual Slip Donation Receipt ("Thank you for your generous support.")
+    if (htmlContent.includes("Thank you for your generous support")) {
+      return htmlContent.replace(
+        /Thank you for your generous support\.?/gi,
+        `<div style="margin-bottom:3px;">${qrBox}</div><div>Thank you for your generous support.</div>`
+      );
+    }
+
+    // Target 2: Before "Authorised Signatory"
+    if (htmlContent.includes("Authorised Signatory")) {
+      return htmlContent.replace(
+        /(<div[^>]*>[^<]*Authorised Signatory[^<]*<\/div>)/gi,
+        `<div style="display:flex; justify-content:space-between; align-items:flex-end; width:100%; gap:12px;">${qrBox}<div>$1</div></div>`
+      );
+    }
+
+    return htmlContent + `<div style="margin-top:10px;">${qrBox}</div>`;
+  }
+
+  // 5. Wait for QR Code Image to Load Completely Before Opening Browser Print Preview
+  function waitImagesAndPrint(container, printCallback) {
+    const root = container || document.getElementById("printArea") || document.body;
+    const imgs = Array.from(root.querySelectorAll("img")).filter(img => !img.complete);
+
+    if (imgs.length === 0) {
+      printCallback();
+      return;
+    }
+
+    let doneCalled = false;
+    const finish = () => {
+      if (doneCalled) return;
+      doneCalled = true;
+      setTimeout(printCallback, 80);
+    };
+
+    let count = 0;
+    imgs.forEach(img => {
+      const check = () => {
+        count++;
+        if (count >= imgs.length) finish();
+      };
+      img.addEventListener("load", check, { once: true });
+      img.addEventListener("error", check, { once: true });
+    });
+
+    setTimeout(finish, 1200);
+  }
+
+  // 6. Hook into tallyGlobalPrint so Every Printout Gets QR + Image Preload Wait
+  if (typeof window.tallyGlobalPrint === "function") {
+    const origTallyPrint = window.tallyGlobalPrint;
+    window.tallyGlobalPrint = function(title, htmlContent) {
+      const updatedHtml = injectQrIntoAnyPrintHtml(htmlContent);
+      const nativePrint = window.print.bind(window);
+
+      window.print = function() {
+        waitImagesAndPrint(document.getElementById("printArea") || document.body, nativePrint);
+      };
+
+      origTallyPrint(title, updatedHtml);
+
+      setTimeout(() => {
+        window.print = nativePrint;
+      }, 2000);
+    };
+  }
+})();
+</script>
+<!-- ================= 1-CLICK WHATSAPP SHARE & REMINDER PATCH ================= -->
+<script>
+(function() {
+  // 1. Helper: Send Formatted Voucher / Donation Receipt on WhatsApp
+  window.sendVoucherWhatsApp = function(vid) {
+    const v = (DB.vouchers || []).find(x => x.id === vid);
+    if (!v) { toast("⚠ Voucher nahi mila!"); return; }
+
+    const c = DB.company || {};
+    const entries = (typeof getVoucherEntries === "function") ? getVoucherEntries(v) : (v.entries || []);
+    const isTrust = c.entityType === "Trust" || (c.name || "").toLowerCase().includes("trust");
+
+    // Find Party Ledger & Mobile Number
+    const targetEntries = v.type === "Receipt" ? entries.filter(e => e.type === "Cr") : entries.filter(e => e.type === "Dr");
+    const primaryLedgerId = (targetEntries[0] && targetEntries[0].ledgerId) || v.partyLedgerId || v.drLedgerId || v.crLedgerId;
+    const partyLed = getLedger(primaryLedgerId) || {};
+    const partyName = targetEntries.map(e => getLedgerName(e.ledgerId)).join(", ") || partyLed.name || "Sir/Madam";
+
+    let phone = String(partyLed.mobile || partyLed.phone || "").replace(/\D/g, "");
+    if (!phone || phone.length < 10) {
+      const ask = prompt(`📲 ${partyName} ka 10-digit WhatsApp Mobile Number dalein:`, "98");
+      if (!ask) return;
+      phone = ask.replace(/\D/g, "");
+      // Save mobile number in Ledger Master for next time!
+      if (partyLed && partyLed.id && phone.length >= 10) {
+        partyLed.mobile = phone.slice(-10);
+        saveDB();
+      }
+    }
+    if (phone.length === 10) phone = "91" + phone;
+
+    let msg = "";
+    if (v.type === "Receipt") {
+      msg = isTrust
+        ? `🙏 *Namaskar ${partyName}*, \n\n*${c.name}* me *₹${fmtINR(v.amount)}/-* ka amulya sahyog / daan dene ke liye aapka hardik dhanyawad! 🌸\n\n🧾 *Receipt Details:*\n• Receipt No: *${v.vchNo}*\n• Date: *${fmtDate(v.date)}*\n• Amount: *₹${fmtINR(v.amount)}/-*\n• Particulars: ${v.narration || "Voluntary Contribution"}\n\nThank you for your generous support!\n— *${c.name}*`
+        : `✅ *Payment Receipt Confirmation*\n\nDear *${partyName}*,\nWe have received *₹${fmtINR(v.amount)}/-* with thanks.\n\n• Receipt No: *${v.vchNo}*\n• Date: *${fmtDate(v.date)}*\n• Narration: ${v.narration || "-"}\n\nRegards,\n*${c.name}*`;
+    } else if (v.type === "Sales") {
+      msg = `🧾 *Tax Invoice from ${c.name}*\n\nDear *${partyName}*,\nYour Invoice has been generated:\n\n• Invoice No: *${v.vchNo}*\n• Date: *${fmtDate(v.date)}*\n• Bill Amount: *₹${fmtINR(v.amount)}/-*\n\nThank you for your business!\n— *${c.name}*`;
+    } else {
+      msg = `📌 *Voucher Intimation (${v.type})*\n\nParty: *${partyName}*\nVoucher No: *${v.vchNo}*\nDate: *${fmtDate(v.date)}*\nAmount: *₹${fmtINR(v.amount)}/-*\nDetails: ${v.narration || "-"}\n\n— *${c.name}*`;
+    }
+
+    const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
+    window.open(waUrl, "_blank");
+  };
+
+  // 2. Helper: Send Ledger Balance / Payment Reminder on WhatsApp
+  window.sendLedgerBalanceWhatsApp = function(ledgerId) {
+    const ledId = ledgerId || window.SELECTED_LEDGER_FOR_VIEW;
+    const led = getLedger(ledId);
+    if (!led) return;
+
+    const c = DB.company || {};
+    const balMap = computeAllLedgerBalances();
+    const b = balMap[ledId] || { netSigned: 0 };
+    const amt = Math.abs(b.netSigned || 0);
+    const drCr = (b.netSigned >= 0) ? "Dr (Receivable)" : "Cr (Payable)";
+
+    let phone = String(led.mobile || led.phone || "").replace(/\D/g, "");
+    if (!phone || phone.length < 10) {
+      const ask = prompt(`📲 ${led.name} ka 10-digit WhatsApp Number dalein:`, "");
+      if (!ask) return;
+      phone = ask.replace(/\D/g, "");
+      if (phone.length >= 10) { led.mobile = phone.slice(-10); saveDB(); }
+    }
+    if (phone.length === 10) phone = "91" + phone;
+
+    const msg = (b.netSigned > 0)
+      ? `🔔 *Gentle Payment Reminder*\n\nDear *${led.name}*,\nAs per our books of accounts (*${c.name}*), an amount of *₹${fmtINR(amt)}/-* is currently outstanding in your account.\n\nKindly arrange for the payment at your earliest convenience.\n\nRegards,\n*${c.name}*\n📞 ${c.mobile || c.phone || ""}`
+      : `📒 *Account Balance Statement*\n\nDear *${led.name}*,\nYour current closing balance with *${c.name}* is *₹${fmtINR(amt)}/- (${drCr})*.\n\nRegards,\n*${c.name}*`;
+
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, "_blank");
+  };
+
+  // 3. Auto-Inject "📲 WA" Button into Day Book Rows & Ledger View Header
+  function injectWhatsAppButtons() {
+    // A. In Day Book rows: add WA button next to Print button
+    if (window.CURRENT_SCREEN === "daybook") {
+      document.querySelectorAll("tr[data-vid]").forEach(tr => {
+        const vid = tr.getAttribute("data-vid");
+        const actionTd = tr.lastElementChild;
+        if (actionTd && !actionTd.querySelector(".wa-vch-btn")) {
+          const btn = document.createElement("button");
+          btn.className = "btn wa-vch-btn";
+          btn.style.cssText = "padding:2px 6px; font-size:11px; background:#16a34a; border-color:#15803d; color:#fff; margin-left:2px;";
+          btn.title = "Send Receipt/Invoice on WhatsApp";
+          btn.innerHTML = "📲 WA";
+          btn.onclick = (e) => { e.stopPropagation(); window.sendVoucherWhatsApp(vid); };
+          actionTd.insertBefore(btn, actionTd.lastElementChild);
+        }
+      });
+    }
+
+    // B. In Ledger View: add "📲 WhatsApp Balance/Reminder" button in top bar
+    if (window.CURRENT_SCREEN === "ledgers_view" && !document.getElementById("waLedBtn")) {
+      const topCard = document.querySelector("#screenBody .form-card");
+      if (topCard) {
+        const btn = document.createElement("button");
+        btn.id = "waLedBtn";
+        btn.className = "btn";
+        btn.style.cssText = "background:#16a34a; border-color:#15803d; color:#fff; padding:5px 10px; font-size:12px;";
+        btn.innerHTML = "📲 WhatsApp Statement / Reminder";
+        btn.onclick = () => window.sendLedgerBalanceWhatsApp(window.SELECTED_LEDGER_FOR_VIEW);
+        topCard.appendChild(btn);
+      }
+    }
+  }
+
+  const obs = new MutationObserver(() => injectWhatsAppButtons());
+  obs.observe(document.getElementById("screenBody") || document.body, { childList: true, subtree: true });
+  injectWhatsAppButtons();
 })();
 </script>
