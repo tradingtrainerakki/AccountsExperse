@@ -1198,6 +1198,7 @@ function createDefaultAcctLines(type) {
 }
 
 function openVoucherScreen(type = "Sales", editVoucherId = null) {
+  if (CURRENT_SCREEN !== "voucher_entry") window._LAST_REPORT_SCREEN = CURRENT_SCREEN;
   if (editVoucherId) {
     const found = DB.vouchers.find(v => v.id === editVoucherId);
     if (found) initVoucherState(found.type, found);
@@ -5454,10 +5455,16 @@ window.renderStockSummaryScreen = function() {
     if(kd && kd.style.display === "flex") return;                         // ड्रॉपडाउन खुला हो तो पहले जैसा
     const lg = document.getElementById("loginOverlay");
     if(lg && lg.classList.contains("active")) return;                     // लॉगिन स्क्रीन पर नहीं
-    if(typeof CURRENT_SCREEN !== "undefined" && CURRENT_SCREEN === "gateway"){
-      e.preventDefault(); e.stopImmediatePropagation();
-      openQuit();
-    }
+    if(typeof CURRENT_SCREEN !== "undefined"){
+      if(CURRENT_SCREEN === "gateway"){
+        e.preventDefault(); e.stopImmediatePropagation();
+        openQuit();
+      } else if(CURRENT_SCREEN === "voucher_entry" && window._LAST_REPORT_SCREEN){
+        e.preventDefault(); e.stopImmediatePropagation();
+        const backTo = window._LAST_REPORT_SCREEN;
+        window._LAST_REPORT_SCREEN = null;
+        navigate(backTo);
+      }
   }, true);
 })();</script><script>(function(){
   function gwActive(){
