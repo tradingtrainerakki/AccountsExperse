@@ -9461,110 +9461,110 @@ window.renderStockSummaryScreen = function() {
   injectTopStatutoryButtons();
 })();
 </script>
-<!-- ================= 5-PART CATEGORIZED GATEWAY SUB-MENU PATCH ================= -->
+<!-- ================= DIRECT DOM 5-FOLDER GATEWAY MENU PATCH (100% WORKING) ================= -->
 <script>
 (function() {
-  // Current active folder on Gateway: null = Main 5 Categories, otherwise Category Key
   window.GW_ACTIVE_FOLDER = null;
 
-  const GW_CATEGORIES = [
+  const GW_FOLDERS = [
     {
       id: "MASTERS",
-      title: "CREATE / ALTER (MASTERS)",
-      sub: "Ledgers, 28 Accounting Groups & Company/Trust Settings",
+      title: "Create / Alter (Masters)",
+      sub: "Ledgers, Chart of Accounts (28 Groups) & Company/Trust Settings",
       key: "C",
       icon: "📁",
       items: [
-        { label: "Create / Alter Ledgers", htmlLabel: "Create / A<span class='hk'>l</span>ter Ledgers", key: "L", screen: "ledgers" },
-        { label: "Chart of Accounts (28 Groups)", htmlLabel: "Chart of Accounts (28 <span class='hk'>G</span>roups)", key: "G", screen: "groups" },
-        { label: "Company / Trust Master (Alter / Switch)", htmlLabel: "<span class='hk'>C</span>ompany / Trust Master (F3)", key: "C", action: () => { if (typeof openCompanyModal === "function") openCompanyModal(); } }
+        { html: "Create / A<span class='hk'>l</span>ter Ledgers", key: "L", screen: "ledgers" },
+        { html: "Chart of Accounts (28 <span class='hk'>G</span>roups)", key: "G", screen: "groups" },
+        { html: "<span class='hk'>C</span>ompany / Trust Master (F3)", key: "C", fn: () => { if (typeof openCompanyModal === "function") openCompanyModal(); } }
       ]
     },
     {
       id: "TRANSACTIONS",
-      title: "TRANSACTIONS",
-      sub: "Daily Accounting Vouchers (F4 - F9) & Day Book Register",
+      title: "Transactions",
+      sub: "Vouchers Entry (F4 - F9) & Day Book / All Transactions",
       key: "T",
       icon: "💸",
       items: [
-        { label: "Vouchers Entry (F4 - F9)", htmlLabel: "<span class='hk'>V</span>ouchers Entry (F4 - F9)", key: "V", screen: "voucher_entry" },
-        { label: "Day Book / All Transactions", htmlLabel: "<span class='hk'>D</span>ay Book / All Transactions", key: "D", screen: "daybook" }
+        { html: "<span class='hk'>V</span>ouchers Entry (F4 - F9)", key: "V", fn: () => { if (typeof openVoucherScreen === "function") openVoucherScreen("Sales"); else navigate("voucher_entry"); } },
+        { html: "<span class='hk'>D</span>ay Book / All Transactions", key: "D", screen: "daybook" }
       ]
     },
     {
       id: "INVENTORY",
-      title: "INVENTORY (STOCK)",
-      sub: "Stock Items, HSN, Groups, Summary & BOM Manufacturing",
+      title: "Inventory (Stock)",
+      sub: "Stock Items, HSN, Stock Groups, Stock Summary & BOM Manufacturing",
       key: "I",
       icon: "📦",
       items: [
-        { label: "Stock Items & HSN Master", htmlLabel: "Stock <span class='hk'>I</span>tems &amp; HSN Master", key: "I", screen: "items" },
-        { label: "Stock Groups (Raw, Packing, Finished & GST)", htmlLabel: "Stoc<span class='hk'>k</span> Groups (Raw, Packing, Finished &amp; GST)", key: "K", screen: "stock_groups" },
-        { label: "Stock Summary & Inventory Vouchers", htmlLabel: "<span class='hk'>S</span>tock Summary &amp; Inventory Vouchers", key: "S", screen: "stock" },
-        { label: "BOM Manufacturing (Raw+Packing → Finished)", htmlLabel: "BO<span class='hk'>M</span> Manufacturing (Raw+Packing → Finished)", key: "M", screen: "bom" },
-        { label: "Smart Reorder / Batch / Expiry Settings", htmlLabel: "Smart Reorder / <span class='hk'>B</span>atch / Expiry Settings", key: "B", action: () => { if (typeof openSetReorderModal === "function") openSetReorderModal(); } }
+        { html: "Stock <span class='hk'>I</span>tems &amp; HSN Master", key: "I", screen: "items" },
+        { html: "Stoc<span class='hk'>k</span> Groups (Raw, Packing, Finished &amp; GST)", key: "K", screen: "stock_groups" },
+        { html: "<span class='hk'>S</span>tock Summary &amp; Inventory Vouchers", key: "S", screen: "stock" },
+        { html: "BO<span class='hk'>M</span> Manufacturing (Raw+Packing → Finished)", key: "M", screen: "bom" },
+        { html: "Smart Reorder / <span class='hk'>B</span>atch / Expiry Settings", key: "B", fn: () => { if (typeof openSetReorderModal === "function") openSetReorderModal(); } }
       ]
     },
     {
       id: "ACC_REPORTS",
-      title: "ACCOUNTING REPORTS",
-      sub: "Ledgers, Reconciliation, Trial Balance, P&L, Balance Sheet & Outstanding",
+      title: "Accounting Reports",
+      sub: "Ledger Account, Reconciliation, Trial Balance, P&L, Balance Sheet & Outstanding",
       key: "A",
       icon: "📊",
       items: [
-        { label: "Ledger Account (By Head)", htmlLabel: "Ledger <span class='hk'>A</span>ccount (By Head)", key: "A", screen: "ledgers_view" },
-        { label: "Account Reconciliation (Bank / Party)", htmlLabel: "Account <span class='hk'>R</span>econciliation (Bank / Party)", key: "R", screen: "bank_recon" },
-        { label: "Trial Balance", htmlLabel: "<span class='hk'>T</span>rial Balance", key: "T", screen: "tb" },
-        { label: "Profit & Loss A/c (Income & Expenditure)", htmlLabel: "<span class='hk'>P</span>rofit &amp; Loss A/c", key: "P", screen: "pl" },
-        { label: "Balance Sheet", htmlLabel: "<span class='hk'>B</span>alance Sheet", key: "B", screen: "bs" },
-        { label: "Outstanding (Receivables / Payables)", htmlLabel: "<span class='hk'>O</span>utstanding (Receivables / Payables)", key: "O", screen: "outstanding" }
+        { html: "Ledger <span class='hk'>A</span>ccount (By Head)", key: "A", screen: "ledgers_view" },
+        { html: "Account <span class='hk'>R</span>econciliation (Bank / Party)", key: "R", fn: () => { if (typeof openBankReconScreen === "function") openBankReconScreen(); else navigate("bank_recon"); } },
+        { html: "<span class='hk'>T</span>rial Balance", key: "T", screen: "tb" },
+        { html: "<span class='hk'>P</span>rofit &amp; Loss A/c (Income &amp; Expenditure)", key: "P", screen: "pl" },
+        { html: "<span class='hk'>B</span>alance Sheet", key: "B", screen: "bs" },
+        { html: "<span class='hk'>O</span>utstanding (Receivables / Payables)", key: "O", screen: "outstanding" }
       ]
     },
     {
       id: "STAT_REPORTS",
-      title: "STATUTORY REPORTS",
-      sub: "GSTR-1, GSTR-3B, HSN Summary & Trust 80G / Form 10BD",
+      title: "Statutory Reports",
+      sub: "GSTR-1, GSTR-3B & Trust 80G / Form 10BD Donor Statement",
       key: "S",
       icon: "🏛️",
       items: [
-        { label: "GSTR-1 (Outward Supplies Return)", htmlLabel: "GSTR-<span class='hk'>1</span> (Outward Supplies)", key: "1", screen: "gstr1" },
-        { label: "GSTR-3B (Monthly Tax Summary)", htmlLabel: "GSTR-<span class='hk'>3</span>B (Monthly Return)", key: "3", screen: "gstr3b" },
-        { label: "80G / Form 10BD Donor Statement (Trust)", htmlLabel: "80G / Form 10B<span class='hk'>D</span> Donor Register", key: "D", action: () => { if (typeof openForm10BDModal === "function") openForm10BDModal(); } }
+        { html: "GSTR-<span class='hk'>1</span> (Outward Supplies Return)", key: "1", screen: "gstr1" },
+        { html: "GSTR-<span class='hk'>3</span>B (Monthly Tax Summary)", key: "3", screen: "gstr3b" },
+        { html: "80G / Form 10B<span class='hk'>D</span> Donor Register", key: "D", fn: () => { if (typeof openForm10BDModal === "function") openForm10BDModal(); } }
       ]
     }
   ];
 
-  // Override Gateway Renderer
-  window.renderGatewayScreen = function() {
-    const activeCat = GW_CATEGORIES.find(c => c.id === window.GW_ACTIVE_FOLDER);
-    const titleEl = document.getElementById("screenTitle");
-    const subEl = document.getElementById("screenSub");
+  // Check if Gateway screen is currently active
+  function isGatewayActive() {
+    if (typeof CURRENT_SCREEN !== "undefined" && CURRENT_SCREEN === "gateway") return true;
+    const t = document.getElementById("screenTitle");
+    return Boolean(t && t.textContent && t.textContent.includes("Gateway of Accounts"));
+  }
 
+  // Draw the 5-Folder Gateway inside #screenBody
+  window.drawCustomGatewayMenu = function() {
+    const sb = document.getElementById("screenBody");
+    if (!sb || !isGatewayActive()) return;
+
+    const activeCat = GW_FOLDERS.find(c => c.id === window.GW_ACTIVE_FOLDER);
+    const titleEl = document.getElementById("screenTitle");
     if (titleEl) {
       titleEl.textContent = activeCat
         ? `Gateway of AccountsExpress ➔ ${activeCat.title}`
         : "Gateway of AccountsExpress";
     }
-    if (subEl) {
-      subEl.textContent = activeCat
-        ? "Press Hotkey or ↑ ↓ + Enter | Press Esc to return to Main Gateway"
-        : "Select Category (↑ ↓ + Enter or Hotkey C, T, I, A, S)";
-    }
 
-    let menuContentHtml = "";
-
+    let rowsHtml = "";
     if (!activeCat) {
-      // VIEW 1: MAIN 5 CATEGORIES ON GATEWAY
-      menuContentHtml = `
-        <div class="gw-sec" style="background:#f1f5f9; color:#0f6e4e; font-weight:800; padding:8px 14px; font-size:11.5px; letter-spacing:0.6px; border-bottom:1px solid #cbd5e1;">
-          MAIN MENU CATEGORIES (SELECT MODULE)
+      rowsHtml = `
+        <div class="gw-sec" style="background:#f1f5f9; color:#0f6e4e; font-weight:800; padding:8px 14px; font-size:11.5px; border-bottom:1px solid #cbd5e1;">
+          SELECT MODULE CATEGORY (↑ ↓ + Enter or Hotkey)
         </div>
-      ` + GW_CATEGORIES.map((cat, idx) => `
-        <div class="gw-item ${idx === 0 ? 'gw-sel' : ''}" data-gw-idx="${idx}" data-cat-id="${cat.id}"
-             onclick="window.openGwFolder('${cat.id}')"
+      ` + GW_FOLDERS.map((cat, idx) => `
+        <div class="gw-item ${idx === 0 ? 'gw-sel' : ''}" data-folder-id="${cat.id}"
+             onclick="window.selectGwFolder('${cat.id}')"
              style="padding:12px 16px; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
           <div>
-            <div style="font-size:14px; font-weight:800; color:#0f172a;">
+            <div style="font-size:14.5px; font-weight:800; color:#0f172a;">
               <span style="margin-right:8px;">${cat.icon}</span>${cat.title}
             </div>
             <div style="font-size:11px; color:#64748b; margin-top:2px; padding-left:26px;">${cat.sub}</div>
@@ -9573,138 +9573,139 @@ window.renderStockSummaryScreen = function() {
         </div>
       `).join("");
     } else {
-      // VIEW 2: INSIDE SELECTED CATEGORY SUB-MENU
-      menuContentHtml = `
+      rowsHtml = `
         <div style="background:#ecfdf5; border-bottom:2px solid #0f6e4e; padding:8px 14px; display:flex; justify-content:space-between; align-items:center;">
-          <span style="font-weight:800; color:#0f6e4e; font-size:12.5px;">${activeCat.icon} ${activeCat.title}</span>
-          <button type="button" class="btn btn-sec" style="padding:2px 8px; font-size:11px;" onclick="window.openGwFolder(null)">⬅ Back (Esc)</button>
+          <span style="font-weight:800; color:#0f6e4e; font-size:13px;">${activeCat.icon} ${activeCat.title.toUpperCase()}</span>
+          <button type="button" class="btn btn-sec" style="padding:2px 8px; font-size:11px;" onclick="window.selectGwFolder(null)">⬅ Back (Esc)</button>
         </div>
       ` + activeCat.items.map((it, idx) => `
-        <div class="gw-item ${idx === 0 ? 'gw-sel' : ''}" data-gw-idx="${idx}" data-sub-idx="${idx}"
-             onclick="window.triggerGwSubItem(${idx})"
+        <div class="gw-item ${idx === 0 ? 'gw-sel' : ''}" data-sub-idx="${idx}"
+             onclick="window.runGwSubItem(${idx})"
              style="padding:11px 16px; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
-          <span style="font-size:13.5px; font-weight:600;">${it.htmlLabel}</span>
+          <span style="font-size:13.5px; font-weight:600;">${it.html}</span>
           <span class="gw-key">${it.key}</span>
         </div>
       `).join("");
     }
 
-    document.getElementById("screenBody").innerHTML = `
-      <div class="gw-wrap" style="display:flex; justify-content:center; align-items:flex-start; padding-top:18px;">
-        <div class="gw-menu" id="gwMenuBox" style="width:100%; max-width:460px; background:#fff; border:2px solid #0f6e4e; border-radius:6px; box-shadow:0 6px 20px rgba(15,23,42,0.08); overflow:hidden;">
-          <div style="background:#0f6e4e; color:#fff; padding:10px 16px; font-weight:800; font-size:14px; letter-spacing:0.5px; display:flex; justify-content:space-between; align-items:center;">
+    sb.innerHTML = `
+      <div id="customFiveFolderGw" class="gw-wrap" style="display:flex; justify-content:center; align-items:flex-start; padding-top:16px;">
+        <div class="gw-menu" id="gwCustomBox" style="width:100%; max-width:470px; background:#fff; border:2px solid #0f6e4e; border-radius:6px; box-shadow:0 8px 24px rgba(15,23,42,0.08); overflow:hidden;">
+          <div style="background:#0f6e4e; color:#fff; padding:10px 16px; font-weight:800; font-size:13.5px; letter-spacing:0.5px; display:flex; justify-content:space-between; align-items:center;">
             <span>GATEWAY OF ACCOUNTSEXPRESS</span>
-            ${activeCat ? `<span style="font-size:11px; background:#094d36; padding:2px 8px; border-radius:10px;">${activeCat.id}</span>` : ""}
+            <span style="font-size:11px; background:#094d36; padding:2px 8px; border-radius:10px;">${activeCat ? activeCat.key : 'MAIN'}</span>
           </div>
-          ${menuContentHtml}
+          ${rowsHtml}
         </div>
       </div>
     `;
   };
 
-  window.openGwFolder = function(folderId) {
+  window.selectGwFolder = function(folderId) {
     window.GW_ACTIVE_FOLDER = folderId;
-    renderGatewayScreen();
+    window.drawCustomGatewayMenu();
   };
 
-  window.triggerGwSubItem = function(subIdx) {
-    const activeCat = GW_CATEGORIES.find(c => c.id === window.GW_ACTIVE_FOLDER);
-    if (!activeCat || !activeCat.items[subIdx]) return;
-    const item = activeCat.items[subIdx];
-    if (typeof item.action === "function") {
-      item.action();
-    } else if (item.screen === "voucher_entry") {
-      openVoucherScreen("Sales");
-    } else if (item.screen === "bank_recon" && typeof openBankReconScreen === "function") {
-      openBankReconScreen();
+  window.runGwSubItem = function(idx) {
+    const activeCat = GW_FOLDERS.find(c => c.id === window.GW_ACTIVE_FOLDER);
+    if (!activeCat || !activeCat.items[idx]) return;
+    const item = activeCat.items[idx];
+    if (typeof item.fn === "function") {
+      item.fn();
     } else if (item.screen) {
       navigate(item.screen);
     }
   };
 
-  // Keyboard Navigation (Up / Down / Enter / Hotkey / Esc) on Categorized Gateway
-  window.addEventListener("keydown", function(e) {
-    if (typeof CURRENT_SCREEN === "undefined" || CURRENT_SCREEN !== "gateway") return;
+  // Watch #screenBody: whenever original long menu appears on Gateway, replace it immediately!
+  const sbEl = document.getElementById("screenBody");
+  if (sbEl) {
+    const gwObs = new MutationObserver(() => {
+      if (isGatewayActive() && !document.getElementById("customFiveFolderGw")) {
+        window.drawCustomGatewayMenu();
+      }
+    });
+    gwObs.observe(sbEl, { childList: true });
+  }
 
-    // Do not intercept if any modal, quit box, or login overlay is open
-    const appModal = document.getElementById("appModal") || document.getElementById("modalBackdrop");
-    if (appModal && (appModal.classList.contains("open") || appModal.classList.contains("show"))) return;
-    const quitBox = document.getElementById("quitConfirmOverlay");
-    if (quitBox && quitBox.style.display === "flex") return;
+  // Keyboard Handler for 5-Folder Gateway (Capture Phase so old gateway hotkeys don't conflict)
+  window.addEventListener("keydown", function(e) {
+    if (!isGatewayActive()) return;
+    const box = document.getElementById("gwCustomBox");
+    if (!box) return;
+
+    // Ignore if any modal/popup/login is open or typing inside input
+    const modal = document.getElementById("appModal") || document.getElementById("modalBackdrop");
+    if (modal && (modal.classList.contains("open") || modal.classList.contains("show"))) return;
+    const quit = document.getElementById("quitConfirmOverlay");
+    if (quit && quit.style.display === "flex") return;
     const lg = document.getElementById("loginOverlay");
     if (lg && lg.classList.contains("active")) return;
     if (["INPUT", "SELECT", "TEXTAREA"].includes((e.target && e.target.tagName) || "")) return;
     if (e.altKey || e.ctrlKey || e.metaKey) return;
 
-    const items = Array.from(document.querySelectorAll("#gwMenuBox .gw-item"));
+    const items = Array.from(box.querySelectorAll(".gw-item"));
     if (!items.length) return;
-    let curIdx = items.findIndex(el => el.classList.contains("gw-sel"));
-    if (curIdx < 0) curIdx = 0;
+    let cur = items.findIndex(el => el.classList.contains("gw-sel"));
+    if (cur < 0) cur = 0;
 
-    // 1. Escape inside a Sub-Folder -> Return to Main 5 Categories instead of opening Quit box!
+    // Esc inside a folder -> go back to 5 Main Categories
     if (e.key === "Escape" && window.GW_ACTIVE_FOLDER !== null) {
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
-      window.openGwFolder(null);
+      window.selectGwFolder(null);
       return;
     }
 
-    // 2. Arrow Down / Arrow Up
+    // Up / Down arrows
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
-      items[curIdx].classList.remove("gw-sel");
-      if (e.key === "ArrowDown") curIdx = (curIdx + 1) % items.length;
-      else curIdx = (curIdx - 1 + items.length) % items.length;
-      items[curIdx].classList.add("gw-sel");
+      items[cur].classList.remove("gw-sel");
+      cur = e.key === "ArrowDown" ? (cur + 1) % items.length : (cur - 1 + items.length) % items.length;
+      items[cur].classList.add("gw-sel");
       return;
     }
 
-    // 3. Enter Key -> Open Selected Category OR Open Selected Sub-Item
+    // Enter key
     if (e.key === "Enter") {
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
-      const selEl = items[curIdx];
-      if (!selEl) return;
+      const sel = items[cur];
+      if (!sel) return;
       if (window.GW_ACTIVE_FOLDER === null) {
-        window.openGwFolder(selEl.getAttribute("data-cat-id"));
+        window.selectGwFolder(sel.getAttribute("data-folder-id"));
       } else {
-        window.triggerGwSubItem(parseInt(selEl.getAttribute("data-sub-idx"), 10));
+        window.runGwSubItem(parseInt(sel.getAttribute("data-sub-idx"), 10));
       }
       return;
     }
 
-    // 4. Hotkey Letter/Number Press
+    // Single-letter / number Hotkey
     if (e.key && e.key.length === 1) {
-      const pressed = e.key.toUpperCase();
+      const k = e.key.toUpperCase();
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
       if (window.GW_ACTIVE_FOLDER === null) {
-        const foundCat = GW_CATEGORIES.find(c => c.key === pressed);
-        if (foundCat) {
-          e.preventDefault();
-          e.stopPropagation();
-          e.stopImmediatePropagation();
-          window.openGwFolder(foundCat.id);
-        }
+        const found = GW_FOLDERS.find(c => c.key === k);
+        if (found) window.selectGwFolder(found.id);
       } else {
-        const activeCat = GW_CATEGORIES.find(c => c.id === window.GW_ACTIVE_FOLDER);
+        const activeCat = GW_FOLDERS.find(c => c.id === window.GW_ACTIVE_FOLDER);
         if (activeCat) {
-          const sIdx = activeCat.items.findIndex(it => it.key === pressed);
-          if (sIdx !== -1) {
-            e.preventDefault();
-            e.stopPropagation();
-            e.stopImmediatePropagation();
-            window.triggerGwSubItem(sIdx);
-          }
+          const idx = activeCat.items.findIndex(it => it.key === k);
+          if (idx !== -1) window.runGwSubItem(idx);
         }
       }
     }
   }, true);
 
-  if (typeof CURRENT_SCREEN !== "undefined" && CURRENT_SCREEN === "gateway") {
-    renderGatewayScreen();
-  }
+  // Initial trigger
+  setTimeout(() => {
+    if (isGatewayActive()) window.drawCustomGatewayMenu();
+  }, 50);
 })();
 </script>
