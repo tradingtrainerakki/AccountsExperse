@@ -8676,7 +8676,7 @@ window.renderStockSummaryScreen = function() {
     renderBankReconScreen();
   }
 })();</script>
-<!-- ================= COMBINED AUTO BANK/UPI QR CODE & ADVANCED PRINT ENGINE ================= -->
+<!-- ================= FINAL COMBINED UPI FIELD + DIRECT PRINT QR INJECTOR ================= -->
 <script>
 (function() {
   // 1. Add "UPI ID (Optional)" field inside F3 Company/Trust Create & Alter Form
@@ -8708,152 +8708,115 @@ window.renderStockSummaryScreen = function() {
     window.readEntityDetails = function(p) {
       const data = origReadEntity(p);
       const upiEl = document.getElementById(p + "UpiInp");
-      data.upiId = upiEl ? upiEl.value.trim() : ((window.DB && DB.company && DB.company.upiId) || "");
+      data.upiId = upiEl ? upiEl.value.trim() : ((typeof DB !== "undefined" && DB.company && DB.company.upiId) || "");
       return data;
     };
   }
 
-  // 2. Build NPCI Standard UPI Payment Info from DB.company OR Receipt HTML Text
-  window.buildUniversalUpiInfo = function(htmlText = "", explicitAmt = 0, vchNo = "") {
-    const c = (window.DB && DB.company) ? DB.company : {};
-    let upiId = String(c.upiId || c.upi || "").trim();
-    let acc = String(c.bankAcc || c.accNo || c.accountNo || "").replace(/\s+/g, "");
-    let ifsc = String(c.bankIfsc || c.ifsc || c.ifscCode || "").trim().toUpperCase();
-    let bankName = String(c.bankName || "").trim();
-    let payeeName = c.mailName || c.name || "Merchant";
+  // 2. Build UPI QR HTML from DB.company OR Printed Receipt Text
+  function buildQrHtmlFromText(containerText) {
+    const c = (typeof DB !== "undefined" && DB.company) ? DB.company : {};
+    let upi = String(c.upiId || c.upi || "").trim();
+    let acc = String(c.bankAcc || c.accNo || "").replace(/\s+/g, "");
+    let ifsc = String(c.bankIfsc || c.ifsc || "").trim().toUpperCase();
+    let name = c.mailName || c.name || "Sanrakshan Trust";
 
-    // Fallback: Read A/c No. and IFSC directly from printed receipt header if needed
-    if (!acc && htmlText) {
-      const accMatch = htmlText.match(/A\/c\s*No\.?\s*[:\-]?\s*([0-9]{6,20})/i);
-      if (accMatch) acc = accMatch[1];
+    // Fallback: Read A/c No. and IFSC directly from printed receipt header
+    if (!acc && containerText) {
+      const m1 = containerText.match(/A\/c\s*No\.?\s*[:\-]?\s*([0-9]{6,20})/i);
+      if (m1) acc = m1[1];
     }
-    if (!ifsc && htmlText) {
-      const ifscMatch = htmlText.match(/IFSC\s*[:\-]?\s*([A-Z]{4}0[A-Z0-9]{6})/i);
-      if (ifscMatch) ifsc = ifscMatch[1].toUpperCase();
-    }
-
-    let amt = Number(explicitAmt) || 0;
-    if (!amt && htmlText) {
-      const amtMatch = htmlText.match(/₹\s*([0-9,]+(?:\.[0-9]{1,2})?)/);
-      if (amtMatch) amt = parseFloat(amtMatch[1].replace(/,/g, "")) || 0;
+    if (!ifsc && containerText) {
+      const m2 = containerText.match(/IFSC\s*[:\-]?\s*([A-Z]{4}0[A-Z0-9]{6})/i);
+      if (m2) ifsc = m2[1].toUpperCase();
     }
 
-    let pa = "";
-    if (upiId && upiId.includes("@")) {
-      pa = upiId;
-    } else if (acc && ifsc) {
-      // Official NPCI Account+IFSC UPI routing format
-      pa = `${acc}@${ifsc}.ifsc.npci`;
-    }
+    let amt = 0;
+    const mAmt = (containerText || "").match(/₹\s*([0-9,]+(?:\.[0-9]{1,2})?)/);
+    if (mAmt) amt = parseFloat(mAmt[1].replace(/,/g, "")) || 0;
 
-    if (!pa) return null;
+    let pa = (upi && upi.includes("@")) ? upi : (acc && ifsc ? `${acc}@${ifsc}.ifsc.npci` : "");
+    if (!pa) return "";
 
-    const amtParam = amt > 0 ? `&am=${amt.toFixed(2)}` : "";
-    const noteParam = vchNo ? `&tn=${encodeURIComponent("Ref " + vchNo)}` : "";
-    const uri = `upi://pay?pa=${pa}&pn=${encodeURIComponent(payeeName.slice(0, 40))}${amtParam}&cu=INR${noteParam}`;
-
-    return { uri, acc, ifsc, upiId, bankName, amt };
-  };
-
-  // 3. Create Compact QR Code HTML Box
-  window.createQrBoxHtml = function(info, compact = true) {
-    if (!info || !info.uri) return "";
-    const qrSize = compact ? 58 : 78;
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&margin=1&data=${encodeURIComponent(info.uri)}`;
-    const amtText = info.amt > 0 ? `₹${info.amt.toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "";
+    const uri = `upi://pay?pa=${pa}&pn=${encodeURIComponent(name.slice(0, 40))}${amt > 0 ? `&am=${amt.toFixed(2)}` : ""}&cu=INR`;
+    const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=140x140&margin=1&data=${encodeURIComponent(uri)}`;
 
     return `
-      <div class="auto-upi-qr-box" style="display:inline-flex; align-items:center; gap:8px; border:1.5px solid #0f6e4e; background:#f0fdf4; padding:${compact ? '4px 8px' : '6px 10px'}; border-radius:5px; vertical-align:middle; margin-top:4px;">
-        <img src="${qrUrl}" alt="Scan to Pay QR" style="width:${qrSize}px; height:${qrSize}px; display:block; background:#fff; padding:2px; border:1px solid #cbd5e1; border-radius:3px;">
-        <div style="text-align:left; font-size:${compact ? '9.5px' : '11px'}; line-height:1.35; color:#0f172a; font-family:sans-serif;">
-          <div style="font-weight:800; color:#0f6e4e; font-size:${compact ? '10.5px' : '12px'};">📱 SCAN &amp; PAY ${amtText}</div>
-          <div>${info.upiId ? `UPI: <b>${escHtml(info.upiId)}</b>` : `A/c: <b>${escHtml(info.acc)}</b>`}</div>
-          ${!info.upiId && info.ifsc ? `<div>IFSC: <b>${escHtml(info.ifsc)}</b></div>` : ""}
-          <div style="color:#475569; font-size:${compact ? '8.5px' : '9.5px'};">GPay • PhonePe • Paytm • BHIM</div>
+      <div class="injected-qr-slip" style="display:inline-flex; align-items:center; gap:7px; border:1.5px solid #0f6e4e; background:#f0fdf4; padding:4px 8px; border-radius:5px; margin:4px 0;">
+        <img class="qr-preload-img" src="${qrSrc}" style="width:54px; height:54px; display:block; background:#fff; padding:2px; border:1px solid #cbd5e1;">
+        <div style="text-align:left; font-size:9px; line-height:1.3; color:#0f172a; font-family:sans-serif;">
+          <div style="font-weight:800; color:#0f6e4e; font-size:10px;">📱 SCAN &amp; PAY ${amt > 0 ? '₹' + amt.toFixed(2) : ''}</div>
+          <div>${upi ? `UPI: <b>${upi}</b>` : `A/c: <b>${acc}</b>`}</div>
+          ${!upi && ifsc ? `<div>IFSC: <b>${ifsc}</b></div>` : ""}
+          <div style="font-size:8px; color:#475569;">GPay • PhonePe • Paytm • BHIM</div>
         </div>
       </div>
     `;
-  };
-
-  // 4. Automatically Inject QR Code into Donor Copy / Office Copy / Invoices
-  function injectQrIntoAnyPrintHtml(htmlContent) {
-    if (!htmlContent || typeof htmlContent !== "string") return htmlContent;
-    if (htmlContent.includes("auto-upi-qr-box") || htmlContent.includes("api.qrserver.com")) {
-      return htmlContent;
-    }
-
-    const info = window.buildUniversalUpiInfo(htmlContent);
-    if (!info) return htmlContent;
-
-    const qrBox = window.createQrBoxHtml(info, true);
-
-    // Target 1: Dual Slip Donation Receipt ("Thank you for your generous support.")
-    if (htmlContent.includes("Thank you for your generous support")) {
-      return htmlContent.replace(
-        /Thank you for your generous support\.?/gi,
-        `<div style="margin-bottom:3px;">${qrBox}</div><div>Thank you for your generous support.</div>`
-      );
-    }
-
-    // Target 2: Before "Authorised Signatory"
-    if (htmlContent.includes("Authorised Signatory")) {
-      return htmlContent.replace(
-        /(<div[^>]*>[^<]*Authorised Signatory[^<]*<\/div>)/gi,
-        `<div style="display:flex; justify-content:space-between; align-items:flex-end; width:100%; gap:12px;">${qrBox}<div>$1</div></div>`
-      );
-    }
-
-    return htmlContent + `<div style="margin-top:10px;">${qrBox}</div>`;
   }
 
-  // 5. Wait for QR Code Image to Load Completely Before Opening Browser Print Preview
-  function waitImagesAndPrint(container, printCallback) {
-    const root = container || document.getElementById("printArea") || document.body;
-    const imgs = Array.from(root.querySelectorAll("img")).filter(img => !img.complete);
+  // 3. Inject QR into DOM or Popup Window & Wait for Image Load Before Printing
+  function attachQrToDocument(doc) {
+    if (!doc || !doc.body) return [];
+    const text = doc.body.innerText || doc.body.textContent || "";
+    const qrHtml = buildQrHtmlFromText(text);
+    if (!qrHtml) return [];
 
-    if (imgs.length === 0) {
-      printCallback();
-      return;
-    }
-
-    let doneCalled = false;
-    const finish = () => {
-      if (doneCalled) return;
-      doneCalled = true;
-      setTimeout(printCallback, 80);
-    };
-
-    let count = 0;
-    imgs.forEach(img => {
-      const check = () => {
-        count++;
-        if (count >= imgs.length) finish();
-      };
-      img.addEventListener("load", check, { once: true });
-      img.addEventListener("error", check, { once: true });
+    // Find "Thank you for your generous support" inside Donor Copy & Office Copy
+    const allEls = doc.querySelectorAll("div, td, p, span");
+    allEls.forEach(el => {
+      if (el.children.length === 0 && /Thank you for your generous support/i.test(el.textContent || "")) {
+        if (el.parentElement && !el.parentElement.querySelector(".injected-qr-slip")) {
+          el.insertAdjacentHTML("beforebegin", qrHtml);
+        }
+      }
     });
 
+    return Array.from(doc.querySelectorAll("img.qr-preload-img"));
+  }
+
+  function waitForImgsAndPrint(imgs, printFn) {
+    const pending = imgs.filter(img => !img.complete);
+    if (pending.length === 0) {
+      printFn();
+      return;
+    }
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      setTimeout(printFn, 100);
+    };
+    let count = 0;
+    pending.forEach(img => {
+      const cb = () => { if (++count >= pending.length) finish(); };
+      img.addEventListener("load", cb, { once: true });
+      img.addEventListener("error", cb, { once: true });
+    });
     setTimeout(finish, 1200);
   }
 
-  // 6. Hook into tallyGlobalPrint so Every Printout Gets QR + Image Preload Wait
-  if (typeof window.tallyGlobalPrint === "function") {
-    const origTallyPrint = window.tallyGlobalPrint;
-    window.tallyGlobalPrint = function(title, htmlContent) {
-      const updatedHtml = injectQrIntoAnyPrintHtml(htmlContent);
-      const nativePrint = window.print.bind(window);
+  // Hook main window.print()
+  const origWinPrint = window.print.bind(window);
+  window.print = function() {
+    const imgs = attachQrToDocument(document);
+    waitForImgsAndPrint(imgs, origWinPrint);
+  };
 
-      window.print = function() {
-        waitImagesAndPrint(document.getElementById("printArea") || document.body, nativePrint);
-      };
-
-      origTallyPrint(title, updatedHtml);
-
+  // Hook popup window print if receipt opens via window.open()
+  const origWinOpen = window.open;
+  window.open = function(...args) {
+    const win = origWinOpen.apply(this, args);
+    if (win) {
       setTimeout(() => {
-        window.print = nativePrint;
-      }, 2000);
-    };
-  }
+        try {
+          if (win.document && win.document.body) {
+            attachQrToDocument(win.document);
+          }
+        } catch (e) {}
+      }, 60);
+    }
+    return win;
+  };
 })();
 </script>
 <!-- ================= DIRECT WHATSAPP WEB SENDER PATCH (100% WORKING ON PC & MOBILE) ================= -->
@@ -9496,5 +9459,252 @@ window.renderStockSummaryScreen = function() {
   injectSmartInventoryFields();
   injectEwayBillAndTdsControls();
   injectTopStatutoryButtons();
+})();
+</script>
+<!-- ================= 5-PART CATEGORIZED GATEWAY SUB-MENU PATCH ================= -->
+<script>
+(function() {
+  // Current active folder on Gateway: null = Main 5 Categories, otherwise Category Key
+  window.GW_ACTIVE_FOLDER = null;
+
+  const GW_CATEGORIES = [
+    {
+      id: "MASTERS",
+      title: "CREATE / ALTER (MASTERS)",
+      sub: "Ledgers, 28 Accounting Groups & Company/Trust Settings",
+      key: "C",
+      icon: "📁",
+      items: [
+        { label: "Create / Alter Ledgers", htmlLabel: "Create / A<span class='hk'>l</span>ter Ledgers", key: "L", screen: "ledgers" },
+        { label: "Chart of Accounts (28 Groups)", htmlLabel: "Chart of Accounts (28 <span class='hk'>G</span>roups)", key: "G", screen: "groups" },
+        { label: "Company / Trust Master (Alter / Switch)", htmlLabel: "<span class='hk'>C</span>ompany / Trust Master (F3)", key: "C", action: () => { if (typeof openCompanyModal === "function") openCompanyModal(); } }
+      ]
+    },
+    {
+      id: "TRANSACTIONS",
+      title: "TRANSACTIONS",
+      sub: "Daily Accounting Vouchers (F4 - F9) & Day Book Register",
+      key: "T",
+      icon: "💸",
+      items: [
+        { label: "Vouchers Entry (F4 - F9)", htmlLabel: "<span class='hk'>V</span>ouchers Entry (F4 - F9)", key: "V", screen: "voucher_entry" },
+        { label: "Day Book / All Transactions", htmlLabel: "<span class='hk'>D</span>ay Book / All Transactions", key: "D", screen: "daybook" }
+      ]
+    },
+    {
+      id: "INVENTORY",
+      title: "INVENTORY (STOCK)",
+      sub: "Stock Items, HSN, Groups, Summary & BOM Manufacturing",
+      key: "I",
+      icon: "📦",
+      items: [
+        { label: "Stock Items & HSN Master", htmlLabel: "Stock <span class='hk'>I</span>tems &amp; HSN Master", key: "I", screen: "items" },
+        { label: "Stock Groups (Raw, Packing, Finished & GST)", htmlLabel: "Stoc<span class='hk'>k</span> Groups (Raw, Packing, Finished &amp; GST)", key: "K", screen: "stock_groups" },
+        { label: "Stock Summary & Inventory Vouchers", htmlLabel: "<span class='hk'>S</span>tock Summary &amp; Inventory Vouchers", key: "S", screen: "stock" },
+        { label: "BOM Manufacturing (Raw+Packing → Finished)", htmlLabel: "BO<span class='hk'>M</span> Manufacturing (Raw+Packing → Finished)", key: "M", screen: "bom" },
+        { label: "Smart Reorder / Batch / Expiry Settings", htmlLabel: "Smart Reorder / <span class='hk'>B</span>atch / Expiry Settings", key: "B", action: () => { if (typeof openSetReorderModal === "function") openSetReorderModal(); } }
+      ]
+    },
+    {
+      id: "ACC_REPORTS",
+      title: "ACCOUNTING REPORTS",
+      sub: "Ledgers, Reconciliation, Trial Balance, P&L, Balance Sheet & Outstanding",
+      key: "A",
+      icon: "📊",
+      items: [
+        { label: "Ledger Account (By Head)", htmlLabel: "Ledger <span class='hk'>A</span>ccount (By Head)", key: "A", screen: "ledgers_view" },
+        { label: "Account Reconciliation (Bank / Party)", htmlLabel: "Account <span class='hk'>R</span>econciliation (Bank / Party)", key: "R", screen: "bank_recon" },
+        { label: "Trial Balance", htmlLabel: "<span class='hk'>T</span>rial Balance", key: "T", screen: "tb" },
+        { label: "Profit & Loss A/c (Income & Expenditure)", htmlLabel: "<span class='hk'>P</span>rofit &amp; Loss A/c", key: "P", screen: "pl" },
+        { label: "Balance Sheet", htmlLabel: "<span class='hk'>B</span>alance Sheet", key: "B", screen: "bs" },
+        { label: "Outstanding (Receivables / Payables)", htmlLabel: "<span class='hk'>O</span>utstanding (Receivables / Payables)", key: "O", screen: "outstanding" }
+      ]
+    },
+    {
+      id: "STAT_REPORTS",
+      title: "STATUTORY REPORTS",
+      sub: "GSTR-1, GSTR-3B, HSN Summary & Trust 80G / Form 10BD",
+      key: "S",
+      icon: "🏛️",
+      items: [
+        { label: "GSTR-1 (Outward Supplies Return)", htmlLabel: "GSTR-<span class='hk'>1</span> (Outward Supplies)", key: "1", screen: "gstr1" },
+        { label: "GSTR-3B (Monthly Tax Summary)", htmlLabel: "GSTR-<span class='hk'>3</span>B (Monthly Return)", key: "3", screen: "gstr3b" },
+        { label: "80G / Form 10BD Donor Statement (Trust)", htmlLabel: "80G / Form 10B<span class='hk'>D</span> Donor Register", key: "D", action: () => { if (typeof openForm10BDModal === "function") openForm10BDModal(); } }
+      ]
+    }
+  ];
+
+  // Override Gateway Renderer
+  window.renderGatewayScreen = function() {
+    const activeCat = GW_CATEGORIES.find(c => c.id === window.GW_ACTIVE_FOLDER);
+    const titleEl = document.getElementById("screenTitle");
+    const subEl = document.getElementById("screenSub");
+
+    if (titleEl) {
+      titleEl.textContent = activeCat
+        ? `Gateway of AccountsExpress ➔ ${activeCat.title}`
+        : "Gateway of AccountsExpress";
+    }
+    if (subEl) {
+      subEl.textContent = activeCat
+        ? "Press Hotkey or ↑ ↓ + Enter | Press Esc to return to Main Gateway"
+        : "Select Category (↑ ↓ + Enter or Hotkey C, T, I, A, S)";
+    }
+
+    let menuContentHtml = "";
+
+    if (!activeCat) {
+      // VIEW 1: MAIN 5 CATEGORIES ON GATEWAY
+      menuContentHtml = `
+        <div class="gw-sec" style="background:#f1f5f9; color:#0f6e4e; font-weight:800; padding:8px 14px; font-size:11.5px; letter-spacing:0.6px; border-bottom:1px solid #cbd5e1;">
+          MAIN MENU CATEGORIES (SELECT MODULE)
+        </div>
+      ` + GW_CATEGORIES.map((cat, idx) => `
+        <div class="gw-item ${idx === 0 ? 'gw-sel' : ''}" data-gw-idx="${idx}" data-cat-id="${cat.id}"
+             onclick="window.openGwFolder('${cat.id}')"
+             style="padding:12px 16px; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
+          <div>
+            <div style="font-size:14px; font-weight:800; color:#0f172a;">
+              <span style="margin-right:8px;">${cat.icon}</span>${cat.title}
+            </div>
+            <div style="font-size:11px; color:#64748b; margin-top:2px; padding-left:26px;">${cat.sub}</div>
+          </div>
+          <span class="gw-key" style="font-size:13px; font-weight:800; padding:3px 9px;">${cat.key}</span>
+        </div>
+      `).join("");
+    } else {
+      // VIEW 2: INSIDE SELECTED CATEGORY SUB-MENU
+      menuContentHtml = `
+        <div style="background:#ecfdf5; border-bottom:2px solid #0f6e4e; padding:8px 14px; display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-weight:800; color:#0f6e4e; font-size:12.5px;">${activeCat.icon} ${activeCat.title}</span>
+          <button type="button" class="btn btn-sec" style="padding:2px 8px; font-size:11px;" onclick="window.openGwFolder(null)">⬅ Back (Esc)</button>
+        </div>
+      ` + activeCat.items.map((it, idx) => `
+        <div class="gw-item ${idx === 0 ? 'gw-sel' : ''}" data-gw-idx="${idx}" data-sub-idx="${idx}"
+             onclick="window.triggerGwSubItem(${idx})"
+             style="padding:11px 16px; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
+          <span style="font-size:13.5px; font-weight:600;">${it.htmlLabel}</span>
+          <span class="gw-key">${it.key}</span>
+        </div>
+      `).join("");
+    }
+
+    document.getElementById("screenBody").innerHTML = `
+      <div class="gw-wrap" style="display:flex; justify-content:center; align-items:flex-start; padding-top:18px;">
+        <div class="gw-menu" id="gwMenuBox" style="width:100%; max-width:460px; background:#fff; border:2px solid #0f6e4e; border-radius:6px; box-shadow:0 6px 20px rgba(15,23,42,0.08); overflow:hidden;">
+          <div style="background:#0f6e4e; color:#fff; padding:10px 16px; font-weight:800; font-size:14px; letter-spacing:0.5px; display:flex; justify-content:space-between; align-items:center;">
+            <span>GATEWAY OF ACCOUNTSEXPRESS</span>
+            ${activeCat ? `<span style="font-size:11px; background:#094d36; padding:2px 8px; border-radius:10px;">${activeCat.id}</span>` : ""}
+          </div>
+          ${menuContentHtml}
+        </div>
+      </div>
+    `;
+  };
+
+  window.openGwFolder = function(folderId) {
+    window.GW_ACTIVE_FOLDER = folderId;
+    renderGatewayScreen();
+  };
+
+  window.triggerGwSubItem = function(subIdx) {
+    const activeCat = GW_CATEGORIES.find(c => c.id === window.GW_ACTIVE_FOLDER);
+    if (!activeCat || !activeCat.items[subIdx]) return;
+    const item = activeCat.items[subIdx];
+    if (typeof item.action === "function") {
+      item.action();
+    } else if (item.screen === "voucher_entry") {
+      openVoucherScreen("Sales");
+    } else if (item.screen === "bank_recon" && typeof openBankReconScreen === "function") {
+      openBankReconScreen();
+    } else if (item.screen) {
+      navigate(item.screen);
+    }
+  };
+
+  // Keyboard Navigation (Up / Down / Enter / Hotkey / Esc) on Categorized Gateway
+  window.addEventListener("keydown", function(e) {
+    if (typeof CURRENT_SCREEN === "undefined" || CURRENT_SCREEN !== "gateway") return;
+
+    // Do not intercept if any modal, quit box, or login overlay is open
+    const appModal = document.getElementById("appModal") || document.getElementById("modalBackdrop");
+    if (appModal && (appModal.classList.contains("open") || appModal.classList.contains("show"))) return;
+    const quitBox = document.getElementById("quitConfirmOverlay");
+    if (quitBox && quitBox.style.display === "flex") return;
+    const lg = document.getElementById("loginOverlay");
+    if (lg && lg.classList.contains("active")) return;
+    if (["INPUT", "SELECT", "TEXTAREA"].includes((e.target && e.target.tagName) || "")) return;
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+
+    const items = Array.from(document.querySelectorAll("#gwMenuBox .gw-item"));
+    if (!items.length) return;
+    let curIdx = items.findIndex(el => el.classList.contains("gw-sel"));
+    if (curIdx < 0) curIdx = 0;
+
+    // 1. Escape inside a Sub-Folder -> Return to Main 5 Categories instead of opening Quit box!
+    if (e.key === "Escape" && window.GW_ACTIVE_FOLDER !== null) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      window.openGwFolder(null);
+      return;
+    }
+
+    // 2. Arrow Down / Arrow Up
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      items[curIdx].classList.remove("gw-sel");
+      if (e.key === "ArrowDown") curIdx = (curIdx + 1) % items.length;
+      else curIdx = (curIdx - 1 + items.length) % items.length;
+      items[curIdx].classList.add("gw-sel");
+      return;
+    }
+
+    // 3. Enter Key -> Open Selected Category OR Open Selected Sub-Item
+    if (e.key === "Enter") {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      const selEl = items[curIdx];
+      if (!selEl) return;
+      if (window.GW_ACTIVE_FOLDER === null) {
+        window.openGwFolder(selEl.getAttribute("data-cat-id"));
+      } else {
+        window.triggerGwSubItem(parseInt(selEl.getAttribute("data-sub-idx"), 10));
+      }
+      return;
+    }
+
+    // 4. Hotkey Letter/Number Press
+    if (e.key && e.key.length === 1) {
+      const pressed = e.key.toUpperCase();
+      if (window.GW_ACTIVE_FOLDER === null) {
+        const foundCat = GW_CATEGORIES.find(c => c.key === pressed);
+        if (foundCat) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          window.openGwFolder(foundCat.id);
+        }
+      } else {
+        const activeCat = GW_CATEGORIES.find(c => c.id === window.GW_ACTIVE_FOLDER);
+        if (activeCat) {
+          const sIdx = activeCat.items.findIndex(it => it.key === pressed);
+          if (sIdx !== -1) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            window.triggerGwSubItem(sIdx);
+          }
+        }
+      }
+    }
+  }, true);
+
+  if (typeof CURRENT_SCREEN !== "undefined" && CURRENT_SCREEN === "gateway") {
+    renderGatewayScreen();
+  }
 })();
 </script>
