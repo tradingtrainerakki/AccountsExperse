@@ -5455,13 +5455,13 @@ window.renderStockSummaryScreen = function() {
     if(kd && kd.style.display === "flex") return;                         // ड्रॉपडाउन खुला हो तो पहले जैसा
     const lg = document.getElementById("loginOverlay");
     if(lg && lg.classList.contains("active")) return;                     // लॉगिन स्क्रीन पर नहीं
-    if(typeof CURRENT_SCREEN !== "undefined"){
+   if(typeof CURRENT_SCREEN !== "undefined"){
       if(CURRENT_SCREEN === "gateway"){
         e.preventDefault(); e.stopImmediatePropagation();
         if(window._GW_FOLDER){
           window.openGwCategory(null); // सब-मेनू में हैं तो Esc दबाने पर मुख्य 5 फोल्डर पर वापस आएं
         } else {
-          openQuit();                  // मुख्य Gateway पर हैं तो Quit बॉक्स खोलें
+          openQuit();                  // मुख्य Gateway पर हैं तो Quit (Yes/No) बॉक्स खोलें
         }
       } else if(CURRENT_SCREEN === "voucher_entry" && window._LAST_REPORT_SCREEN){
         e.preventDefault(); e.stopImmediatePropagation();
@@ -5471,7 +5471,13 @@ window.renderStockSummaryScreen = function() {
       }
     }
   }, true);
-})();</script><script>(function(){
+})();</script><style>
+  .gateway-box .gw-item.active {
+    background: #fef08a !important;
+    border-left: 4px solid #0f6e4e !important;
+    font-weight: 800 !important;
+  }
+</style><script>(function(){
   // ====== 5-PART GATEWAY FOLDER SYSTEM (NATIVE GATEWAY_MENU INTEGRATION) ======
   window._GW_FOLDER = null;
   let _ORIG_GW_MENU = null;
@@ -5513,23 +5519,24 @@ window.renderStockSummaryScreen = function() {
 
   function renderGatewayFolders(){
     if(typeof CURRENT_SCREEN === "undefined" || CURRENT_SCREEN !== "gateway") return;
-    const box = document.querySelector(".gateway-box");
+    const box = document.querySelector(".gateway-box") || document.querySelector(".gw-menu");
     if(!box) return;
+    box.classList.add("gateway-box");
 
     const list = getActiveList();
     if(GW_INDEX >= list.length) GW_INDEX = 0;
 
     const fObj = FOLDER_DEFS.find(x => x.id === window._GW_FOLDER);
     const headerHtml = !window._GW_FOLDER
-      ? `<div class="gw-sec" style="padding:8px 14px; font-weight:800; color:#0f6e4e; background:#f1f5f9; border-bottom:1px solid #cbd5e1;">SELECT MODULE CATEGORY</div>`
+      ? `<div class="gw-sec" style="padding:8px 14px; font-weight:800; color:#0f6e4e; background:#f1f5f9; border-bottom:1px solid #cbd5e1;">SELECT MODULE CATEGORY (↑ ↓ + Enter or Hotkey)</div>`
       : `<div class="gw-sec" style="padding:8px 14px; font-weight:800; color:#0f6e4e; background:#ecfdf5; border-bottom:2px solid #0f6e4e; display:flex; justify-content:space-between; align-items:center;">
            <span>${fObj ? fObj.title : ""}</span>
            <span style="cursor:pointer; font-size:11px; background:#fff; padding:2px 8px; border:1px solid #0f6e4e; border-radius:4px;" onclick="window.openGwCategory(null)">⬅ Back (Esc)</span>
          </div>`;
 
     const rowsHtml = list.map((m, i) => `
-      <div class="gw-item ${i === GW_INDEX ? 'active' : ''}" data-custom-gw="1" onclick="GW_INDEX=${i}; window.triggerGwRow(${i})">
-        <span>${m.label || m.title}</span>
+      <div class="gw-item ${i === GW_INDEX ? 'active' : ''}" data-custom-gw="1" onclick="GW_INDEX=${i}; window.triggerGwRow(${i})" style="padding:11px 16px; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
+        <span style="font-size:13.5px; font-weight:600;">${m.label || m.title}</span>
         <span class="gw-key">${m.hk}</span>
       </div>
     `).join("");
@@ -5556,12 +5563,11 @@ window.renderStockSummaryScreen = function() {
     if(els[GW_INDEX]) els[GW_INDEX].scrollIntoView({block:"nearest"});
   }
 
-  // Watch .gateway-box so whenever navigate("gateway") redraws old items, we show our 5 Folders
   const sb = document.getElementById("screenBody");
   if(sb){
     new MutationObserver(() => {
       if(typeof CURRENT_SCREEN !== "undefined" && CURRENT_SCREEN === "gateway"){
-        const box = document.querySelector(".gateway-box");
+        const box = document.querySelector(".gateway-box") || document.querySelector(".gw-menu");
         if(box && !box.querySelector("[data-custom-gw]")){
           renderGatewayFolders();
         }
@@ -5581,8 +5587,8 @@ window.renderStockSummaryScreen = function() {
 
     if(k==="ArrowDown"){ e.preventDefault(); e.stopImmediatePropagation(); GW_INDEX=(GW_INDEX+1)%n; paint(); return; }
     if(k==="ArrowUp"){   e.preventDefault(); e.stopImmediatePropagation(); GW_INDEX=(GW_INDEX-1+n)%n; paint(); return; }
-    if(k==="Home"){ e.preventDefault(); e.stopImmediatePropagation(); GW_INDEX=0; paint(); return; }
-    if(k==="End"){  e.preventDefault(); e.stopImmediatePropagation(); GW_INDEX=n-1; paint(); return; }
+    if(k==="Home"){      e.preventDefault(); e.stopImmediatePropagation(); GW_INDEX=0; paint(); return; }
+    if(k==="End"){       e.preventDefault(); e.stopImmediatePropagation(); GW_INDEX=n-1; paint(); return; }
     if(k==="Enter"){
       e.preventDefault(); e.stopImmediatePropagation();
       window.triggerGwRow(GW_INDEX);
