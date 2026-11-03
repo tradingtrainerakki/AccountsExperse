@@ -8319,483 +8319,517 @@ window.renderStockSummaryScreen = function() {
   if (CURRENT_SCREEN === "daybook") {
     renderDayBookScreen();
   }
-})();</script><script>(function() {
-  let RECON_GROUP_FILTER = "ALL"; // ALL, BANK, DEBTORS, CREDITORS, OTHER
-  let SELECTED_RECON_LEDGER_ID = "";
-  let SHOW_RECONCILED_ENTRIES = true;
-  let SPLIT_MULTI_ENTRIES = true; // Combined voucher ki har line alag dikhaye
-  let RECON_FROM_DATE = "";
-  let RECON_TO_DATE = "";
-  let ACTUAL_PARTY_STMT_BAL = "";
-  let RECON_SELECTED_KEYS = new Set();
-
-  function getFilteredLedgersForRecon() {
-    const all = DB.ledgers || [];
-    if (RECON_GROUP_FILTER === "BANK") {
-      return all.filter(l => l.group === "Bank Accounts" || l.group === "Bank OD A/c");
-    }
-    if (RECON_GROUP_FILTER === "DEBTORS") {
-      return all.filter(l => l.group === "Sundry Debtors");
-    }
-    if (RECON_GROUP_FILTER === "CREDITORS") {
-      return all.filter(l => l.group === "Sundry Creditors");
-    }
-    return all;
-  }
-
-  window.openBankReconScreen = function() {
-    const list = getFilteredLedgersForRecon();
-    if (list.length > 0 && !list.some(l => l.id === SELECTED_RECON_LEDGER_ID)) {
-      const bankFirst = list.find(l => l.group === "Bank Accounts") || list[0];
-      SELECTED_RECON_LEDGER_ID = bankFirst.id;
-    }
-    navigate("bank_recon");
+})();<!-- ================= SLEEK SEARCH-FIRST & F2 DATE POPUP RECONCILIATION ENGINE ================= -->
+<script>
+(function() {
+  window.RECON_STATE = {
+    ledgerId: "",
+    fromDate: "",
+    toDate: "",
+    splitMode: true,
+    showReconciled: true,
+    stmtBal: "",
+    pickerIdx: 0
   };
 
-  // Expand a voucher into 1 or more reconciliation rows for the selected ledger
-  function buildReconRowsForVoucher(v, targetLedgerId) {
-    const entries = (typeof getVoucherEntries === "function") ? getVoucherEntries(v) : (v.entries || []);
-    const myLines = entries.filter(e => e.ledgerId === targetLedgerId);
-    if (!myLines.length) return [];
-
-    const otherLines = entries.filter(e => e.ledgerId !== targetLedgerId);
-
-    // Case 1: Split mode is ON, Target Ledger has 1 line (e.g. Bank Dr 1700), and Opposite side has multiple lines (e.g. 3 Donors Cr 600, 800, 300)
-    if (SPLIT_MULTI_ENTRIES && myLines.length === 1 && otherLines.length > 1) {
-      const myType = myLines[0].type; // 'Dr' or 'Cr'
-      return otherLines.map((o, subIdx) => {
-        const reconKey = `${targetLedgerId}__SUB_${subIdx}`;
-        return {
-          vid: v.id,
-          reconKey,
-          date: v.date,
-          vchType: v.type,
-          vchNo: v.vchNo,
-          refNo: v.refNo || "-",
-          narration: v.narration || "",
-          oppPrefix: o.type,
-          oppName: getLedgerName(o.ledgerId),
-          isSplitSub: true,
-          subLabel: `Part ${subIdx + 1} of ${otherLines.length} (Voucher Total: ₹${fmtINR(v.amount)})`,
-          drAmt: myType === "Dr" ? o.amount : 0,
-          crAmt: myType === "Cr" ? o.amount : 0
-        };
-      });
-    }
-
-    // Case 2: Target Ledger itself appears multiple times in the same voucher
-    if (SPLIT_MULTI_ENTRIES && myLines.length > 1) {
-      return myLines.map((m, subIdx) => {
-        const reconKey = `${targetLedgerId}__MY_${subIdx}`;
-        const oppNames = otherLines.map(o => getLedgerName(o.ledgerId)).join(", ");
-        return {
-          vid: v.id,
-          reconKey,
-          date: v.date,
-          vchType: v.type,
-          vchNo: v.vchNo,
-          refNo: v.refNo || "-",
-          narration: v.narration || "",
-          oppPrefix: m.type === "Dr" ? "Cr" : "Dr",
-          oppName: oppNames || v.type,
-          isSplitSub: true,
-          subLabel: `Entry #${subIdx + 1}`,
-          drAmt: m.type === "Dr" ? m.amount : 0,
-          crAmt: m.type === "Cr" ? m.amount : 0
-        };
-      });
-    }
-
-    // Case 3: Standard Single Row per Voucher
-    let drAmt = 0, crAmt = 0;
-    myLines.forEach(m => {
-      if (m.type === "Dr") drAmt = +(drAmt + m.amount).toFixed(2);
-      else crAmt = +(crAmt + m.amount).toFixed(2);
-    });
-    const oppPrefix = drAmt >= crAmt ? "Cr" : "Dr";
-    const oppName = otherLines.length
-      ? otherLines.map(o => `${getLedgerName(o.ledgerId)}${otherLines.length > 1 ? ` (₹${fmtINR(o.amount)})` : ""}`).join(", ")
-      : getLedgerName(v.partyLedgerId || v.drLedgerId || v.crLedgerId);
-
-    return [{
-      vid: v.id,
-      reconKey: targetLedgerId,
-      date: v.date,
-      vchType: v.type,
-      vchNo: v.vchNo,
-      refNo: v.refNo || "-",
-      narration: v.narration || "",
-      oppPrefix,
-      oppName,
-      isSplitSub: false,
-      subLabel: "",
-      drAmt,
-      crAmt
-    }];
+  function getDefaultFyDates() {
+    const c = (typeof DB !== "undefined" && DB.company) ? DB.company : {};
+    return {
+      from: c.fyStart || "2026-04-01",
+      to: c.fyEnd || "2027-03-31"
+    };
   }
 
+  // Read saved date from BOTH old (v.bankRecon) and new (v.reconSplitDates) formats so no old data is lost!
   function getSavedReconDate(v, reconKey, fallbackLedgerId) {
-    if (!v.bankRecon) return "";
-    if (v.bankRecon[reconKey]) return v.bankRecon[reconKey];
-    if (v.bankRecon[fallbackLedgerId]) return v.bankRecon[fallbackLedgerId];
-    return "";
+    if (v.bankRecon) {
+      if (v.bankRecon[reconKey]) return v.bankRecon[reconKey];
+      if (v.bankRecon[fallbackLedgerId]) return v.bankRecon[fallbackLedgerId];
+    }
+    if (v.reconSplitDates && v.reconSplitDates[reconKey]) return v.reconSplitDates[reconKey];
+    return v.reconDate || "";
   }
 
-  window.renderBankReconScreen = function() {
-    document.getElementById("screenTitle").textContent = "🔄 Account & Party Reconciliation (Bank / Customer / Vendor / All Ledgers)";
-    document.getElementById("screenSub").textContent = "Reconcile any Ledger Statement | Split Combined Vouchers | Alt+R: Reconciliation";
+  // 1. Entry Point: Pressing 'R' or Alt+R opens the Fast Searchable Ledger Picker first!
+  window.openBankReconScreen = function(preselectedLedgerId) {
+    const fy = getDefaultFyDates();
+    if (!window.RECON_STATE.fromDate) window.RECON_STATE.fromDate = fy.from;
+    if (!window.RECON_STATE.toDate) window.RECON_STATE.toDate = fy.to;
 
-    const filteredLedgers = getFilteredLedgersForRecon();
-    if (filteredLedgers.length === 0) {
-      document.getElementById("screenBody").innerHTML = `
-        <div class="form-card" style="text-align:center; padding:30px;">
-          <h3 style="color:var(--danger); margin-bottom:8px;">⚠ Is Filter me Koi Ledger Nahi Mila!</h3>
-          <button class="btn" onclick="window.onReconGroupFilterChange('ALL')">Show All Ledgers</button>
+    if (preselectedLedgerId) {
+      window.RECON_STATE.ledgerId = preselectedLedgerId;
+      CURRENT_SCREEN = "bank_recon";
+      window.renderBankReconScreen();
+    } else {
+      window.openReconLedgerPickerModal();
+    }
+  };
+
+  // Hook navigate("bank_recon") so Gateway / Alt+R opens the Searchable Ledger Picker first
+  if (typeof window.navigate === "function" && !window._sleekReconNavHooked) {
+    window._sleekReconNavHooked = true;
+    const origNav = window.navigate;
+    window.navigate = function(scr) {
+      if (scr === "bank_recon") {
+        window.openBankReconScreen();
+        return;
+      }
+      return origNav.apply(this, arguments);
+    };
+  }
+
+  // 2. Fast Searchable Ledger List Modal (Opens on 'R' or 'F4')
+  window.openReconLedgerPickerModal = function() {
+    const ledgers = (DB.ledgers || []).slice().sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    window.RECON_STATE.pickerIdx = 0;
+
+    const existing = document.getElementById("reconPickerOverlay");
+    if (existing) existing.remove();
+
+    const overlay = document.createElement("div");
+    overlay.id = "reconPickerOverlay";
+    overlay.style.cssText = "position:fixed; inset:0; background:rgba(15,23,42,0.55); z-index:9999; display:flex; align-items:flex-start; justify-content:center; padding-top:65px;";
+
+    overlay.innerHTML = `
+      <div style="width:100%; max-width:500px; background:#fff; border:2px solid #0f6e4e; border-radius:6px; box-shadow:0 12px 32px rgba(0,0,0,0.25); overflow:hidden; font-family:sans-serif;">
+        <div style="background:#0f6e4e; color:#fff; padding:9px 14px; font-weight:800; font-size:13px; display:flex; justify-content:space-between; align-items:center;">
+          <span>🔍 Select Ledger for Reconciliation</span>
+          <span style="font-size:11px; opacity:0.9;">↑ ↓ Select • Enter Open • Esc Close</span>
         </div>
-      `;
+        <div style="padding:10px; background:#f8fafc; border-bottom:1px solid #cbd5e1;">
+          <input type="text" id="reconLedgerSearchInp" placeholder="Type Ledger or Group Name (e.g. Bank, Cash, Party)..."
+                 style="width:100%; padding:7px 10px; font-size:13px; font-weight:600; border:1.5px solid #0f6e4e; border-radius:4px; outline:none; box-sizing:border-box;">
+        </div>
+        <div id="reconLedgerListBox" style="max-height:330px; overflow-y:auto;"></div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+    const inp = document.getElementById("reconLedgerSearchInp");
+    const listBox = document.getElementById("reconLedgerListBox");
+
+    function renderFilteredList() {
+      const q = (inp.value || "").trim().toLowerCase();
+      const filtered = ledgers.filter(l =>
+        (l.name || "").toLowerCase().includes(q) ||
+        (l.group || "").toLowerCase().includes(q)
+      );
+      if (window.RECON_STATE.pickerIdx >= filtered.length) window.RECON_STATE.pickerIdx = 0;
+
+      if (!filtered.length) {
+        listBox.innerHTML = `<div style="padding:18px; text-align:center; color:#64748b; font-size:12.5px;">Koi matching ledger nahi mila.</div>`;
+        return filtered;
+      }
+
+      listBox.innerHTML = filtered.map((l, i) => `
+        <div class="recon-pick-row"
+             onclick="window.selectReconLedgerFromModal('${l.id}')"
+             style="padding:8px 14px; border-bottom:1px solid #f1f5f9; display:flex; justify-content:space-between; align-items:center; cursor:pointer; font-size:13px; ${i === window.RECON_STATE.pickerIdx ? 'background:#fef08a; font-weight:800; border-left:4px solid #0f6e4e;' : ''}">
+          <span>${escHtml(l.name)}</span>
+          <span style="font-size:11px; color:#475569; background:#e2e8f0; padding:1px 7px; border-radius:10px;">${escHtml(l.group || '')}</span>
+        </div>
+      `).join("");
+
+      const activeRow = listBox.querySelectorAll(".recon-pick-row")[window.RECON_STATE.pickerIdx];
+      if (activeRow) activeRow.scrollIntoView({ block: "nearest" });
+      return filtered;
+    }
+
+    inp.oninput = () => {
+      window.RECON_STATE.pickerIdx = 0;
+      renderFilteredList();
+    };
+
+    inp.onkeydown = (e) => {
+      const filtered = renderFilteredList();
+      if (e.key === "ArrowDown") {
+        e.preventDefault(); e.stopPropagation();
+        if (filtered.length) window.RECON_STATE.pickerIdx = (window.RECON_STATE.pickerIdx + 1) % filtered.length;
+        renderFilteredList();
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault(); e.stopPropagation();
+        if (filtered.length) window.RECON_STATE.pickerIdx = (window.RECON_STATE.pickerIdx - 1 + filtered.length) % filtered.length;
+        renderFilteredList();
+      } else if (e.key === "Enter") {
+        e.preventDefault(); e.stopPropagation();
+        const chosen = filtered[window.RECON_STATE.pickerIdx];
+        if (chosen) window.selectReconLedgerFromModal(chosen.id);
+      } else if (e.key === "Escape") {
+        e.preventDefault(); e.stopPropagation();
+        overlay.remove();
+      }
+    };
+
+    renderFilteredList();
+    setTimeout(() => inp.focus(), 20);
+  };
+
+  window.selectReconLedgerFromModal = function(ledgerId) {
+    const el = document.getElementById("reconPickerOverlay");
+    if (el) el.remove();
+    window.RECON_STATE.ledgerId = ledgerId;
+    CURRENT_SCREEN = "bank_recon";
+    window.renderBankReconScreen();
+  };
+
+  // 3. F2 / Alt+F2 Popup Modal for Date Filter (From Date — To Date)
+  window.openReconDateFilterModal = function() {
+    const s = window.RECON_STATE;
+    const existing = document.getElementById("reconDateModalOverlay");
+    if (existing) existing.remove();
+
+    const overlay = document.createElement("div");
+    overlay.id = "reconDateModalOverlay";
+    overlay.style.cssText = "position:fixed; inset:0; background:rgba(15,23,42,0.5); z-index:9999; display:flex; align-items:center; justify-content:center;";
+
+    overlay.innerHTML = `
+      <div style="width:360px; background:#fff; border:2px solid #0f6e4e; border-radius:6px; box-shadow:0 10px 25px rgba(0,0,0,0.2); overflow:hidden; font-family:sans-serif;">
+        <div style="background:#0f6e4e; color:#fff; padding:8px 14px; font-weight:800; font-size:13px; display:flex; justify-content:space-between;">
+          <span>📅 Reconciliation Period (F2)</span>
+          <span style="cursor:pointer;" onclick="document.getElementById('reconDateModalOverlay').remove()">✕</span>
+        </div>
+        <div style="padding:14px; display:grid; gap:10px;">
+          <div>
+            <label style="font-size:11.5px; font-weight:700; color:#334155; display:block; margin-bottom:3px;">From Date:</label>
+            <input type="date" id="reconPopupFrom" value="${s.fromDate}" style="width:100%; padding:6px 8px; border:1px solid #94a3b8; border-radius:4px; font-weight:700; box-sizing:border-box;">
+          </div>
+          <div>
+            <label style="font-size:11.5px; font-weight:700; color:#334155; display:block; margin-bottom:3px;">To Date:</label>
+            <input type="date" id="reconPopupTo" value="${s.toDate}" style="width:100%; padding:6px 8px; border:1px solid #94a3b8; border-radius:4px; font-weight:700; box-sizing:border-box;">
+          </div>
+          <div style="display:flex; justify-content:space-between; gap:8px; margin-top:4px;">
+            <button type="button" class="btn btn-sec" style="padding:5px 10px; font-size:12px;" onclick="window.resetReconPeriodDates()">Reset Full FY</button>
+            <button type="button" class="btn" style="padding:5px 14px; font-size:12px;" onclick="window.applyReconPeriodDates()">✔ Apply (Enter)</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+    const fromInp = document.getElementById("reconPopupFrom");
+    setTimeout(() => fromInp && fromInp.focus(), 20);
+
+    overlay.onkeydown = (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault(); e.stopPropagation();
+        overlay.remove();
+      } else if (e.key === "Enter") {
+        e.preventDefault(); e.stopPropagation();
+        window.applyReconPeriodDates();
+      }
+    };
+  };
+
+  window.applyReconPeriodDates = function() {
+    const f = document.getElementById("reconPopupFrom")?.value;
+    const t = document.getElementById("reconPopupTo")?.value;
+    if (f) window.RECON_STATE.fromDate = f;
+    if (t) window.RECON_STATE.toDate = t;
+    const ov = document.getElementById("reconDateModalOverlay");
+    if (ov) ov.remove();
+    window.renderBankReconScreen();
+  };
+
+  window.resetReconPeriodDates = function() {
+    const fy = getDefaultFyDates();
+    window.RECON_STATE.fromDate = fy.from;
+    window.RECON_STATE.toDate = fy.to;
+    const ov = document.getElementById("reconDateModalOverlay");
+    if (ov) ov.remove();
+    window.renderBankReconScreen();
+  };
+
+  // 4. Extract Rows for Selected Ledger (Preserves existing v.bankRecon keys!)
+  function buildReconRows(ledgerId, fromDate, toDate, splitMode) {
+    const rows = [];
+    const vouchers = (DB.vouchers || []).slice().sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+
+    vouchers.forEach(v => {
+      if (fromDate && v.date < fromDate) return;
+      if (toDate && v.date > toDate) return;
+
+      const entries = (typeof getVoucherEntries === "function") ? getVoucherEntries(v) : (v.entries || []);
+      const myLines = entries.filter(e => String(e.ledgerId) === String(ledgerId));
+      if (!myLines.length) return;
+
+      const oppLines = entries.filter(e => String(e.ledgerId) !== String(ledgerId));
+
+      myLines.forEach((myLine, mIdx) => {
+        if (splitMode && oppLines.length > 1 && myLines.length === 1) {
+          oppLines.forEach((op, oIdx) => {
+            const reconKey = `${ledgerId}__split_${oIdx}_${op.ledgerId}`;
+            const rDate = getSavedReconDate(v, reconKey, ledgerId);
+            const amt = Number(op.amount) || 0;
+            rows.push({
+              v,
+              vid: v.id,
+              reconKey,
+              date: v.date,
+              vchNo: v.vchNo,
+              type: v.type,
+              oppName: getLedgerName(op.ledgerId),
+              oppBadge: op.type,
+              narration: v.narration || "",
+              dr: myLine.type === "Dr" ? amt : 0,
+              cr: myLine.type === "Cr" ? amt : 0,
+              reconDate: rDate
+            });
+          });
+        } else {
+          const reconKey = `${ledgerId}__line_${mIdx}`;
+          const rDate = getSavedReconDate(v, reconKey, ledgerId);
+          const amt = Number(myLine.amount) || 0;
+          const oppName = oppLines.map(o => getLedgerName(o.ledgerId)).join(", ") || "Voucher Entry";
+          const oppBadge = oppLines[0] ? oppLines[0].type : (myLine.type === "Dr" ? "Cr" : "Dr");
+          rows.push({
+            v,
+            vid: v.id,
+            reconKey,
+            date: v.date,
+            vchNo: v.vchNo,
+            type: v.type,
+            oppName,
+            oppBadge,
+            narration: v.narration || "",
+            dr: myLine.type === "Dr" ? amt : 0,
+            cr: myLine.type === "Cr" ? amt : 0,
+            reconDate: rDate
+          });
+        }
+      });
+    });
+
+    return rows;
+  }
+
+  // 5. Main Sleek Screen Renderer (Matches both renderBankReconScreen and renderSleekReconScreen)
+  window.renderBankReconScreen = window.renderSleekReconScreen = function() {
+    const s = window.RECON_STATE;
+    const fy = getDefaultFyDates();
+    if (!s.fromDate) s.fromDate = fy.from;
+    if (!s.toDate) s.toDate = fy.to;
+
+    const led = getLedger(s.ledgerId) || (DB.ledgers || [])[0];
+    if (!led) {
+      toast("⚠ Koi Ledger maujood nahi hai!");
+      navigate("gateway");
       return;
     }
+    s.ledgerId = led.id;
 
-    if (!SELECTED_RECON_LEDGER_ID || !filteredLedgers.some(l => l.id === SELECTED_RECON_LEDGER_ID)) {
-      SELECTED_RECON_LEDGER_ID = filteredLedgers[0].id;
-    }
+    const titleEl = document.getElementById("screenTitle");
+    const subEl = document.getElementById("screenSub");
+    if (titleEl) titleEl.textContent = `🔄 Account Reconciliation — ${led.name} [${led.group}]`;
+    if (subEl) subEl.textContent = "F2: Period Date | F4: Change Ledger | Alt+R: Reconciliation";
 
-    const targetLedger = getLedger(SELECTED_RECON_LEDGER_ID);
-    const activeFrom = RECON_FROM_DATE || DB.company.fyFrom || "";
-    const activeTo = RECON_TO_DATE || DB.company.fyTo || "";
+    const allRows = buildReconRows(led.id, s.fromDate, s.toDate, s.splitMode);
+    const visibleRows = s.showReconciled ? allRows : allRows.filter(r => !r.reconDate);
 
-    const ledOpts = filteredLedgers.map(l =>
-      `<option value="${l.id}" ${l.id === SELECTED_RECON_LEDGER_ID ? "selected" : ""}>${escHtml(l.name)} — [${escHtml(l.group)}]</option>`
-    ).join("");
+    let openDr = (led.openType === "Dr" ? Number(led.openingBal) || 0 : 0);
+    let openCr = (led.openType === "Cr" ? Number(led.openingBal) || 0 : 0);
+    let bookDr = openDr, bookCr = openCr;
+    let unrecDr = 0, unrecCr = 0;
 
-    // Calculate Company Book Balance as on activeTo
-    const balMap = computeAllLedgerBalances(activeFrom, activeTo);
-    const bBalObj = balMap[SELECTED_RECON_LEDGER_ID] || { netSigned: 0 };
-    const companyBookSigned = Number(bBalObj.netSigned) || 0;
-
-    // Collect Vouchers in active range
-    const sortedVouchers = [...DB.vouchers]
-      .filter(v => {
-        if (!v || !v.date) return false;
-        if (activeFrom && v.date < activeFrom) return false;
-        if (activeTo && v.date > activeTo) return false;
-        return true;
-      })
-      .sort((a, b) => (a.date > b.date ? 1 : -1));
-
-    let unclearedDr = 0, unclearedCr = 0;
-    let rowsHtml = "";
-    let rowIdx = 0;
-
-    sortedVouchers.forEach(v => {
-      const expandedRows = buildReconRowsForVoucher(v, SELECTED_RECON_LEDGER_ID);
-      expandedRows.forEach(r => {
-        const recDate = getSavedReconDate(v, r.reconKey, SELECTED_RECON_LEDGER_ID);
-        const isReconciled = Boolean(recDate && (!activeTo || recDate <= activeTo));
-
-        if (!isReconciled) {
-          unclearedDr = +(unclearedDr + r.drAmt).toFixed(2);
-          unclearedCr = +(unclearedCr + r.crAmt).toFixed(2);
-        }
-
-        if (!SHOW_RECONCILED_ENTRIES && isReconciled) return;
-
-        rowIdx++;
-        const compositeId = `${r.vid}|||${r.reconKey}`;
-        const isChecked = RECON_SELECTED_KEYS.has(compositeId);
-
-        rowsHtml += `
-          <tr style="background:${isReconciled ? '#f0fdf4' : '#ffffff'};">
-            <td style="text-align:center; vertical-align:top;">
-              <input type="checkbox" ${isChecked ? "checked" : ""} onchange="window.toggleReconRowCheck('${compositeId}', this.checked)">
-            </td>
-            <td style="vertical-align:top;">${rowIdx}</td>
-            <td style="vertical-align:top; white-space:nowrap;"><b>${fmtDate(r.date)}</b></td>
-            <td style="vertical-align:top;">
-              <div>
-                <span class="kbd" style="background:${r.oppPrefix === 'Dr' ? '#dbeafe' : '#fef3c7'}; margin-right:4px;">${r.oppPrefix}</span>
-                <b style="color:#0f172a; font-size:13px;">${escHtml(r.oppName)}</b>
-                ${r.isSplitSub ? `<span class="kbd" style="background:#e0e7ff; color:#1e3a8a; margin-left:6px;">${escHtml(r.subLabel)}</span>` : ""}
-              </div>
-              ${r.narration ? `<div style="font-size:11px; color:var(--muted); font-style:italic; margin-top:2px;">(${escHtml(r.narration)})</div>` : ""}
-            </td>
-            <td style="vertical-align:top;"><span class="kbd">${escHtml(r.vchType)}</span></td>
-            <td style="vertical-align:top;"><b>${escHtml(r.vchNo)}</b></td>
-            <td style="vertical-align:top;">${escHtml(r.refNo)}</td>
-            <td style="vertical-align:top; white-space:nowrap;">
-              <div style="display:flex; align-items:center; gap:4px;">
-                <input type="date" value="${recDate}" 
-                  style="padding:4px 6px; border:1px solid ${isReconciled ? '#16a34a' : '#d97706'}; background:${isReconciled ? '#dcfce7' : '#fefce8'}; border-radius:3px; font-weight:600;"
-                  onchange="window.updateUniversalReconDate('${r.vid}', '${r.reconKey}', this.value)">
-                ${!recDate
-                  ? `<button class="btn btn-sec" style="padding:2px 6px; font-size:10.5px;" title="Match with Voucher Date" onclick="window.updateUniversalReconDate('${r.vid}', '${r.reconKey}', '${r.date}')">=Vch</button>`
-                  : `<button class="btn btn-sec" style="padding:2px 6px; font-size:10.5px; color:var(--danger);" title="Unreconcile / Clear Date" onclick="window.updateUniversalReconDate('${r.vid}', '${r.reconKey}', '')">✕</button>`}
-              </div>
-            </td>
-            <td class="num" style="vertical-align:top; color:var(--ok); font-weight:700;">${r.drAmt ? `₹${fmtINR(r.drAmt)}` : "-"}</td>
-            <td class="num" style="vertical-align:top; color:var(--danger); font-weight:700;">${r.crAmt ? `₹${fmtINR(r.crAmt)}` : "-"}</td>
-          </tr>
-        `;
-      });
+    allRows.forEach(r => {
+      bookDr += r.dr;
+      bookCr += r.cr;
+      if (!r.reconDate) {
+        unrecDr += r.dr;
+        unrecCr += r.cr;
+      }
     });
 
-    // Reconciled Balance Formula:
-    // Book Balance (Dr+) - Uncleared Dr + Uncleared Cr
-    const reconciledSigned = +(companyBookSigned - unclearedDr + unclearedCr).toFixed(2);
-    const fmtSigned = (val) => `₹${fmtINR(Math.abs(val))} ${val >= 0 ? "Dr" : "Cr"}`;
+    const netBook = bookDr - bookCr;
+    const netRec = (bookDr - unrecDr) - (bookCr - unrecCr);
+    const fmtBal = (val) => `₹${fmtINR(Math.abs(val))} ${val >= 0 ? 'Dr' : 'Cr'}`;
 
-    document.getElementById("screenBody").innerHTML = `
-      <div style="display:flex; flex-direction:column; height:calc(100vh - 125px);">
-        
-        <!-- TOP FIXED FILTER & LEDGER SELECTOR BAR -->
-        <div class="form-card" style="margin-bottom:8px; padding:8px 12px; background:#f8fafc; border-top:3px solid var(--pri); display:flex; flex-direction:column; gap:8px;">
-          
-          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-              <label style="font-weight:700; color:var(--pri-dark);">📂 Group:</label>
-              <select style="padding:5px 8px; font-weight:600; border:1px solid #94a3b8; border-radius:4px;" onchange="window.onReconGroupFilterChange(this.value)">
-                <option value="ALL" ${RECON_GROUP_FILTER==="ALL"?"selected":""}>All Ledgers (${DB.ledgers.length})</option>
-                <option value="BANK" ${RECON_GROUP_FILTER==="BANK"?"selected":""}>🏦 Bank Accounts Only</option>
-                <option value="DEBTORS" ${RECON_GROUP_FILTER==="DEBTORS"?"selected":""}>👥 Customers (Sundry Debtors)</option>
-                <option value="CREDITORS" ${RECON_GROUP_FILTER==="CREDITORS"?"selected":""}>🏢 Vendors (Sundry Creditors)</option>
-              </select>
+    const rowsHtml = visibleRows.map((r, idx) => `
+      <tr data-vid="${r.vid}" data-rkey="${r.reconKey}" ondblclick="openVoucherScreen('${r.type}', '${r.vid}')" style="border-bottom:1px solid #e2e8f0; cursor:pointer; ${r.reconDate ? 'background:#f0fdf4;' : ''}">
+        <td style="padding:4px 6px; text-align:center; width:28px;">
+          <input type="checkbox" class="recon-row-chk" data-vid="${r.vid}" data-rkey="${r.reconKey}" data-vdate="${r.date}" onchange="window.toggleReconBulkBar()">
+        </td>
+        <td style="padding:4px 6px; color:#64748b; width:32px;">${idx + 1}</td>
+        <td style="padding:4px 8px; font-weight:700; white-space:nowrap; width:88px;">${fmtDate(r.date)}</td>
+        <td style="padding:4px 8px;">
+          <span class="kbd" style="font-size:10px; padding:1px 4px; margin-right:4px;">${r.oppBadge}</span>
+          <b style="color:#0f172a;">${escHtml(r.oppName)}</b>
+          ${r.narration ? `<span style="color:#64748b; font-size:11px; margin-left:6px; font-style:italic;">(${escHtml(r.narration)})</span>` : ""}
+        </td>
+        <td style="padding:4px 6px; width:75px;"><span class="kbd" style="font-size:10.5px;">${escHtml(r.type)}</span></td>
+        <td style="padding:4px 8px; font-weight:700; width:82px;">${escHtml(r.vchNo)}</td>
+        <td style="padding:3px 8px; width:155px; white-space:nowrap;">
+          <input type="date" value="${r.reconDate || ''}"
+                 onchange="window.saveSingleReconDate('${r.vid}', '${r.reconKey}', this.value)"
+                 style="padding:2px 5px; font-size:11.5px; font-weight:700; border:1px solid ${r.reconDate ? '#16a34a' : '#94a3b8'}; border-radius:4px; background:${r.reconDate ? '#dcfce7' : '#fff'}; width:118px;">
+          ${r.reconDate
+            ? `<button type="button" title="Clear Date" onclick="window.saveSingleReconDate('${r.vid}', '${r.reconKey}', '')" style="border:1px solid #fca5a5; background:#fef2f2; color:#dc2626; border-radius:3px; padding:1px 5px; font-size:10px; cursor:pointer;">✕</button>`
+            : `<button type="button" title="Match = Vch Date" onclick="window.saveSingleReconDate('${r.vid}', '${r.reconKey}', '${r.date}')" style="border:1px solid #86efac; background:#f0fdf4; color:#15803d; border-radius:3px; padding:1px 5px; font-size:10px; cursor:pointer;">✔</button>`}
+        </td>
+        <td class="num" style="padding:4px 8px; font-weight:700; color:#0f6e4e; width:95px;">${r.dr > 0 ? '₹' + fmtINR(r.dr) : '-'}</td>
+        <td class="num" style="padding:4px 8px; font-weight:700; color:#be123c; width:95px;">${r.cr > 0 ? '₹' + fmtINR(r.cr) : '-'}</td>
+      </tr>
+    `).join("");
 
-              <label style="font-weight:700; color:var(--pri-dark); margin-left:4px;">📒 Select Ledger:</label>
-              <select style="padding:5px 10px; font-size:13px; font-weight:700; border:2px solid var(--pri); border-radius:4px; min-width:240px;" onchange="window.onReconLedgerChange(this.value)">
-                ${ledOpts}
-              </select>
-            </div>
-
-            <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-              <label style="display:flex; align-items:center; gap:5px; font-size:12px; font-weight:600; cursor:pointer; color:#1e3a8a;" title="Agar 1 voucher me kai logon ki entry hai to unhe alag-alag dikhaye">
-                <input type="checkbox" ${SPLIT_MULTI_ENTRIES ? "checked" : ""} onchange="window.toggleReconSplitMode(this.checked)">
-                🔀 Split Combined Vouchers (Line-by-Line)
-              </label>
-
-              <label style="display:flex; align-items:center; gap:5px; font-size:12px; font-weight:600; cursor:pointer;">
-                <input type="checkbox" ${SHOW_RECONCILED_ENTRIES ? "checked" : ""} onchange="window.toggleShowReconciled(this.checked)">
-                Show Reconciled
-              </label>
-            </div>
+    const sb = document.getElementById("screenBody");
+    sb.innerHTML = `
+      <div style="display:flex; flex-direction:column; height:calc(100vh - 122px); gap:6px;">
+        <!-- SLIM SINGLE-LINE TOP BAR -->
+        <div class="form-card" style="padding:6px 10px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; background:#f8fafc; border-left:4px solid #0f6e4e;">
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <span style="font-weight:800; color:#0f172a; font-size:13px;">📒 ${escHtml(led.name)}</span>
+            <button type="button" class="btn btn-sec" style="padding:2px 8px; font-size:11px;" onclick="window.openReconLedgerPickerModal()">🔄 Change Ledger (F4)</button>
+            <button type="button" class="btn btn-sec" style="padding:2px 8px; font-size:11px; background:#eff6ff; color:#1e3a8a; border-color:#93c5fd;" onclick="window.openReconDateFilterModal()">
+              📅 ${fmtDate(s.fromDate)} to ${fmtDate(s.toDate)} (F2)
+            </button>
           </div>
-
-          <!-- ROW 2: DATE FILTER & BULK ACTION -->
-          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; padding-top:6px; border-top:1px dashed #cbd5e1;">
-            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-              <label style="font-weight:700; font-size:12px;">📅 From:</label>
-              <input type="date" id="recFromInp" value="${activeFrom}" style="padding:3px 7px; font-size:12px; border:1px solid #94a3b8; border-radius:3px;">
-              <label style="font-weight:700; font-size:12px;">To:</label>
-              <input type="date" id="recToInp" value="${activeTo}" style="padding:3px 7px; font-size:12px; border:1px solid #94a3b8; border-radius:3px;">
-              <button class="btn btn-sec" style="padding:3px 8px; font-size:11.5px;" onclick="window.applyReconDateFilter()">🔍 Filter Date</button>
-              <button class="btn btn-sec" style="padding:3px 8px; font-size:11.5px;" onclick="window.resetReconDateFilter()">Reset</button>
-            </div>
-
-            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-              <div style="display:flex; align-items:center; gap:4px; background:#fef3c7; padding:2px 8px; border-radius:4px; border:1px solid #f59e0b;">
-                <input type="date" id="bulkReconDateInp" value="${DB.company.curDate}" style="padding:2px 5px; font-size:11.5px;">
-                <button class="btn" style="padding:3px 8px; font-size:11px;" onclick="window.applyBulkReconSelected()">⚡ Reconcile Selected</button>
-              </div>
-              <button class="btn btn-sec" style="padding:4px 8px; font-size:11.5px;" onclick="window.autoReconcileAllDates()">✔ Match All (=Vch Date)</button>
-              <button class="btn" style="padding:4px 10px; font-size:11.5px;" onclick="saveDB(); toast('✅ Reconciliation Saved!')">💾 Save (Ctrl+A)</button>
-            </div>
+          <div style="display:flex; align-items:center; gap:10px; font-size:11.5px; font-weight:700;">
+            <label style="cursor:pointer; display:inline-flex; align-items:center; gap:4px;">
+              <input type="checkbox" ${s.splitMode ? 'checked' : ''} onchange="window.RECON_STATE.splitMode=this.checked; window.renderBankReconScreen();"> Split Vouchers
+            </label>
+            <label style="cursor:pointer; display:inline-flex; align-items:center; gap:4px;">
+              <input type="checkbox" ${s.showReconciled ? 'checked' : ''} onchange="window.RECON_STATE.showReconciled=this.checked; window.renderBankReconScreen();"> Show Reconciled
+            </label>
+            <button type="button" class="btn btn-sec" style="padding:2px 8px; font-size:11px;" onclick="window.matchAllReconToVchDate()">✔ Match All</button>
           </div>
-
         </div>
 
-        <!-- MIDDLE SCROLLABLE TABLE WITH FROZEN HEADERS -->
-        <div class="form-card" style="flex:1; padding:0; overflow-y:auto; margin-bottom:0; border-bottom:none; border-radius:4px 4px 0 0;">
-          <table class="tally-tbl">
-            <thead>
+        <!-- AUTO-HIDE BULK ACTION BAR (Appears ONLY when checkboxes are ticked) -->
+        <div id="reconBulkBar" style="display:none; padding:5px 10px; background:#fefce8; border:1px solid #fde047; border-radius:4px; align-items:center; justify-content:space-between; font-size:12px;">
+          <div><b id="reconSelCountTxt" style="color:#854d0e;">0 Selected</b> — Set Clearing Date for selected rows:</div>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <input type="date" id="reconBulkDateInp" value="${(DB.company && DB.company.curDate) || new Date().toISOString().slice(0,10)}" style="padding:2px 6px; font-size:11.5px; font-weight:700;">
+            <button type="button" class="btn" style="padding:2px 10px; font-size:11px;" onclick="window.applyBulkReconDate(false)">⚡ Reconcile Selected</button>
+            <button type="button" class="btn btn-sec" style="padding:2px 8px; font-size:11px;" onclick="window.applyBulkReconDate(true)">✔ Set = Vch Date</button>
+          </div>
+        </div>
+
+        <!-- FULL-HEIGHT SCROLLABLE TABLE -->
+        <div id="kbTableWrap" class="form-card" style="flex:1; overflow-y:auto; padding:0; border:1px solid #cbd5e1;">
+          <table class="tally-tbl" style="width:100%; border-collapse:collapse; font-size:12px;">
+            <thead style="position:sticky; top:0; z-index:2; background:#e2e8f0;">
               <tr>
-                <th style="width:34px; text-align:center; position:sticky; top:0; z-index:5; background:#f1f5f9;">
-                  <input type="checkbox" onchange="window.toggleSelectAllRecon(this.checked)">
-                </th>
-                <th style="width:38px; position:sticky; top:0; z-index:5; background:#f1f5f9;">#</th>
-                <th style="width:92px; position:sticky; top:0; z-index:5; background:#f1f5f9;">Vch Date</th>
-                <th style="position:sticky; top:0; z-index:5; background:#f1f5f9;">Particulars (Opposite Account / Split Sub-Entry)</th>
-                <th style="width:85px; position:sticky; top:0; z-index:5; background:#f1f5f9;">Type</th>
-                <th style="width:90px; position:sticky; top:0; z-index:5; background:#f1f5f9;">Vch No.</th>
-                <th style="width:90px; position:sticky; top:0; z-index:5; background:#f1f5f9;">Ref / UTR</th>
-                <th style="width:175px; position:sticky; top:0; z-index:5; background:#f1f5f9;">Reconcile / Clearing Date</th>
-                <th class="num" style="width:115px; position:sticky; top:0; z-index:5; background:#f1f5f9;">Debit (₹)</th>
-                <th class="num" style="width:115px; position:sticky; top:0; z-index:5; background:#f1f5f9;">Credit (₹)</th>
+                <th style="padding:5px 6px; width:28px; text-align:center;"><input type="checkbox" onchange="document.querySelectorAll('.recon-row-chk').forEach(c=>c.checked=this.checked); window.toggleReconBulkBar();"></th>
+                <th style="padding:5px 6px; width:32px;">#</th>
+                <th style="padding:5px 8px; width:88px;">Vch Date</th>
+                <th style="padding:5px 8px;">Particulars</th>
+                <th style="padding:5px 6px; width:75px;">Type</th>
+                <th style="padding:5px 8px; width:82px;">Vch No.</th>
+                <th style="padding:5px 8px; width:155px;">Clearing Date</th>
+                <th class="num" style="padding:5px 8px; width:95px;">Debit (₹)</th>
+                <th class="num" style="padding:5px 8px; width:95px;">Credit (₹)</th>
               </tr>
             </thead>
             <tbody>
-              ${rowsHtml || `<tr><td colspan="10" style="text-align:center; padding:24px; color:var(--muted);">Is Ledger (${escHtml(targetLedger?.name || '')}) me koi transaction nahi mila.</td></tr>`}
+              ${rowsHtml || `<tr><td colspan="9" style="text-align:center; padding:28px; color:#64748b;">Is period me koi entry nahi hai. Press <b>F2</b> to change Date Filter.</td></tr>`}
             </tbody>
           </table>
         </div>
 
-        <!-- BOTTOM FIXED SUMMARY FOOTER -->
-        <div style="background:#f8fafc; border:1px solid var(--border); border-top:2px solid #0f172a; border-radius:0 0 4px 4px; padding:8px 14px; display:grid; grid-template-columns: 1fr 330px; gap:14px; align-items:center;">
-          <div>
-            <div style="display:flex; justify-content:space-between; font-size:12.5px; padding:2px 0;">
-              <span><b>Balance as per Our Books (${escHtml(targetLedger?.name || '')}):</b></span>
-              <span class="num"><b>${fmtSigned(companyBookSigned)}</b></span>
-            </div>
-            <div style="display:flex; justify-content:space-between; font-size:12px; color:#b45309; padding:2px 0;">
-              <span><b>Unreconciled / Pending Entries (Not yet matched):</b></span>
-              <span class="num"><b>Dr: ₹${fmtINR(unclearedDr)} &nbsp;|&nbsp; Cr: ₹${fmtINR(unclearedCr)}</b></span>
-            </div>
-            <div style="display:flex; justify-content:space-between; font-size:14px; font-weight:800; color:var(--pri-dark); border-top:1px solid #cbd5e1; margin-top:3px; padding-top:4px;">
-              <span>Reconciled Balance (As per Bank / Party Statement):</span>
-              <span class="num">${fmtSigned(reconciledSigned)}</span>
-            </div>
+        <!-- SLIM SINGLE-LINE FOOTER STRIP -->
+        <div class="form-card" style="padding:6px 12px; background:#f8fafc; border-top:2px solid #0f6e4e; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; font-size:12px;">
+          <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+            <span><b>Book Bal:</b> <span style="color:#0f172a; font-weight:800;">${fmtBal(netBook)}</span></span>
+            <span style="color:#cbd5e1;">|</span>
+            <span style="color:#b45309;"><b>Unreconciled:</b> Dr ₹${fmtINR(unrecDr)} / Cr ₹${fmtINR(unrecCr)}</span>
+            <span style="color:#cbd5e1;">|</span>
+            <span style="color:#0f6e4e; font-size:13px;"><b>Reconciled Bal: ${fmtBal(netRec)}</b></span>
           </div>
-
-          <div style="background:#ecfdf5; border:1px solid var(--pri); border-radius:4px; padding:6px 10px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-              <label style="font-size:11.5px; font-weight:700; color:var(--pri-dark); white-space:nowrap;">🔍 Party/Bank Stmt Bal:</label>
-              <input type="number" step="0.01" class="num" style="width:120px; padding:3px 6px; font-weight:700; border:1px solid var(--pri);" placeholder="0.00" value="${ACTUAL_PARTY_STMT_BAL}" oninput="window.onActualStmtBalInput(this.value, ${reconciledSigned})">
-            </div>
-            <div id="brsDiffStatus" style="margin-top:4px; font-size:11.5px; font-weight:700; color:var(--pri-dark); text-align:right;">
-              Samne wali party/bank ka balance dalkar match karein.
-            </div>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span style="font-size:11.5px; font-weight:700; color:#334155;">🔍 Stmt Bal:</span>
+            <input type="number" step="0.01" placeholder="0.00" value="${s.stmtBal}"
+                   oninput="window.RECON_STATE.stmtBal=this.value; window.updateStmtDiff('${netRec.toFixed(2)}', this.value)"
+                   style="width:95px; padding:2px 6px; font-size:12px; font-weight:700; text-align:right; border:1px solid #0f6e4e; border-radius:4px;">
+            <span id="reconDiffBadge" style="font-size:11px; font-weight:800;"></span>
           </div>
         </div>
-
       </div>
     `;
-
-    if (ACTUAL_PARTY_STMT_BAL !== "") {
-      window.onActualStmtBalInput(ACTUAL_PARTY_STMT_BAL, reconciledSigned);
-    }
   };
 
-  window.onReconGroupFilterChange = function(grp) {
-    RECON_GROUP_FILTER = grp;
-    const list = getFilteredLedgersForRecon();
-    if (list.length > 0) SELECTED_RECON_LEDGER_ID = list[0].id;
-    RECON_SELECTED_KEYS.clear();
-    renderBankReconScreen();
+  window.updateStmtDiff = function(recValStr, stmtValStr) {
+    const badge = document.getElementById("reconDiffBadge");
+    if (!badge) return;
+    if (!stmtValStr) { badge.innerHTML = ""; return; }
+    const rec = Math.abs(parseFloat(recValStr) || 0);
+    const st = Math.abs(parseFloat(stmtValStr) || 0);
+    const diff = +(rec - st).toFixed(2);
+    badge.innerHTML = Math.abs(diff) < 0.01
+      ? `<span style="color:#15803d; background:#dcfce7; padding:2px 6px; border-radius:4px;">✔ Matched</span>`
+      : `<span style="color:#b91c1c; background:#fee2e2; padding:2px 6px; border-radius:4px;">Diff: ₹${fmtINR(Math.abs(diff))}</span>`;
   };
 
-  window.onReconLedgerChange = function(ledId) {
-    SELECTED_RECON_LEDGER_ID = ledId;
-    RECON_SELECTED_KEYS.clear();
-    renderBankReconScreen();
-  };
-
-  window.toggleReconSplitMode = function(chk) {
-    SPLIT_MULTI_ENTRIES = chk;
-    RECON_SELECTED_KEYS.clear();
-    renderBankReconScreen();
-  };
-
-  window.toggleShowReconciled = function(chk) {
-    SHOW_RECONCILED_ENTRIES = chk;
-    renderBankReconScreen();
-  };
-
-  window.applyReconDateFilter = function() {
-    RECON_FROM_DATE = document.getElementById("recFromInp").value;
-    RECON_TO_DATE = document.getElementById("recToInp").value;
-    renderBankReconScreen();
-  };
-
-  window.resetReconDateFilter = function() {
-    RECON_FROM_DATE = "";
-    RECON_TO_DATE = "";
-    renderBankReconScreen();
-  };
-
-  window.updateUniversalReconDate = function(vid, reconKey, dateStr) {
-    const v = DB.vouchers.find(x => x.id === vid);
+  window.saveSingleReconDate = function(vid, rkey, val) {
+    const v = (DB.vouchers || []).find(x => String(x.id) === String(vid));
     if (!v) return;
-    if (!v.bankRecon) v.bankRecon = {};
-    if (dateStr) {
-      v.bankRecon[reconKey] = dateStr;
-    } else {
-      delete v.bankRecon[reconKey];
-      // Also clear parent ledger key if user cleared a split line
-      if (reconKey !== SELECTED_RECON_LEDGER_ID) {
-        delete v.bankRecon[SELECTED_RECON_LEDGER_ID];
-      }
-    }
+    v.bankRecon = v.bankRecon || {};
+    v.bankRecon[rkey] = val || "";
+    v.bankRecon[window.RECON_STATE.ledgerId] = val || "";
     saveDB();
-    renderBankReconScreen();
+    window.renderBankReconScreen();
   };
 
-  window.toggleReconRowCheck = function(compId, chk) {
-    if (chk) RECON_SELECTED_KEYS.add(compId);
-    else RECON_SELECTED_KEYS.delete(compId);
+  window.toggleReconBulkBar = function() {
+    const chks = Array.from(document.querySelectorAll(".recon-row-chk:checked"));
+    const bar = document.getElementById("reconBulkBar");
+    const txt = document.getElementById("reconSelCountTxt");
+    if (bar) bar.style.display = chks.length > 0 ? "flex" : "none";
+    if (txt) txt.textContent = `${chks.length} Selected`;
   };
 
-  window.toggleSelectAllRecon = function(chk) {
-    RECON_SELECTED_KEYS.clear();
-    if (chk) {
-      DB.vouchers.forEach(v => {
-        const rows = buildReconRowsForVoucher(v, SELECTED_RECON_LEDGER_ID);
-        rows.forEach(r => RECON_SELECTED_KEYS.add(`${r.vid}|||${r.reconKey}`));
-      });
-    }
-    renderBankReconScreen();
-  };
-
-  window.applyBulkReconSelected = function() {
-    const dt = document.getElementById("bulkReconDateInp").value;
-    if (!dt || RECON_SELECTED_KEYS.size === 0) {
-      toast("⚠ Pehle checkboxes se entries chunein aur Date dalein!");
-      return;
-    }
-    RECON_SELECTED_KEYS.forEach(compId => {
-      const [vid, reconKey] = compId.split("|||");
-      const v = DB.vouchers.find(x => x.id === vid);
+  window.applyBulkReconDate = function(useVchDate) {
+    const bulkDate = document.getElementById("reconBulkDateInp")?.value || "";
+    const chks = Array.from(document.querySelectorAll(".recon-row-chk:checked"));
+    if (!chks.length) return;
+    chks.forEach(c => {
+      const vid = c.getAttribute("data-vid");
+      const rk = c.getAttribute("data-rkey");
+      const vd = c.getAttribute("data-vdate");
+      const v = (DB.vouchers || []).find(x => String(x.id) === String(vid));
       if (v) {
-        if (!v.bankRecon) v.bankRecon = {};
-        v.bankRecon[reconKey] = dt;
+        v.bankRecon = v.bankRecon || {};
+        const dt = useVchDate ? vd : bulkDate;
+        v.bankRecon[rk] = dt;
+        v.bankRecon[window.RECON_STATE.ledgerId] = dt;
       }
     });
     saveDB();
-    RECON_SELECTED_KEYS.clear();
-    renderBankReconScreen();
-    toast("⚡ Selected entries reconciled!");
+    window.renderBankReconScreen();
+    toast(`✅ ${chks.length} Entries Reconciled!`);
   };
 
-  window.autoReconcileAllDates = function() {
-    let count = 0;
-    DB.vouchers.forEach(v => {
-      const rows = buildReconRowsForVoucher(v, SELECTED_RECON_LEDGER_ID);
-      rows.forEach(r => {
-        if (!v.bankRecon) v.bankRecon = {};
-        if (!v.bankRecon[r.reconKey]) {
-          v.bankRecon[r.reconKey] = v.date;
-          count++;
-        }
-      });
+  window.matchAllReconToVchDate = function() {
+    const rows = document.querySelectorAll("#kbTableWrap tbody tr[data-vid]");
+    rows.forEach(tr => {
+      const vid = tr.getAttribute("data-vid");
+      const rk = tr.getAttribute("data-rkey");
+      const v = (DB.vouchers || []).find(x => String(x.id) === String(vid));
+      if (v) {
+        v.bankRecon = v.bankRecon || {};
+        if (!v.bankRecon[rk]) v.bankRecon[rk] = v.date;
+        if (!v.bankRecon[window.RECON_STATE.ledgerId]) v.bankRecon[window.RECON_STATE.ledgerId] = v.date;
+      }
     });
     saveDB();
-    renderBankReconScreen();
-    toast(`✔ ${count} entries matched with Voucher Date!`);
+    window.renderBankReconScreen();
+    toast("✅ All Entries Matched with Voucher Date!");
   };
 
-  window.onActualStmtBalInput = function(val, calcSigned) {
-    ACTUAL_PARTY_STMT_BAL = val;
-    const box = document.getElementById("brsDiffStatus");
-    if (!box || val === "") return;
-    const diff = +((Number(val) || 0) - Math.abs(calcSigned)).toFixed(2);
-    box.style.color = Math.abs(diff) < 0.01 ? "var(--ok)" : "var(--danger)";
-    box.innerHTML = Math.abs(diff) < 0.01
-      ? "✔ 100% Matched! Statement aur Books bilkul barabar hain."
-      : `⚠ Difference: ₹${fmtINR(Math.abs(diff))}`;
-  };
+  // 6. Keyboard Shortcuts inside Sleek Reconciliation (F2 = Date Popup, F4 = Change Ledger)
+  window.addEventListener("keydown", function(e) {
+    if (typeof CURRENT_SCREEN === "undefined" || CURRENT_SCREEN !== "bank_recon") return;
+    if (document.getElementById("reconPickerOverlay") || document.getElementById("reconDateModalOverlay")) return;
 
-  // Update Gateway Menu Label to "Account Reconciliation (Bank / Party)"
-  const gwItem = GATEWAY_MENU.find(m => m.screen === "bank_recon");
-  if (gwItem) {
-    gwItem.label = "Account Reconciliation (Bank / Party)";
-  }
-  const fnBtn = document.getElementById("fnBrsBtn");
-  if (fnBtn) {
-    fnBtn.innerHTML = `<span class="fn-key">Alt+R</span><span>Reconcile</span>`;
-  }
-
-  if (CURRENT_SCREEN === "bank_recon") {
-    renderBankReconScreen();
-  }
-})();</script>
-<!-- ================= FINAL COMBINED UPI FIELD + DIRECT PRINT QR INJECTOR ================= -->
+    if (e.key === "F2") {
+      e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+      window.openReconDateFilterModal();
+    } else if (e.key === "F4") {
+      e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+      window.openReconLedgerPickerModal();
+    }
+  }, true);
+})();
+</script>
+  <!-- ================= FINAL COMBINED UPI FIELD + DIRECT PRINT QR INJECTOR ================= -->
 <script>
 (function() {
   // 1. Add "UPI ID (Optional)" field inside F3 Company/Trust Create & Alter Form
