@@ -5483,21 +5483,35 @@ window.renderStockSummaryScreen = function() {
   let _ORIG_GW_MENU = null;
 
   const FOLDER_DEFS = [
-    { id: "MASTERS",      title: "📁 Create / Alter (Masters)",   hk: "C", keys: ["L", "G"] },
+    { id: "MASTERS",      title: "📁 Create / Alter (Masters)",   hk: "C", keys: ["L", "G","F3"] },
     { id: "TRANSACTIONS", title: "💸 Transactions (Vouchers)",    hk: "T", keys: ["V", "D"] },
     { id: "INVENTORY",    title: "📦 Inventory (Stock & BOM)",    hk: "I", keys: ["I", "K", "S", "M"] },
     { id: "ACC_REPORTS",  title: "📊 Accounting Reports",         hk: "A", keys: ["A", "R", "T", "P", "B", "O"] },
-    { id: "STAT_REPORTS", title: "🏛️ GST & Statutory Reports",   hk: "S", keys: ["1", "3"] }
+    { id: "STAT_REPORTS", title: "🏛️ GST & Statutory Reports",   hk: "S", keys: ["1", "3","D"] }
   ];
 
   function getActiveList(){
-    if(!_ORIG_GW_MENU && typeof GATEWAY_MENU !== "undefined" && GATEWAY_MENU.length){
-      _ORIG_GW_MENU = GATEWAY_MENU.slice();
-    }
     if(!window._GW_FOLDER) return FOLDER_DEFS;
     const f = FOLDER_DEFS.find(x => x.id === window._GW_FOLDER);
-    if(!f || !_ORIG_GW_MENU) return [];
-    return _ORIG_GW_MENU.filter(m => f.keys.includes(String(m.hk).toUpperCase()));
+    if(!f) return [];
+
+    // Har baar fresh GATEWAY_MENU padhein + Reconciliation (R) aur 80G (D) ko pakka jodein
+    const baseMenu = (typeof GATEWAY_MENU !== "undefined" && Array.isArray(GATEWAY_MENU)) ? GATEWAY_MENU.slice() : [];
+    if(!baseMenu.some(m => String(m.hk).toUpperCase() === "R")){
+      baseMenu.splice(baseMenu.findIndex(m => String(m.hk).toUpperCase() === "A") + 1, 0, {
+        label: "Account <span class='hk'>R</span>econciliation (Bank / Party)",
+        hk: "R",
+        screen: "bank_recon"
+      });
+    }
+    if(!baseMenu.some(m => String(m.hk).toUpperCase() === "D" && f.id === "STAT_REPORTS") && f.id === "STAT_REPORTS"){
+      baseMenu.push({
+        label: "80G / Form 10B<span class='hk'>D</span> Donor Statement",
+        hk: "D",
+        screen: "form_10bd"
+      });
+    }
+    return baseMenu.filter(m => f.keys.includes(String(m.hk).toUpperCase()));
   }
 
   window.openGwCategory = function(folderId){
@@ -5512,6 +5526,10 @@ window.renderStockSummaryScreen = function() {
     if(!item) return;
     if(!window._GW_FOLDER){
       window.openGwCategory(item.id);
+    } else if(item.screen === "bank_recon" && typeof openBankReconScreen === "function"){
+      openBankReconScreen();
+    } else if(item.screen === "form_10bd" && typeof openForm10BDModal === "function"){
+      openForm10BDModal();
     } else {
       navigate(item.screen);
     }
