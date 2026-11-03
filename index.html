@@ -5449,6 +5449,7 @@ window.renderStockSummaryScreen = function() {
       return;
     }
     if(e.key !== "Escape") return;
+    if(document.getElementById("directF2DateModal") || document.getElementById("directLedgerPickerModal")) return;
     const modal = document.getElementById("appModal");
     if(modal && modal.classList.contains("open")) return;                 // मॉडल खुला हो तो पहले जैसा
     const kd = document.getElementById("kdPop");
@@ -5547,8 +5548,8 @@ window.renderStockSummaryScreen = function() {
     }
   };
 
-  // ====== BUILT-IN UNIVERSAL LEDGER PICKER (ALL LEDGERS) + F2 DATE POPUP + SLEEK RECON ======
-  window.RECON_STATE = window.RECON_STATE || {
+  // ====== UNIVERSAL TEMPORARY F2 PERIOD ENGINE + ALL-LEDGER PICKER + SLEEK RECON ======
+  window.RECON_STATE = {
     ledgerId: "", fromDate: "", toDate: "", splitMode: true, showReconciled: true, stmtBal: "", pickerIdx: 0
   };
 
@@ -5557,19 +5558,38 @@ window.renderStockSummaryScreen = function() {
     return { from: c.fyStart || "2026-04-01", to: c.fyEnd || "2027-03-31" };
   }
 
-  window.launchDirectLedgerPicker = function(mode){
+  // Reset temporary dates to full Financial Year whenever switching screens or ledgers
+  window.resetTempPeriodToFy = function(){
     const fy = getFyBounds();
-    if(!window.RECON_STATE.fromDate) window.RECON_STATE.fromDate = fy.from;
-    if(!window.RECON_STATE.toDate) window.RECON_STATE.toDate = fy.to;
+    window.RECON_STATE.fromDate = fy.from;
+    window.RECON_STATE.toDate = fy.to;
+  };
 
-    // ALL Ledgers (Bank + Cash + Party + Expenses + Sabhi Ledgers)
+  // Hook navigate() so leaving any report automatically resets temporary From-To dates!
+  if(typeof window.navigate === "function" && !window._tempPeriodNavHooked){
+    window._tempPeriodNavHooked = true;
+    const _origNavFn = window.navigate;
+    window.navigate = function(scr){
+      if(!window._KEEP_TEMP_DATES_ONCE){
+        window.resetTempPeriodToFy();
+      }
+      window._KEEP_TEMP_DATES_ONCE = false;
+      const r = _origNavFn.apply(this, arguments);
+      setTimeout(() => window.injectUniversalF2Badge(), 40);
+      return r;
+    };
+  }
+
+  window.launchDirectLedgerPicker = function(mode){
+    // Opening a new ledger always starts with fresh Full FY dates (temporary per session)
+    window.resetTempPeriodToFy();
+
     const allLedgers = ((typeof DB !== "undefined" && DB.ledgers) ? DB.ledgers : [])
       .slice()
       .sort((a,b) => String(a.name || "").localeCompare(String(b.name || "")));
 
     window.RECON_STATE.pickerIdx = 0;
-    const old = document.getElementById("directLedgerPickerModal");
-    if(old) old.remove();
+    document.getElementById("directLedgerPickerModal")?.remove();
 
     const ov = document.createElement("div");
     ov.id = "directLedgerPickerModal";
@@ -5649,12 +5669,13 @@ window.renderStockSummaryScreen = function() {
   };
 
   window.pickDirectLedger = function(mode, ledgerId){
-    const old = document.getElementById("directLedgerPickerModal");
-    if(old) old.remove();
+    document.getElementById("directLedgerPickerModal")?.remove();
+    window.resetTempPeriodToFy();
     window.RECON_STATE.ledgerId = ledgerId;
 
     if(mode === "ledger_view"){
       if(typeof SELECTED_LEDGER_VIEW_ID !== "undefined") SELECTED_LEDGER_VIEW_ID = ledgerId;
+      window._KEEP_TEMP_DATES_ONCE = true;
       navigate("ledgers_view");
       setTimeout(() => window.applySleekBarToLedgerView(ledgerId), 40);
     } else {
@@ -5673,43 +5694,46 @@ window.renderStockSummaryScreen = function() {
     }
     const dateInps = Array.from(sb.querySelectorAll("input[type='date']"));
     if(dateInps.length >= 2){
-      const fVal = dateInps[0].value || window.RECON_STATE.fromDate;
-      const tVal = dateInps[1].value || window.RECON_STATE.toDate;
+      const fVal = window.RECON_STATE.fromDate || dateInps[0].value;
+      const tVal = window.RECON_STATE.toDate || dateInps[1].value;
       dateInps.forEach(inp => { if(inp.parentElement) inp.parentElement.style.display = "none"; });
-      if(sel && sel.parentElement && !sb.querySelector("#sleekLedBar")){
+      if(sel && sel.parentElement){
         sel.style.display = "none";
         const lbl = sel.parentElement.querySelector("label");
         if(lbl) lbl.style.display = "none";
         const led = getLedger(sel.value || ledgerId);
-        const bar = document.createElement("div");
-        bar.id = "sleekLedBar";
-        bar.style.cssText = "display:inline-flex; align-items:center; gap:8px;";
+        let bar = sb.querySelector("#sleekLedBar");
+        if(!bar){
+          bar = document.createElement("div");
+          bar.id = "sleekLedBar";
+          bar.style.cssText = "display:inline-flex; align-items:center; gap:8px;";
+          sel.parentElement.insertBefore(bar, sel);
+        }
         bar.innerHTML = `
           <span style="font-weight:800; font-size:13.5px; color:#0f172a;">📒 ${escHtml(led ? led.name : '')}</span>
           <button type="button" class="btn btn-sec" style="padding:3px 9px; font-size:11.5px;" onclick="window.launchDirectLedgerPicker('ledger_view')">🔄 Change Ledger (F4)</button>
-          <button type="button" class="btn btn-sec" style="padding:3px 9px; font-size:11.5px; background:#eff6ff; color:#1e3a8a; border-color:#93c5fd;" onclick="window.openDirectF2DateModal('ledger_view')">📅 ${fmtDate(fVal)} to ${fmtDate(tVal)} (F2)</button>
+          <button type="button" class="btn btn-sec" style="padding:3px 9px; font-size:11.5px; background:#eff6ff; color:#1e3a8a; border-color:#93c5fd;" onclick="window.openDirectF2DateModal()">📅 ${fmtDate(fVal)} to ${fmtDate(tVal)} (F2)</button>
         `;
-        sel.parentElement.insertBefore(bar, sel);
       }
     }
   };
 
-  window.openDirectF2DateModal = function(mode){
+  // Universal F2 Date Modal (Works on Ledger, Reconciliation, DayBook, Balance Sheet, P&L, Trial Balance, Inventory!)
+  window.openDirectF2DateModal = function(){
     const s = window.RECON_STATE;
     const fy = getFyBounds();
     if(!s.fromDate) s.fromDate = fy.from;
     if(!s.toDate) s.toDate = fy.to;
 
-    const old = document.getElementById("directF2DateModal");
-    if(old) old.remove();
+    document.getElementById("directF2DateModal")?.remove();
 
     const ov = document.createElement("div");
     ov.id = "directF2DateModal";
     ov.style.cssText = "position:fixed; inset:0; background:rgba(15,23,42,0.55); z-index:999999; display:flex; align-items:center; justify-content:center;";
     ov.innerHTML = `
-      <div style="width:350px; background:#fff; border:2px solid #0f6e4e; border-radius:6px; box-shadow:0 12px 28px rgba(0,0,0,0.28); overflow:hidden; font-family:sans-serif;">
+      <div style="width:360px; background:#fff; border:2px solid #0f6e4e; border-radius:6px; box-shadow:0 12px 28px rgba(0,0,0,0.28); overflow:hidden; font-family:sans-serif;">
         <div style="background:#0f6e4e; color:#fff; padding:8px 14px; font-weight:800; font-size:13px; display:flex; justify-content:space-between;">
-          <span>📅 Change Period Date (F2)</span>
+          <span>📅 Filter Period Date (Temporary - F2)</span>
           <span style="cursor:pointer;" onclick="document.getElementById('directF2DateModal').remove()">✕</span>
         </div>
         <div style="padding:14px; display:grid; gap:10px;">
@@ -5722,22 +5746,18 @@ window.renderStockSummaryScreen = function() {
             <input type="date" id="dF2To" value="${s.toDate}" style="width:100%; padding:6px 8px; border:1px solid #94a3b8; border-radius:4px; font-weight:700; box-sizing:border-box;">
           </div>
           <div style="display:flex; justify-content:space-between; margin-top:4px;">
-            <button type="button" class="btn btn-sec" style="padding:5px 10px; font-size:12px;" onclick="window.applyDirectF2Dates('${mode}', true)">Reset Full FY</button>
-            <button type="button" class="btn" style="padding:5px 14px; font-size:12px;" onclick="window.applyDirectF2Dates('${mode}', false)">✔ Apply (Enter)</button>
+            <button type="button" class="btn btn-sec" style="padding:5px 10px; font-size:12px;" onclick="window.applyDirectF2Dates(true)">Reset Full FY</button>
+            <button type="button" class="btn" style="padding:5px 14px; font-size:12px;" onclick="window.applyDirectF2Dates(false)">✔ Apply (Enter)</button>
           </div>
         </div>
       </div>
     `;
     document.body.appendChild(ov);
     setTimeout(() => document.getElementById("dF2From")?.focus(), 20);
-
-    ov.onkeydown = (e) => {
-      if(e.key === "Escape"){ e.preventDefault(); e.stopPropagation(); ov.remove(); }
-      else if(e.key === "Enter"){ e.preventDefault(); e.stopPropagation(); window.applyDirectF2Dates(mode, false); }
-    };
   };
 
-  window.applyDirectF2Dates = function(mode, resetFy){
+  // Universal Period Filter Applier across ALL screens in AccountsExpress (Temporary ONLY — never overwrites DB.company!)
+  window.applyDirectF2Dates = function(resetFy){
     const fy = getFyBounds();
     const f = resetFy ? fy.from : (document.getElementById("dF2From")?.value || fy.from);
     const t = resetFy ? fy.to : (document.getElementById("dF2To")?.value || fy.to);
@@ -5745,19 +5765,80 @@ window.renderStockSummaryScreen = function() {
     window.RECON_STATE.toDate = t;
     document.getElementById("directF2DateModal")?.remove();
 
-    if(CURRENT_SCREEN === "bank_recon" || CURRENT_SCREEN === "brs"){
+    const scr = typeof CURRENT_SCREEN !== "undefined" ? CURRENT_SCREEN : "";
+
+    // Case 1: Sleek Reconciliation Screen
+    if(scr === "bank_recon" || scr === "brs"){
       window.drawSleekReconView();
-    } else {
-      const sb = document.getElementById("screenBody");
-      const dateInps = sb ? Array.from(sb.querySelectorAll("input[type='date']")) : [];
-      if(dateInps.length >= 2){
-        dateInps[0].value = f;
-        dateInps[1].value = t;
-        dateInps[0].dispatchEvent(new Event("change", {bubbles:true}));
-        dateInps[1].dispatchEvent(new Event("change", {bubbles:true}));
-      }
-      setTimeout(() => window.applySleekBarToLedgerView(window.RECON_STATE.ledgerId), 40);
+      return;
     }
+
+    // Case 2: Screens that have native From / To date inputs inside #screenBody (Ledger View, DayBook, GSTR, etc.)
+    const sb = document.getElementById("screenBody");
+    const dateInps = sb ? Array.from(sb.querySelectorAll("input[type='date']")) : [];
+    if(dateInps.length >= 2){
+      dateInps[0].value = f;
+      dateInps[1].value = t;
+      dateInps[0].dispatchEvent(new Event("change", {bubbles:true}));
+      dateInps[1].dispatchEvent(new Event("change", {bubbles:true}));
+      dateInps[0].dispatchEvent(new Event("input", {bubbles:true}));
+      dateInps[1].dispatchEvent(new Event("input", {bubbles:true}));
+      if(scr === "ledgers_view" || scr === "ledger_view"){
+        setTimeout(() => window.applySleekBarToLedgerView(window.RECON_STATE.ledgerId), 30);
+      } else {
+        setTimeout(() => window.injectUniversalF2Badge(), 30);
+      }
+      return;
+    }
+
+    // Case 3: Balance Sheet, Profit & Loss, Trial Balance, Stock Summary, Outstanding (Temporarily filter DB.vouchers during render!)
+    if(typeof DB !== "undefined" && Array.isArray(DB.vouchers)){
+      const origVouchers = DB.vouchers;
+      try {
+        DB.vouchers = origVouchers.filter(v => (!f || v.date >= f) && (!t || v.date <= t));
+        window._KEEP_TEMP_DATES_ONCE = true;
+        navigate(scr);
+      } finally {
+        DB.vouchers = origVouchers; // Immediately restore full vouchers so nothing is ever permanently changed!
+      }
+      setTimeout(() => window.injectUniversalF2Badge(), 30);
+    }
+  };
+
+  // Show a sleek "📅 Period (F2)" button on DayBook, Balance Sheet, P&L, Trial Balance, Inventory, etc.
+  window.injectUniversalF2Badge = function(){
+    const scr = typeof CURRENT_SCREEN !== "undefined" ? CURRENT_SCREEN : "";
+    if(!scr || scr === "gateway" || scr === "bank_recon" || scr === "brs" || scr === "voucher_entry") return;
+    if(scr === "ledgers_view" || scr === "ledger_view"){
+      window.applySleekBarToLedgerView(window.RECON_STATE.ledgerId);
+      return;
+    }
+    const sb = document.getElementById("screenBody");
+    if(!sb) return;
+
+    // Hide any bulky inline From/To date inputs on DayBook etc. and replace with sleek F2 badge
+    const dateInps = Array.from(sb.querySelectorAll("input[type='date']"));
+    if(dateInps.length >= 2){
+      dateInps.forEach(inp => {
+        if(inp.id !== "dF2From" && inp.id !== "dF2To") inp.style.display = "none";
+      });
+    }
+
+    const fy = getFyBounds();
+    const f = window.RECON_STATE.fromDate || fy.from;
+    const t = window.RECON_STATE.toDate || fy.to;
+    let badge = document.getElementById("uniF2PeriodBtn");
+    if(!badge){
+      badge = document.createElement("button");
+      badge.id = "uniF2PeriodBtn";
+      badge.type = "button";
+      badge.className = "btn btn-sec";
+      badge.style.cssText = "padding:3px 10px; font-size:11.5px; background:#eff6ff; color:#1e3a8a; border:1px solid #93c5fd; font-weight:700; cursor:pointer; margin-bottom:6px;";
+      badge.onclick = () => window.openDirectF2DateModal();
+      const firstCard = sb.querySelector(".form-card") || sb.firstElementChild;
+      if(firstCard) firstCard.prepend(badge);
+    }
+    badge.innerHTML = `📅 Period: ${fmtDate(f)} to ${fmtDate(t)} (Press F2)`;
   };
 
   window.drawSleekReconView = window.renderBankReconScreen = function(){
@@ -5840,7 +5921,7 @@ window.renderStockSummaryScreen = function() {
           <div style="display:flex; align-items:center; gap:8px;">
             <span style="font-weight:800; color:#0f172a; font-size:13px;">📒 ${escHtml(led.name)} <small style="color:#475569;">(${escHtml(led.group)})</small></span>
             <button type="button" class="btn btn-sec" style="padding:2px 8px; font-size:11px;" onclick="window.launchDirectLedgerPicker('recon')">🔄 Change Ledger (F4)</button>
-            <button type="button" class="btn btn-sec" style="padding:2px 8px; font-size:11px; background:#eff6ff; color:#1e3a8a; border-color:#93c5fd;" onclick="window.openDirectF2DateModal('recon')">📅 ${fmtDate(s.fromDate)} to ${fmtDate(s.toDate)} (F2)</button>
+            <button type="button" class="btn btn-sec" style="padding:2px 8px; font-size:11px; background:#eff6ff; color:#1e3a8a; border-color:#93c5fd;" onclick="window.openDirectF2DateModal()">📅 ${fmtDate(s.fromDate)} to ${fmtDate(s.toDate)} (F2)</button>
           </div>
           <div style="display:flex; align-items:center; gap:10px; font-size:11.5px; font-weight:700;">
             <label style="cursor:pointer;"><input type="checkbox" ${s.splitMode ? 'checked' : ''} onchange="window.RECON_STATE.splitMode=this.checked; window.drawSleekReconView();"> Split Combined</label>
@@ -5887,21 +5968,56 @@ window.renderStockSummaryScreen = function() {
     window.drawSleekReconView();
   };
 
-  window.addEventListener("keydown", function(e){
-    if(typeof CURRENT_SCREEN === "undefined") return;
-    const isRec = (CURRENT_SCREEN === "bank_recon" || CURRENT_SCREEN === "brs");
-    const isLed = (CURRENT_SCREEN === "ledgers_view" || CURRENT_SCREEN === "ledger_view");
-    if(!isRec && !isLed) return;
-    if(document.getElementById("directLedgerPickerModal") || document.getElementById("directF2DateModal")) return;
+  // Global Capture Listener: Intercepts Esc/Enter inside F2 Date Modal FIRST, and enables F2 across ALL screens!
+  document.addEventListener("keydown", function(e){
+    const f2Modal = document.getElementById("directF2DateModal");
+    if(f2Modal){
+      if(e.key === "Escape"){
+        // Close ONLY the F2 Date Popup and STAY on the current Ledger / Recon / Report screen!
+        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+        f2Modal.remove();
+        return;
+      }
+      if(e.key === "Enter"){
+        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+        window.applyDirectF2Dates(false);
+        return;
+      }
+      return;
+    }
+
+    const pickModal = document.getElementById("directLedgerPickerModal");
+    if(pickModal){
+      if(e.key === "Escape"){
+        // Close ONLY the Ledger Picker Modal and stay on the current screen!
+        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+        pickModal.remove();
+        return;
+      }
+      return;
+    }
+
+    if(typeof CURRENT_SCREEN === "undefined" || CURRENT_SCREEN === "gateway" || CURRENT_SCREEN === "voucher_entry") return;
+    const m = document.getElementById("appModal");
+    if(m && m.classList.contains("open")) return;
+
+    // Universal F2 (or Alt+F2) opens Temporary From-To Period Filter on ANY Report / Screen!
     if(e.key === "F2"){
       e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
-      window.openDirectF2DateModal(isLed ? "ledger_view" : "recon");
-    } else if(e.key === "F4"){
-      e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
-      window.launchDirectLedgerPicker(isLed ? "ledger_view" : "recon");
-  }
-  }, true);
+      window.openDirectF2DateModal();
+      return;
+    }
 
+    // F4 switches Ledger on Reconciliation or Ledger View
+    if(e.key === "F4"){
+      const isRec = (CURRENT_SCREEN === "bank_recon" || CURRENT_SCREEN === "brs");
+      const isLed = (CURRENT_SCREEN === "ledgers_view" || CURRENT_SCREEN === "ledger_view");
+      if(isRec || isLed){
+        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+        window.launchDirectLedgerPicker(isLed ? "ledger_view" : "recon");
+      }
+    }
+  }, true);
   function renderGatewayFolders(){
     if(typeof CURRENT_SCREEN === "undefined" || CURRENT_SCREEN !== "gateway") return;
     const box = document.querySelector(".gateway-box") || document.querySelector(".gw-menu");
