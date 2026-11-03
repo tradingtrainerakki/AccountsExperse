@@ -5483,11 +5483,11 @@ window.renderStockSummaryScreen = function() {
   let _ORIG_GW_MENU = null;
 
   const FOLDER_DEFS = [
-    { id: "MASTERS",      title: "📁 Create / Alter (Masters)",   hk: "C", keys: ["L", "G","F3"] },
+    { id: "MASTERS",      title: "📁 Create / Alter (Masters)",   hk: "C", keys: ["L", "G"] },
     { id: "TRANSACTIONS", title: "💸 Transactions (Vouchers)",    hk: "T", keys: ["V", "D"] },
     { id: "INVENTORY",    title: "📦 Inventory (Stock & BOM)",    hk: "I", keys: ["I", "K", "S", "M"] },
     { id: "ACC_REPORTS",  title: "📊 Accounting Reports",         hk: "A", keys: ["A", "R", "T", "P", "B", "O"] },
-    { id: "STAT_REPORTS", title: "🏛️ GST & Statutory Reports",   hk: "S", keys: ["1", "3","D"] }
+    { id: "STAT_REPORTS", title: "🏛️ GST & Statutory Reports",   hk: "S", keys: ["1", "3","8"] }
   ];
 
   function getActiveList(){
@@ -5504,10 +5504,10 @@ window.renderStockSummaryScreen = function() {
         screen: "bank_recon"
       });
     }
-    if(!baseMenu.some(m => String(m.hk).toUpperCase() === "D" && f.id === "STAT_REPORTS") && f.id === "STAT_REPORTS"){
+    if(!baseMenu.some(m => String(m.hk).toUpperCase() === "8" && f.id === "STAT_REPORTS") && f.id === "STAT_REPORTS"){
       baseMenu.push({
         label: "80G / Form 10B<span class='hk'>D</span> Donor Statement",
-        hk: "D",
+        hk: "8",
         screen: "form_10bd"
       });
     }
