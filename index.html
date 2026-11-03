@@ -8319,7 +8319,7 @@ window.renderStockSummaryScreen = function() {
   if (CURRENT_SCREEN === "daybook") {
     renderDayBookScreen();
   }
-})();<!-- ================= SLEEK SEARCH-FIRST & F2 DATE POPUP RECONCILIATION ENGINE ================= -->
+})();<!-- ================= UNIFIED SLEEK LEDGER PICKER & F2 DATE POPUP (FOR BOTH LEDGER VIEW 'A' & RECONCILIATION 'R') ================= -->
 <script>
 (function() {
   window.RECON_STATE = {
@@ -8340,7 +8340,6 @@ window.renderStockSummaryScreen = function() {
     };
   }
 
-  // Read saved date from BOTH old (v.bankRecon) and new (v.reconSplitDates) formats so no old data is lost!
   function getSavedReconDate(v, reconKey, fallbackLedgerId) {
     if (v.bankRecon) {
       if (v.bankRecon[reconKey]) return v.bankRecon[reconKey];
@@ -8350,36 +8349,18 @@ window.renderStockSummaryScreen = function() {
     return v.reconDate || "";
   }
 
-  // 1. Entry Point: Pressing 'R' or Alt+R opens the Fast Searchable Ledger Picker first!
-  window.openBankReconScreen = function(preselectedLedgerId) {
-    const fy = getDefaultFyDates();
-    if (!window.RECON_STATE.fromDate) window.RECON_STATE.fromDate = fy.from;
-    if (!window.RECON_STATE.toDate) window.RECON_STATE.toDate = fy.to;
-
-    if (preselectedLedgerId) {
-      window.RECON_STATE.ledgerId = preselectedLedgerId;
-      CURRENT_SCREEN = "bank_recon";
-      window.renderBankReconScreen();
-    } else {
-      window.openReconLedgerPickerModal();
+  // Rename "Bank Reconciliation (BRS)" to "Account Reconciliation (Bank / Party)" in GATEWAY_MENU
+  if (typeof GATEWAY_MENU !== "undefined" && Array.isArray(GATEWAY_MENU)) {
+    const rItem = GATEWAY_MENU.find(m => String(m.hk).toUpperCase() === "R");
+    if (rItem) {
+      rItem.label = "Account <span class='hk'>R</span>econciliation (Bank / Party)";
+      rItem.screen = "bank_recon";
     }
-  };
-
-  // Hook navigate("bank_recon") so Gateway / Alt+R opens the Searchable Ledger Picker first
-  if (typeof window.navigate === "function" && !window._sleekReconNavHooked) {
-    window._sleekReconNavHooked = true;
-    const origNav = window.navigate;
-    window.navigate = function(scr) {
-      if (scr === "bank_recon") {
-        window.openBankReconScreen();
-        return;
-      }
-      return origNav.apply(this, arguments);
-    };
   }
 
-  // 2. Fast Searchable Ledger List Modal (Opens on 'R' or 'F4')
-  window.openReconLedgerPickerModal = function() {
+  // 1. Universal Searchable Ledger Picker Modal (Works for BOTH 'recon' and 'ledger_view')
+  window.openUniversalLedgerPicker = function(mode) {
+    // mode = "recon" OR "ledger_view"
     const ledgers = (DB.ledgers || []).slice().sort((a, b) => (a.name || "").localeCompare(b.name || ""));
     window.RECON_STATE.pickerIdx = 0;
 
@@ -8388,16 +8369,20 @@ window.renderStockSummaryScreen = function() {
 
     const overlay = document.createElement("div");
     overlay.id = "reconPickerOverlay";
-    overlay.style.cssText = "position:fixed; inset:0; background:rgba(15,23,42,0.55); z-index:9999; display:flex; align-items:flex-start; justify-content:center; padding-top:65px;";
+    overlay.style.cssText = "position:fixed; inset:0; background:rgba(15,23,42,0.55); z-index:99999; display:flex; align-items:flex-start; justify-content:center; padding-top:60px;";
+
+    const titleTxt = mode === "ledger_view"
+      ? "📒 Select Ledger Account (Statement)"
+      : "🔍 Select Ledger for Reconciliation";
 
     overlay.innerHTML = `
-      <div style="width:100%; max-width:500px; background:#fff; border:2px solid #0f6e4e; border-radius:6px; box-shadow:0 12px 32px rgba(0,0,0,0.25); overflow:hidden; font-family:sans-serif;">
+      <div style="width:100%; max-width:500px; background:#fff; border:2px solid #0f6e4e; border-radius:6px; box-shadow:0 12px 32px rgba(0,0,0,0.28); overflow:hidden; font-family:sans-serif;">
         <div style="background:#0f6e4e; color:#fff; padding:9px 14px; font-weight:800; font-size:13px; display:flex; justify-content:space-between; align-items:center;">
-          <span>🔍 Select Ledger for Reconciliation</span>
+          <span>${titleTxt}</span>
           <span style="font-size:11px; opacity:0.9;">↑ ↓ Select • Enter Open • Esc Close</span>
         </div>
         <div style="padding:10px; background:#f8fafc; border-bottom:1px solid #cbd5e1;">
-          <input type="text" id="reconLedgerSearchInp" placeholder="Type Ledger or Group Name (e.g. Bank, Cash, Party)..."
+          <input type="text" id="reconLedgerSearchInp" placeholder="Type Ledger or Group Name (e.g. Bank, Cash, Binesh)..."
                  style="width:100%; padding:7px 10px; font-size:13px; font-weight:600; border:1.5px solid #0f6e4e; border-radius:4px; outline:none; box-sizing:border-box;">
         </div>
         <div id="reconLedgerListBox" style="max-height:330px; overflow-y:auto;"></div>
@@ -8423,7 +8408,7 @@ window.renderStockSummaryScreen = function() {
 
       listBox.innerHTML = filtered.map((l, i) => `
         <div class="recon-pick-row"
-             onclick="window.selectReconLedgerFromModal('${l.id}')"
+             onclick="window.confirmUniversalLedgerPick('${mode}', '${l.id}')"
              style="padding:8px 14px; border-bottom:1px solid #f1f5f9; display:flex; justify-content:space-between; align-items:center; cursor:pointer; font-size:13px; ${i === window.RECON_STATE.pickerIdx ? 'background:#fef08a; font-weight:800; border-left:4px solid #0f6e4e;' : ''}">
           <span>${escHtml(l.name)}</span>
           <span style="font-size:11px; color:#475569; background:#e2e8f0; padding:1px 7px; border-radius:10px;">${escHtml(l.group || '')}</span>
@@ -8443,19 +8428,19 @@ window.renderStockSummaryScreen = function() {
     inp.onkeydown = (e) => {
       const filtered = renderFilteredList();
       if (e.key === "ArrowDown") {
-        e.preventDefault(); e.stopPropagation();
+        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
         if (filtered.length) window.RECON_STATE.pickerIdx = (window.RECON_STATE.pickerIdx + 1) % filtered.length;
         renderFilteredList();
       } else if (e.key === "ArrowUp") {
-        e.preventDefault(); e.stopPropagation();
+        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
         if (filtered.length) window.RECON_STATE.pickerIdx = (window.RECON_STATE.pickerIdx - 1 + filtered.length) % filtered.length;
         renderFilteredList();
       } else if (e.key === "Enter") {
-        e.preventDefault(); e.stopPropagation();
+        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
         const chosen = filtered[window.RECON_STATE.pickerIdx];
-        if (chosen) window.selectReconLedgerFromModal(chosen.id);
+        if (chosen) window.confirmUniversalLedgerPick(mode, chosen.id);
       } else if (e.key === "Escape") {
-        e.preventDefault(); e.stopPropagation();
+        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
         overlay.remove();
       }
     };
@@ -8464,28 +8449,126 @@ window.renderStockSummaryScreen = function() {
     setTimeout(() => inp.focus(), 20);
   };
 
-  window.selectReconLedgerFromModal = function(ledgerId) {
+  window.openReconLedgerPickerModal = function() {
+    window.openUniversalLedgerPicker("recon");
+  };
+
+  window.confirmUniversalLedgerPick = function(mode, ledgerId) {
     const el = document.getElementById("reconPickerOverlay");
     if (el) el.remove();
+
+    const fy = getDefaultFyDates();
+    if (!window.RECON_STATE.fromDate) window.RECON_STATE.fromDate = fy.from;
+    if (!window.RECON_STATE.toDate) window.RECON_STATE.toDate = fy.to;
     window.RECON_STATE.ledgerId = ledgerId;
-    CURRENT_SCREEN = "bank_recon";
+
+    if (mode === "ledger_view") {
+      // Open original Ledger Vouchers Statement for chosen ledger & slim down its top bar
+      if (typeof SELECTED_LEDGER_VIEW_ID !== "undefined") SELECTED_LEDGER_VIEW_ID = ledgerId;
+      window._BYPASS_PICKER_ONCE = true;
+      navigate(window._LAST_LEDGER_VIEW_SCR || "ledgers_view");
+      setTimeout(() => window.slimLedgerViewTopBar(ledgerId), 30);
+    } else {
+      CURRENT_SCREEN = "bank_recon";
+      window.renderBankReconScreen();
+    }
+  };
+
+  // Slim down "Ledger Account (By Head)" screen: hide bulky Dropdown & From-To inputs and add F4 / F2 buttons
+  window.slimLedgerViewTopBar = function(ledgerId) {
+    const sb = document.getElementById("screenBody");
+    if (!sb) return;
+    const sel = sb.querySelector("select");
+    if (sel && ledgerId && sel.value !== ledgerId) {
+      sel.value = ledgerId;
+      sel.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    // Hide native From / To date inputs on Ledger Statement and show sleek F4 & F2 buttons
+    const dateInputs = Array.from(sb.querySelectorAll("input[type='date']"));
+    if (dateInputs.length >= 2) {
+      const fVal = dateInputs[0].value || window.RECON_STATE.fromDate;
+      const tVal = dateInputs[1].value || window.RECON_STATE.toDate;
+      dateInputs.forEach(inp => {
+        if (inp.parentElement) inp.parentElement.style.display = "none";
+      });
+      if (sel && sel.parentElement && !sb.querySelector("#sleekLedToolbarBtns")) {
+        sel.style.display = "none";
+        const prevLabel = sel.parentElement.querySelector("label");
+        if (prevLabel) prevLabel.style.display = "none";
+        const led = getLedger(sel.value || ledgerId);
+        const btnWrap = document.createElement("div");
+        btnWrap.id = "sleekLedToolbarBtns";
+        btnWrap.style.cssText = "display:inline-flex; align-items:center; gap:8px;";
+        btnWrap.innerHTML = `
+          <span style="font-weight:800; font-size:13.5px; color:#0f172a;">📒 ${escHtml(led ? led.name : '')}</span>
+          <button type="button" class="btn btn-sec" style="padding:3px 9px; font-size:11.5px;" onclick="window.openUniversalLedgerPicker('ledger_view')">🔄 Change Ledger (F4)</button>
+          <button type="button" class="btn btn-sec" style="padding:3px 9px; font-size:11.5px; background:#eff6ff; color:#1e3a8a; border-color:#93c5fd;" onclick="window.openReconDateFilterModal('ledger_view')">📅 ${fmtDate(fVal)} to ${fmtDate(tVal)} (F2)</button>
+        `;
+        sel.parentElement.insertBefore(btnWrap, sel);
+      }
+    }
+  };
+
+  // Entry Point for Reconciliation
+  window.openBankReconScreen = function(preselectedLedgerId) {
+    const fy = getDefaultFyDates();
+    if (!window.RECON_STATE.fromDate) window.RECON_STATE.fromDate = fy.from;
+    if (!window.RECON_STATE.toDate) window.RECON_STATE.toDate = fy.to;
+
+    if (preselectedLedgerId) {
+      window.RECON_STATE.ledgerId = preselectedLedgerId;
+      CURRENT_SCREEN = "bank_recon";
+      window.renderBankReconScreen();
+    } else {
+      window.openUniversalLedgerPicker("recon");
+    }
+  };
+
+  // Intercept navigate() for BOTH Reconciliation ("brs" / "bank_recon") AND Ledger View ("ledgers_view" / "ledger_view")
+  const origNav = window.navigate;
+  if (typeof origNav === "function") {
+    window.navigate = function(scr) {
+      if (scr === "brs" || scr === "bank_recon") {
+        window.openBankReconScreen();
+        return;
+      }
+      if ((scr === "ledgers_view" || scr === "ledger_view" || scr === "ledger_statement") && !window._BYPASS_PICKER_ONCE) {
+        window._LAST_LEDGER_VIEW_SCR = scr;
+        window.openUniversalLedgerPicker("ledger_view");
+        return;
+      }
+      window._BYPASS_PICKER_ONCE = false;
+      const res = origNav.apply(this, arguments);
+      if (scr === "ledgers_view" || scr === "ledger_view" || scr === "ledger_statement") {
+        setTimeout(() => window.slimLedgerViewTopBar(window.RECON_STATE.ledgerId), 20);
+      }
+      return res;
+    };
+  }
+
+  // Also override renderBrsScreen if it exists in original code so old BRS never renders!
+  window.renderBrsScreen = function() {
     window.renderBankReconScreen();
   };
 
-  // 3. F2 / Alt+F2 Popup Modal for Date Filter (From Date — To Date)
-  window.openReconDateFilterModal = function() {
+  // 2. F2 Popup Modal for Date Filter (Works for both Reconciliation & Ledger Statement!)
+  window.openReconDateFilterModal = function(mode) {
     const s = window.RECON_STATE;
+    const fy = getDefaultFyDates();
+    if (!s.fromDate) s.fromDate = fy.from;
+    if (!s.toDate) s.toDate = fy.to;
+
     const existing = document.getElementById("reconDateModalOverlay");
     if (existing) existing.remove();
 
     const overlay = document.createElement("div");
     overlay.id = "reconDateModalOverlay";
-    overlay.style.cssText = "position:fixed; inset:0; background:rgba(15,23,42,0.5); z-index:9999; display:flex; align-items:center; justify-content:center;";
+    overlay.style.cssText = "position:fixed; inset:0; background:rgba(15,23,42,0.5); z-index:99999; display:flex; align-items:center; justify-content:center;";
 
     overlay.innerHTML = `
-      <div style="width:360px; background:#fff; border:2px solid #0f6e4e; border-radius:6px; box-shadow:0 10px 25px rgba(0,0,0,0.2); overflow:hidden; font-family:sans-serif;">
+      <div style="width:360px; background:#fff; border:2px solid #0f6e4e; border-radius:6px; box-shadow:0 10px 25px rgba(0,0,0,0.25); overflow:hidden; font-family:sans-serif;">
         <div style="background:#0f6e4e; color:#fff; padding:8px 14px; font-weight:800; font-size:13px; display:flex; justify-content:space-between;">
-          <span>📅 Reconciliation Period (F2)</span>
+          <span>📅 Change Period Date (F2)</span>
           <span style="cursor:pointer;" onclick="document.getElementById('reconDateModalOverlay').remove()">✕</span>
         </div>
         <div style="padding:14px; display:grid; gap:10px;">
@@ -8498,8 +8581,8 @@ window.renderStockSummaryScreen = function() {
             <input type="date" id="reconPopupTo" value="${s.toDate}" style="width:100%; padding:6px 8px; border:1px solid #94a3b8; border-radius:4px; font-weight:700; box-sizing:border-box;">
           </div>
           <div style="display:flex; justify-content:space-between; gap:8px; margin-top:4px;">
-            <button type="button" class="btn btn-sec" style="padding:5px 10px; font-size:12px;" onclick="window.resetReconPeriodDates()">Reset Full FY</button>
-            <button type="button" class="btn" style="padding:5px 14px; font-size:12px;" onclick="window.applyReconPeriodDates()">✔ Apply (Enter)</button>
+            <button type="button" class="btn btn-sec" style="padding:5px 10px; font-size:12px;" onclick="window.applyUniversalDates('${mode || ''}', true)">Reset Full FY</button>
+            <button type="button" class="btn" style="padding:5px 14px; font-size:12px;" onclick="window.applyUniversalDates('${mode || ''}', false)">✔ Apply (Enter)</button>
           </div>
         </div>
       </div>
@@ -8515,31 +8598,38 @@ window.renderStockSummaryScreen = function() {
         overlay.remove();
       } else if (e.key === "Enter") {
         e.preventDefault(); e.stopPropagation();
-        window.applyReconPeriodDates();
+        window.applyUniversalDates(mode || "", false);
       }
     };
   };
 
-  window.applyReconPeriodDates = function() {
-    const f = document.getElementById("reconPopupFrom")?.value;
-    const t = document.getElementById("reconPopupTo")?.value;
-    if (f) window.RECON_STATE.fromDate = f;
-    if (t) window.RECON_STATE.toDate = t;
-    const ov = document.getElementById("reconDateModalOverlay");
-    if (ov) ov.remove();
-    window.renderBankReconScreen();
-  };
-
-  window.resetReconPeriodDates = function() {
+  window.applyUniversalDates = function(mode, isReset) {
     const fy = getDefaultFyDates();
-    window.RECON_STATE.fromDate = fy.from;
-    window.RECON_STATE.toDate = fy.to;
+    const f = isReset ? fy.from : (document.getElementById("reconPopupFrom")?.value || fy.from);
+    const t = isReset ? fy.to : (document.getElementById("reconPopupTo")?.value || fy.to);
+    window.RECON_STATE.fromDate = f;
+    window.RECON_STATE.toDate = t;
+
     const ov = document.getElementById("reconDateModalOverlay");
     if (ov) ov.remove();
-    window.renderBankReconScreen();
+
+    if (CURRENT_SCREEN === "bank_recon" || CURRENT_SCREEN === "brs") {
+      window.renderBankReconScreen();
+    } else {
+      // Apply to Ledger Vouchers Statement hidden date inputs
+      const sb = document.getElementById("screenBody");
+      const dateInputs = sb ? Array.from(sb.querySelectorAll("input[type='date']")) : [];
+      if (dateInputs.length >= 2) {
+        dateInputs[0].value = f;
+        dateInputs[1].value = t;
+        dateInputs[0].dispatchEvent(new Event("change", { bubbles: true }));
+        dateInputs[1].dispatchEvent(new Event("change", { bubbles: true }));
+      }
+      setTimeout(() => window.slimLedgerViewTopBar(window.RECON_STATE.ledgerId), 30);
+    }
   };
 
-  // 4. Extract Rows for Selected Ledger (Preserves existing v.bankRecon keys!)
+  // 3. Build Reconciliation Rows
   function buildReconRows(ledgerId, fromDate, toDate, splitMode) {
     const rows = [];
     const vouchers = (DB.vouchers || []).slice().sort((a, b) => (a.date || "").localeCompare(b.date || ""));
@@ -8561,18 +8651,9 @@ window.renderStockSummaryScreen = function() {
             const rDate = getSavedReconDate(v, reconKey, ledgerId);
             const amt = Number(op.amount) || 0;
             rows.push({
-              v,
-              vid: v.id,
-              reconKey,
-              date: v.date,
-              vchNo: v.vchNo,
-              type: v.type,
-              oppName: getLedgerName(op.ledgerId),
-              oppBadge: op.type,
-              narration: v.narration || "",
-              dr: myLine.type === "Dr" ? amt : 0,
-              cr: myLine.type === "Cr" ? amt : 0,
-              reconDate: rDate
+              v, vid: v.id, reconKey, date: v.date, vchNo: v.vchNo, type: v.type,
+              oppName: getLedgerName(op.ledgerId), oppBadge: op.type, narration: v.narration || "",
+              dr: myLine.type === "Dr" ? amt : 0, cr: myLine.type === "Cr" ? amt : 0, reconDate: rDate
             });
           });
         } else {
@@ -8582,18 +8663,9 @@ window.renderStockSummaryScreen = function() {
           const oppName = oppLines.map(o => getLedgerName(o.ledgerId)).join(", ") || "Voucher Entry";
           const oppBadge = oppLines[0] ? oppLines[0].type : (myLine.type === "Dr" ? "Cr" : "Dr");
           rows.push({
-            v,
-            vid: v.id,
-            reconKey,
-            date: v.date,
-            vchNo: v.vchNo,
-            type: v.type,
-            oppName,
-            oppBadge,
-            narration: v.narration || "",
-            dr: myLine.type === "Dr" ? amt : 0,
-            cr: myLine.type === "Cr" ? amt : 0,
-            reconDate: rDate
+            v, vid: v.id, reconKey, date: v.date, vchNo: v.vchNo, type: v.type,
+            oppName, oppBadge, narration: v.narration || "",
+            dr: myLine.type === "Dr" ? amt : 0, cr: myLine.type === "Cr" ? amt : 0, reconDate: rDate
           });
         }
       });
@@ -8602,7 +8674,7 @@ window.renderStockSummaryScreen = function() {
     return rows;
   }
 
-  // 5. Main Sleek Screen Renderer (Matches both renderBankReconScreen and renderSleekReconScreen)
+  // 4. Render Sleek Reconciliation Screen
   window.renderBankReconScreen = window.renderSleekReconScreen = function() {
     const s = window.RECON_STATE;
     const fy = getDefaultFyDates();
@@ -8620,7 +8692,7 @@ window.renderStockSummaryScreen = function() {
     const titleEl = document.getElementById("screenTitle");
     const subEl = document.getElementById("screenSub");
     if (titleEl) titleEl.textContent = `🔄 Account Reconciliation — ${led.name} [${led.group}]`;
-    if (subEl) subEl.textContent = "F2: Period Date | F4: Change Ledger | Alt+R: Reconciliation";
+    if (subEl) subEl.textContent = "F2: Period Date | F4: Change Ledger | Double-Click: Open Voucher";
 
     const allRows = buildReconRows(led.id, s.fromDate, s.toDate, s.splitMode);
     const visibleRows = s.showReconciled ? allRows : allRows.filter(r => !r.reconDate);
@@ -8673,12 +8745,11 @@ window.renderStockSummaryScreen = function() {
     const sb = document.getElementById("screenBody");
     sb.innerHTML = `
       <div style="display:flex; flex-direction:column; height:calc(100vh - 122px); gap:6px;">
-        <!-- SLIM SINGLE-LINE TOP BAR -->
         <div class="form-card" style="padding:6px 10px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; background:#f8fafc; border-left:4px solid #0f6e4e;">
           <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
             <span style="font-weight:800; color:#0f172a; font-size:13px;">📒 ${escHtml(led.name)}</span>
-            <button type="button" class="btn btn-sec" style="padding:2px 8px; font-size:11px;" onclick="window.openReconLedgerPickerModal()">🔄 Change Ledger (F4)</button>
-            <button type="button" class="btn btn-sec" style="padding:2px 8px; font-size:11px; background:#eff6ff; color:#1e3a8a; border-color:#93c5fd;" onclick="window.openReconDateFilterModal()">
+            <button type="button" class="btn btn-sec" style="padding:2px 8px; font-size:11px;" onclick="window.openUniversalLedgerPicker('recon')">🔄 Change Ledger (F4)</button>
+            <button type="button" class="btn btn-sec" style="padding:2px 8px; font-size:11px; background:#eff6ff; color:#1e3a8a; border-color:#93c5fd;" onclick="window.openReconDateFilterModal('recon')">
               📅 ${fmtDate(s.fromDate)} to ${fmtDate(s.toDate)} (F2)
             </button>
           </div>
@@ -8693,7 +8764,6 @@ window.renderStockSummaryScreen = function() {
           </div>
         </div>
 
-        <!-- AUTO-HIDE BULK ACTION BAR (Appears ONLY when checkboxes are ticked) -->
         <div id="reconBulkBar" style="display:none; padding:5px 10px; background:#fefce8; border:1px solid #fde047; border-radius:4px; align-items:center; justify-content:space-between; font-size:12px;">
           <div><b id="reconSelCountTxt" style="color:#854d0e;">0 Selected</b> — Set Clearing Date for selected rows:</div>
           <div style="display:flex; align-items:center; gap:6px;">
@@ -8703,7 +8773,6 @@ window.renderStockSummaryScreen = function() {
           </div>
         </div>
 
-        <!-- FULL-HEIGHT SCROLLABLE TABLE -->
         <div id="kbTableWrap" class="form-card" style="flex:1; overflow-y:auto; padding:0; border:1px solid #cbd5e1;">
           <table class="tally-tbl" style="width:100%; border-collapse:collapse; font-size:12px;">
             <thead style="position:sticky; top:0; z-index:2; background:#e2e8f0;">
@@ -8725,7 +8794,6 @@ window.renderStockSummaryScreen = function() {
           </table>
         </div>
 
-        <!-- SLIM SINGLE-LINE FOOTER STRIP -->
         <div class="form-card" style="padding:6px 12px; background:#f8fafc; border-top:2px solid #0f6e4e; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; font-size:12px;">
           <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
             <span><b>Book Bal:</b> <span style="color:#0f172a; font-weight:800;">${fmtBal(netBook)}</span></span>
@@ -8814,17 +8882,20 @@ window.renderStockSummaryScreen = function() {
     toast("✅ All Entries Matched with Voucher Date!");
   };
 
-  // 6. Keyboard Shortcuts inside Sleek Reconciliation (F2 = Date Popup, F4 = Change Ledger)
-  window.addEventListener("keydown", function(e) {
-    if (typeof CURRENT_SCREEN === "undefined" || CURRENT_SCREEN !== "bank_recon") return;
+  // 5. Global F2 & F4 Shortcuts for both Reconciliation AND Ledger Statement!
+  document.addEventListener("keydown", function(e) {
+    if (typeof CURRENT_SCREEN === "undefined") return;
+    const isRecon = (CURRENT_SCREEN === "bank_recon" || CURRENT_SCREEN === "brs");
+    const isLedView = (CURRENT_SCREEN === "ledgers_view" || CURRENT_SCREEN === "ledger_view" || CURRENT_SCREEN === "ledger_statement");
+    if (!isRecon && !isLedView) return;
     if (document.getElementById("reconPickerOverlay") || document.getElementById("reconDateModalOverlay")) return;
 
     if (e.key === "F2") {
       e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
-      window.openReconDateFilterModal();
+      window.openReconDateFilterModal(isLedView ? "ledger_view" : "recon");
     } else if (e.key === "F4") {
       e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
-      window.openReconLedgerPickerModal();
+      window.openUniversalLedgerPicker(isLedView ? "ledger_view" : "recon");
     }
   }, true);
 })();
