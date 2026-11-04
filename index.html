@@ -5734,48 +5734,70 @@ window.renderStockSummaryScreen = function() {
       if(typeof SELECTED_LEDGER_VIEW_ID !== "undefined") SELECTED_LEDGER_VIEW_ID = ledgerId;
       window._KEEP_TEMP_DATES_ONCE = true;
       navigate("ledgers_view");
-      setTimeout(() => window.applySleekBarToLedgerView(ledgerId), 40);
+      setTimeout(() => window.applySleekBarToLedgerView(ledgerId, true), 40);
     } else {
       CURRENT_SCREEN = "bank_recon";
       window.drawSleekReconView();
     }
   };
 
-  window.applySleekBarToLedgerView = function(ledgerId){
+  window.applySleekBarToLedgerView = function(ledgerId, forceResetDates){
     const sb = document.getElementById("screenBody");
     if(!sb) return;
+    const fy = getFyBounds();
+
+    // Agar naya ledger khula hai toh default FY dates ko mool date inputs me bhi turant trigger karein!
+    const fVal = forceResetDates ? fy.from : (window.RECON_STATE.fromDate || fy.from);
+    const tVal = forceResetDates ? fy.to   : (window.RECON_STATE.toDate   || fy.to);
+    window.RECON_STATE.fromDate = fVal;
+    window.RECON_STATE.toDate = tVal;
+
     const sel = sb.querySelector("select");
     if(sel && ledgerId && sel.value !== ledgerId){
       sel.value = ledgerId;
       sel.dispatchEvent(new Event("change", {bubbles:true}));
     }
+
     const dateInps = Array.from(sb.querySelectorAll("input[type='date']"));
     if(dateInps.length >= 2){
-      const fVal = window.RECON_STATE.fromDate || dateInps[0].value;
-      const tVal = window.RECON_STATE.toDate || dateInps[1].value;
-      dateInps.forEach(inp => { if(inp.parentElement) inp.parentElement.style.display = "none"; });
-      if(sel && sel.parentElement){
-        sel.style.display = "none";
-        const lbl = sel.parentElement.querySelector("label");
-        if(lbl) lbl.style.display = "none";
-        const led = getLedger(sel.value || ledgerId);
-        let bar = sb.querySelector("#sleekLedBar");
-        if(!bar){
-          bar = document.createElement("div");
-          bar.id = "sleekLedBar";
-          bar.style.cssText = "display:inline-flex; align-items:center; gap:8px;";
-          sel.parentElement.insertBefore(bar, sel);
-        }
-        bar.innerHTML = `
-          <span style="font-weight:800; font-size:13.5px; color:#0f172a;">📒 ${escHtml(led ? led.name : '')}</span>
-          <button type="button" class="btn btn-sec" style="padding:3px 9px; font-size:11.5px;" onclick="window.launchDirectLedgerPicker('ledger_view')">🔄 Change Ledger (F4)</button>
-          <button type="button" class="btn btn-sec" style="padding:3px 9px; font-size:11.5px; background:#eff6ff; color:#1e3a8a; border-color:#93c5fd;" onclick="window.openDirectF2DateModal()">📅 ${fmtDate(fVal)} to ${fmtDate(tVal)} (F2)</button>
-        `;
+      // Agar mool input me purani filter date atki hui hai, toh use turant current date (default FY) par set karke refresh karein
+      if(dateInps[0].value !== fVal || dateInps[1].value !== tVal){
+        dateInps[0].value = fVal;
+        dateInps[1].value = tVal;
+        dateInps[0].dispatchEvent(new Event("change", {bubbles:true}));
+        dateInps[1].dispatchEvent(new Event("change", {bubbles:true}));
+        dateInps[0].dispatchEvent(new Event("input", {bubbles:true}));
+        dateInps[1].dispatchEvent(new Event("input", {bubbles:true}));
       }
+    }
+
+    // Re-query after any DOM re-render triggered by change event
+    const sbNow = document.getElementById("screenBody");
+    const selNow = sbNow ? sbNow.querySelector("select") : null;
+    const inpsNow = sbNow ? Array.from(sbNow.querySelectorAll("input[type='date']")) : [];
+    inpsNow.forEach(inp => { if(inp.parentElement) inp.parentElement.style.display = "none"; });
+
+    if(selNow && selNow.parentElement){
+      selNow.style.display = "none";
+      const lbl = selNow.parentElement.querySelector("label");
+      if(lbl) lbl.style.display = "none";
+      const led = getLedger(selNow.value || ledgerId);
+      let bar = sbNow.querySelector("#sleekLedBar");
+      if(!bar){
+        bar = document.createElement("div");
+        bar.id = "sleekLedBar";
+        bar.style.cssText = "display:inline-flex; align-items:center; gap:8px;";
+        selNow.parentElement.insertBefore(bar, selNow);
+      }
+      bar.innerHTML = `
+        <span style="font-weight:800; font-size:13.5px; color:#0f172a;">📒 ${escHtml(led ? led.name : '')}</span>
+        <button type="button" class="btn btn-sec" style="padding:3px 9px; font-size:11.5px;" onclick="window.launchDirectLedgerPicker('ledger_view')">🔄 Change Ledger (F4)</button>
+        <button type="button" class="btn btn-sec" style="padding:3px 9px; font-size:11.5px; background:#eff6ff; color:#1e3a8a; border-color:#93c5fd;" onclick="window.openDirectF2DateModal()">📅 ${fmtDate(fVal)} to ${fmtDate(tVal)} (F2)</button>
+      `;
     }
   };
 
-  // Universal F2 Date Modal (Works on Ledger, Reconciliation, DayBook, Balance Sheet, P&L, Trial Balance, Inventory!)
+  // Universal F2 Date Modal: Enter on 'From Date' jumps to 'To Date', Enter on 'To Date' Applies!
   window.openDirectF2DateModal = function(){
     const s = window.RECON_STATE;
     const fy = getFyBounds();
@@ -5795,22 +5817,52 @@ window.renderStockSummaryScreen = function() {
         </div>
         <div style="padding:14px; display:grid; gap:10px;">
           <div>
-            <label style="font-size:11.5px; font-weight:700; display:block; margin-bottom:3px;">From Date:</label>
-            <input type="date" id="dF2From" value="${s.fromDate}" style="width:100%; padding:6px 8px; border:1px solid #94a3b8; border-radius:4px; font-weight:700; box-sizing:border-box;">
+            <label style="font-size:11.5px; font-weight:700; display:block; margin-bottom:3px;">From Date (Press Enter for To Date):</label>
+            <input type="date" id="dF2From" value="${s.fromDate}" style="width:100%; padding:6px 8px; border:1.5px solid #0f6e4e; border-radius:4px; font-weight:700; box-sizing:border-box;">
           </div>
           <div>
-            <label style="font-size:11.5px; font-weight:700; display:block; margin-bottom:3px;">To Date:</label>
-            <input type="date" id="dF2To" value="${s.toDate}" style="width:100%; padding:6px 8px; border:1px solid #94a3b8; border-radius:4px; font-weight:700; box-sizing:border-box;">
+            <label style="font-size:11.5px; font-weight:700; display:block; margin-bottom:3px;">To Date (Press Enter to Apply):</label>
+            <input type="date" id="dF2To" value="${s.toDate}" style="width:100%; padding:6px 8px; border:1.5px solid #94a3b8; border-radius:4px; font-weight:700; box-sizing:border-box;">
           </div>
           <div style="display:flex; justify-content:space-between; margin-top:4px;">
             <button type="button" class="btn btn-sec" style="padding:5px 10px; font-size:12px;" onclick="window.applyDirectF2Dates(true)">Reset Full FY</button>
-            <button type="button" class="btn" style="padding:5px 14px; font-size:12px;" onclick="window.applyDirectF2Dates(false)">✔ Apply (Enter)</button>
+            <button type="button" id="dF2ApplyBtn" class="btn" style="padding:5px 14px; font-size:12px;" onclick="window.applyDirectF2Dates(false)">✔ Apply (Enter)</button>
           </div>
         </div>
       </div>
     `;
     document.body.appendChild(ov);
-    setTimeout(() => document.getElementById("dF2From")?.focus(), 20);
+
+    const fInp = document.getElementById("dF2From");
+    const tInp = document.getElementById("dF2To");
+
+    // From Date: Enter moves focus to To Date!
+    fInp.addEventListener("keydown", function(ev){
+      if(ev.key === "Escape"){
+        ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation();
+        ov.remove();
+      } else if(ev.key === "Enter"){
+        ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation();
+        tInp.focus();
+        if(typeof tInp.select === "function") tInp.select();
+      }
+    }, true);
+
+    // To Date: Enter applies the date filter!
+    tInp.addEventListener("keydown", function(ev){
+      if(ev.key === "Escape"){
+        ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation();
+        ov.remove();
+      } else if(ev.key === "Enter"){
+        ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation();
+        window.applyDirectF2Dates(false);
+      }
+    }, true);
+
+    setTimeout(() => {
+      fInp.focus();
+      if(typeof fInp.select === "function") fInp.select();
+    }, 20);
   };
 
   // Universal Period Filter Applier across ALL screens in AccountsExpress (Temporary ONLY — never overwrites DB.company!)
@@ -6027,22 +6079,14 @@ window.renderStockSummaryScreen = function() {
 
   // Global Capture Listener: Intercepts Esc/Enter inside F2 Date Modal FIRST, and enables F2 across ALL screens!
   document.addEventListener("keydown", function(e){
-    const f2Modal = document.getElementById("directF2DateModal");
+   const f2Modal = document.getElementById("directF2DateModal");
     if(f2Modal){
       if(e.key === "Escape"){
-        // Close ONLY the F2 Date Popup and STAY on the current Ledger / Recon / Report screen!
         e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
         f2Modal.remove();
-        return;
-      }
-      if(e.key === "Enter"){
-        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
-        window.applyDirectF2Dates(false);
-        return;
       }
       return;
     }
-
     const pickModal = document.getElementById("directLedgerPickerModal");
     if(pickModal){
       if(e.key === "Escape"){
