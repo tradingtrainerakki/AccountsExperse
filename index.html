@@ -5620,6 +5620,7 @@ window.renderStockSummaryScreen = function() {
     const fy = getFyBounds();
     window.RECON_STATE.fromDate = fy.from;
     window.RECON_STATE.toDate = fy.to;
+    window.RECON_STATE.stmtBal = "";
   };
 
   // Hook navigate() so leaving any report automatically resets temporary From-To dates!
