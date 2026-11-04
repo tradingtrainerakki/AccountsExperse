@@ -5995,20 +5995,7 @@ window.renderStockSummaryScreen = function() {
           rows.push({ vid: v.id, rk, date: v.date, vchNo: v.vchNo, type: v.type, oppName, oppBadge, narration: v.narration || "", dr: myLine.type === "Dr" ? amt : 0, cr: myLine.type === "Cr" ? amt : 0, reconDate: rDate });
         }
       });
-            const rk = `${led.id}__split_${oIdx}_${op.ledgerId}`;
-            const rDate = (v.bankRecon && (v.bankRecon[rk] || v.bankRecon[led.id])) || "";
-            const amt = Number(op.amount) || 0;
-            rows.push({ vid: v.id, rk, date: v.date, vchNo: v.vchNo, type: v.type, oppName: getLedgerName(op.ledgerId), oppBadge: op.type, narration: v.narration || "", dr: myLine.type === "Dr" ? amt : 0, cr: myLine.type === "Cr" ? amt : 0, reconDate: rDate });
-          });
-        } else {
-          const rk = `${led.id}__line_${mIdx}`;
-          const rDate = (v.bankRecon && (v.bankRecon[rk] || v.bankRecon[led.id])) || "";
-          const amt = Number(myLine.amount) || 0;
-          const oppName = oppLines.map(o => getLedgerName(o.ledgerId)).join(", ") || "Voucher Entry";
-          const oppBadge = oppLines[0] ? oppLines[0].type : (myLine.type === "Dr" ? "Cr" : "Dr");
-          rows.push({ vid: v.id, rk, date: v.date, vchNo: v.vchNo, type: v.type, oppName, oppBadge, narration: v.narration || "", dr: myLine.type === "Dr" ? amt : 0, cr: myLine.type === "Cr" ? amt : 0, reconDate: rDate });
-        }
-      });
+        
     });
 
     const vis = s.showReconciled ? rows : rows.filter(r => !r.reconDate);
@@ -9311,38 +9298,28 @@ window.renderStockSummaryScreen = function() {
       if (toDate && v.date > toDate) return;
 
       const entries = (typeof getVoucherEntries === "function") ? getVoucherEntries(v) : (v.entries || []);
-      const myLines = entries.filter(e => String(e.ledgerId) === String(ledgerId));
-      if (!myLines.length) return;
-
-      const oppLines = entries.filter(e => String(e.ledgerId) !== String(ledgerId));
+      const myLines = entries.filter(e => String(e.ledgerId) === String(led.id));
+      if(!myLines.length) return;
+      const oppLines = entries.filter(e => String(e.ledgerId) !== String(led.id) && e.type !== myLines[0].type);
 
       myLines.forEach((myLine, mIdx) => {
-        if (splitMode && oppLines.length > 1 && myLines.length === 1) {
+        if(s.splitMode && oppLines.length > 1 && entries.filter(e => e.type === myLine.type).length === 1){
           oppLines.forEach((op, oIdx) => {
-            const reconKey = `${ledgerId}__split_${oIdx}_${op.ledgerId}`;
-            const rDate = getSavedReconDate(v, reconKey, ledgerId);
+            const rk = `${led.id}__split_${oIdx}_${op.ledgerId}`;
+            const rDate = (v.bankRecon && (v.bankRecon[rk] || v.bankRecon[led.id])) || "";
             const amt = Number(op.amount) || 0;
-            rows.push({
-              v, vid: v.id, reconKey, date: v.date, vchNo: v.vchNo, type: v.type,
-              oppName: getLedgerName(op.ledgerId), oppBadge: op.type, narration: v.narration || "",
-              dr: myLine.type === "Dr" ? amt : 0, cr: myLine.type === "Cr" ? amt : 0, reconDate: rDate
-            });
+            rows.push({ vid: v.id, rk, date: v.date, vchNo: v.vchNo, type: v.type, oppName: getLedgerName(op.ledgerId), oppBadge: op.type, narration: v.narration || "", dr: myLine.type === "Dr" ? amt : 0, cr: myLine.type === "Cr" ? amt : 0, reconDate: rDate });
           });
         } else {
-          const reconKey = `${ledgerId}__line_${mIdx}`;
-          const rDate = getSavedReconDate(v, reconKey, ledgerId);
+          const rk = `${led.id}__line_${mIdx}`;
+          const rDate = (v.bankRecon && (v.bankRecon[rk] || v.bankRecon[led.id])) || "";
           const amt = Number(myLine.amount) || 0;
           const oppName = oppLines.map(o => getLedgerName(o.ledgerId)).join(", ") || "Voucher Entry";
           const oppBadge = oppLines[0] ? oppLines[0].type : (myLine.type === "Dr" ? "Cr" : "Dr");
-          rows.push({
-            v, vid: v.id, reconKey, date: v.date, vchNo: v.vchNo, type: v.type,
-            oppName, oppBadge, narration: v.narration || "",
-            dr: myLine.type === "Dr" ? amt : 0, cr: myLine.type === "Cr" ? amt : 0, reconDate: rDate
-          });
+          rows.push({ vid: v.id, rk, date: v.date, vchNo: v.vchNo, type: v.type, oppName, oppBadge, narration: v.narration || "", dr: myLine.type === "Dr" ? amt : 0, cr: myLine.type === "Cr" ? amt : 0, reconDate: rDate });
         }
       });
     });
-
     return rows;
   }
 
