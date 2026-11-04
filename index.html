@@ -5448,27 +5448,84 @@ window.renderStockSummaryScreen = function() {
       else if(k==="Enter"){ sel==="yes" ? doQuit() : closeQuit(); }
       return;
     }
+    // ====== STEP-BY-STEP REVERSE ESCAPE & F2/ALT+F2 INTERCEPTOR ======
+    // 1. Intercept F2 & Alt+F2 BEFORE original code so permanent Period modal (#appModal) never opens on Reports!
+    if(e.key === "F2" && typeof CURRENT_SCREEN !== "undefined" && CURRENT_SCREEN !== "gateway" && CURRENT_SCREEN !== "voucher_entry"){
+      e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+      const m = document.getElementById("appModal");
+      if(m) m.classList.remove("open");
+      if(typeof window.openDirectF2DateModal === "function") window.openDirectF2DateModal();
+      return;
+    }
+
     if(e.key !== "Escape") return;
-    if(document.getElementById("directF2DateModal") || document.getElementById("directLedgerPickerModal")) return;
+
+    // 2. Step 1 Back: If F2 Date Popup is open -> Close ONLY Date Popup, stay on Ledger/Recon screen!
+    const f2Pop = document.getElementById("directF2DateModal");
+    if(f2Pop){
+      e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+      f2Pop.remove();
+      return;
+    }
+
+    // 3. Step 2 Back: If Ledger Search Picker is open -> Close Picker & go back to Gateway Sub-Menu (Accounting Reports)!
+    const pickPop = document.getElementById("directLedgerPickerModal");
+    if(pickPop){
+      e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+      pickPop.remove();
+      if(typeof CURRENT_SCREEN !== "undefined" && CURRENT_SCREEN !== "gateway"){
+        navigate("gateway");
+      }
+      return;
+    }
+
+    // 4. Standard Modals / Dropdowns / Login checks
     const modal = document.getElementById("appModal");
-    if(modal && modal.classList.contains("open")) return;                 // मॉडल खुला हो तो पहले जैसा
+    if(modal && modal.classList.contains("open")) return;                 // मॉडल खुला हो तो केवल मॉडल बंद हो
     const kd = document.getElementById("kdPop");
     if(kd && kd.style.display === "flex") return;                         // ड्रॉपडाउन खुला हो तो पहले जैसा
     const lg = document.getElementById("loginOverlay");
     if(lg && lg.classList.contains("active")) return;                     // लॉगिन स्क्रीन पर नहीं
-   if(typeof CURRENT_SCREEN !== "undefined"){
+
+    if(typeof CURRENT_SCREEN !== "undefined"){
+      // 5. Step 3 Back: On Gateway -> Sub-Folder to Main 5-Folders, or Main 5-Folders to Quit Box
       if(CURRENT_SCREEN === "gateway"){
-        e.preventDefault(); e.stopImmediatePropagation();
+        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
         if(window._GW_FOLDER){
-          window.openGwCategory(null); // सब-मेनू में हैं तो Esc दबाने पर मुख्य 5 फोल्डर पर वापस आएं
+          window.openGwCategory(null); // सब-मेनू से मुख्य 5 फोल्डर पर वापस आएं
         } else {
           openQuit();                  // मुख्य Gateway पर हैं तो Quit (Yes/No) बॉक्स खोलें
         }
-      } else if(CURRENT_SCREEN === "voucher_entry" && window._LAST_REPORT_SCREEN){
-        e.preventDefault(); e.stopImmediatePropagation();
+        return;
+      }
+
+      // 6. Step 4 Back: From Voucher Entry -> Return to originating Report/Ledger screen
+      if(CURRENT_SCREEN === "voucher_entry" && window._LAST_REPORT_SCREEN){
+        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
         const backTo = window._LAST_REPORT_SCREEN;
         window._LAST_REPORT_SCREEN = null;
-        navigate(backTo);
+        window._KEEP_TEMP_DATES_ONCE = true;
+        if(backTo === "bank_recon" && typeof window.drawSleekReconView === "function"){
+          CURRENT_SCREEN = "bank_recon";
+          window.drawSleekReconView();
+        } else {
+          navigate(backTo);
+        }
+        return;
+      }
+
+      // 7. Step 5 Back: From Reconciliation Table -> Esc re-opens Ledger Search List Popup!
+      if(CURRENT_SCREEN === "bank_recon" || CURRENT_SCREEN === "brs"){
+        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+        window.launchDirectLedgerPicker("recon");
+        return;
+      }
+
+      // 8. Step 6 Back: From Ledger Statement -> Esc re-opens Ledger Search List Popup!
+      if(CURRENT_SCREEN === "ledgers_view" || CURRENT_SCREEN === "ledger_view"){
+        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+        window.launchDirectLedgerPicker("ledger_view");
+        return;
       }
     }
   }, true);
