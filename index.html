@@ -6054,19 +6054,43 @@ window.renderStockSummaryScreen = function() {
             <tbody>${trHtml || `<tr><td colspan="8" style="text-align:center; padding:26px; color:#64748b;">Is period me koi entry nahi hai. Press <b>F2</b> to change Date Filter.</td></tr>`}</tbody>
           </table>
         </div>
-        <div class="form-card" style="padding:6px 12px; background:#f8fafc; border-top:2px solid #0f6e4e; display:flex; justify-content:space-between; align-items:center; font-size:12px;">
-          <div style="display:flex; gap:14px;">
+       <div class="form-card" style="padding:6px 12px; background:#f8fafc; border-top:2px solid #0f6e4e; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; font-size:12px;">
+          <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
             <span><b>Book Bal:</b> <b>${fmtB(netBook)}</b></span>
-            <span>|</span>
+            <span style="color:#cbd5e1;">|</span>
             <span style="color:#b45309;"><b>Pending:</b> Dr ₹${fmtINR(unDr)} / Cr ₹${fmtINR(unCr)}</span>
-            <span>|</span>
+            <span style="color:#cbd5e1;">|</span>
             <span style="color:#0f6e4e; font-size:13px;"><b>Reconciled Bal: ${fmtB(netRec)}</b></span>
+          </div>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span style="font-size:11.5px; font-weight:700; color:#334155;">🔍 Party / Bank Stmt Bal:</span>
+            <input type="number" step="0.01" placeholder="Enter Closing Bal..." value="${s.stmtBal || ''}"
+                   oninput="window.RECON_STATE.stmtBal=this.value; window.calcReconStmtDiff(${Math.abs(netRec).toFixed(2)}, this.value)"
+                   style="width:125px; padding:3px 7px; font-size:12px; font-weight:700; text-align:right; border:1.5px solid #0f6e4e; border-radius:4px; outline:none;">
+            <span id="reconLiveDiffBadge" style="font-size:11.5px; font-weight:800;"></span>
           </div>
         </div>
       </div>
     `;
+    if(s.stmtBal) window.calcReconStmtDiff(Math.abs(netRec).toFixed(2), s.stmtBal);
   };
 
+  window.calcReconStmtDiff = function(recAbsVal, stmtValStr){
+    const badge = document.getElementById("reconLiveDiffBadge");
+    if(!badge) return;
+    if(stmtValStr === "" || stmtValStr === null || typeof stmtValStr === "undefined"){
+      badge.innerHTML = "";
+      return;
+    }
+    const rec = parseFloat(recAbsVal) || 0;
+    const st = Math.abs(parseFloat(stmtValStr) || 0);
+    const diff = +(rec - st).toFixed(2);
+    if(Math.abs(diff) < 0.01){
+      badge.innerHTML = `<span style="color:#15803d; background:#dcfce7; border:1px solid #86efac; padding:2px 8px; border-radius:4px;">✔ Matched (Diff: ₹0.00)</span>`;
+    } else {
+      badge.innerHTML = `<span style="color:#b91c1c; background:#fee2e2; border:1px solid #fca5a5; padding:2px 8px; border-radius:4px;">⚠ Diff: ₹${fmtINR(Math.abs(diff))}</span>`;
+    }
+  };
   window.setReconRowDate = function(vid, rk, val){
     const v = (DB.vouchers || []).find(x => String(x.id) === String(vid));
     if(!v) return;
