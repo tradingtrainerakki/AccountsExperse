@@ -5994,15 +5994,59 @@ window.renderStockSummaryScreen = function() {
     });
 
     const vis = s.showReconciled ? rows : rows.filter(r => !r.reconDate);
-    let bookDr = (led.openType === "Dr" ? Number(led.openingBal) || 0 : 0);
-    let bookCr = (led.openType === "Cr" ? Number(led.openingBal) || 0 : 0);
+
+    // Smart Opening Balance Reader (Reads any property name used in DB.ledgers!)
+    const rawOpAmt = Number(
+      led.openingBal ?? led.openBal ?? led.openingBalance ?? led.opening ?? led.opBal ?? led.ob ?? 0
+    ) || 0;
+    const rawOpType = String(
+      led.openType || led.openDrCr || led.drCr || led.obType || led.openingType || (rawOpAmt < 0 ? "Cr" : "Dr")
+    ).trim();
+
+    let bookDr = (rawOpType.toLowerCase() === "cr") ? 0 : Math.abs(rawOpAmt);
+    let bookCr = (rawOpType.toLowerCase() === "cr") ? Math.abs(rawOpAmt) : 0;
+
+    // Add any vouchers prior to From Date (if user filtered period via F2)
+    if(s.fromDate){
+      (DB.vouchers || []).forEach(v => {
+        if(v.date < s.fromDate){
+          const entries = (typeof getVoucherEntries === "function") ? getVoucherEntries(v) : (v.entries || []);
+          entries.forEach(e => {
+            if(String(e.ledgerId) === String(led.id)){
+              if(e.type === "Dr") bookDr += (Number(e.amount) || 0);
+              if(e.type === "Cr") bookCr += (Number(e.amount) || 0);
+            }
+          });
+        }
+      });
+    }
+
+    const netOpen = bookDr - bookCr;
     let unDr = 0, unCr = 0;
-    rows.forEach(r => { bookDr += r.dr; bookCr += r.cr; if(!r.reconDate){ unDr += r.dr; unCr += r.cr; } });
+    rows.forEach(r => {
+      bookDr += r.dr;
+      bookCr += r.cr;
+      if(!r.reconDate){ unDr += r.dr; unCr += r.cr; }
+    });
+
     const netBook = bookDr - bookCr;
     const netRec = (bookDr - unDr) - (bookCr - unCr);
     const fmtB = (val) => `₹${fmtINR(Math.abs(val))} ${val >= 0 ? 'Dr' : 'Cr'}`;
 
-    const trHtml = vis.map((r, i) => `
+    const openRowHtml = `
+      <tr style="background:#f8fafc; border-bottom:2px solid #cbd5e1; font-weight:800; color:#0f172a;">
+        <td style="padding:5px 6px; color:#64748b;">-</td>
+        <td style="padding:5px 8px;">${fmtDate(s.fromDate)}</td>
+        <td style="padding:5px 8px; color:#0f6e4e;">📂 Opening Balance (b/f)</td>
+        <td style="padding:5px 6px;">-</td>
+        <td style="padding:5px 8px;">-</td>
+        <td style="padding:5px 8px; color:#15803d; font-size:11px;">✔ Reconciled (b/f)</td>
+        <td class="num" style="padding:5px 8px; color:#0f6e4e;">${netOpen >= 0 ? '₹' + fmtINR(netOpen) : '-'}</td>
+        <td class="num" style="padding:5px 8px; color:#be123c;">${netOpen < 0 ? '₹' + fmtINR(Math.abs(netOpen)) : '-'}</td>
+      </tr>
+    `;
+
+    const trHtml = openRowHtml + vis.map((r, i) => `
       <tr ondblclick="openVoucherScreen('${r.type}','${r.vid}')" style="border-bottom:1px solid #e2e8f0; cursor:pointer; ${r.reconDate ? 'background:#f0fdf4;' : ''}">
         <td style="padding:4px 6px; width:32px; color:#64748b;">${i + 1}</td>
         <td style="padding:4px 8px; font-weight:700; width:88px;">${fmtDate(r.date)}</td>
