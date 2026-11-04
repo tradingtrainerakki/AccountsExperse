@@ -5972,11 +5972,29 @@ window.renderStockSummaryScreen = function() {
       const entries = (typeof getVoucherEntries === "function") ? getVoucherEntries(v) : (v.entries || []);
       const myLines = entries.filter(e => String(e.ledgerId) === String(led.id));
       if(!myLines.length) return;
-      const oppLines = entries.filter(e => String(e.ledgerId) !== String(led.id));
 
       myLines.forEach((myLine, mIdx) => {
-        if(s.splitMode && oppLines.length > 1 && myLines.length === 1){
-          oppLines.forEach((op, oIdx) => {
+        // Sirf vipreet side (Dr ke liye Cr, aur Cr ke liye Dr) wali entries hi opposite mani jayein!
+        const trueOppLines = entries.filter(e => String(e.ledgerId) !== String(led.id) && e.type !== myLine.type);
+        const sameSideLines = entries.filter(e => e.type === myLine.type);
+
+        // Split Combined tabhi ho jab hum Bank/Cash jaise single-side ledger par hon (sameSideLines.length === 1)
+        if(s.splitMode && sameSideLines.length === 1 && trueOppLines.length > 1){
+          trueOppLines.forEach((op, oIdx) => {
+            const rk = `${led.id}__split_${oIdx}_${op.ledgerId}`;
+            const rDate = (v.bankRecon && (v.bankRecon[rk] || v.bankRecon[led.id])) || "";
+            const amt = Number(op.amount) || 0;
+            rows.push({ vid: v.id, rk, date: v.date, vchNo: v.vchNo, type: v.type, oppName: getLedgerName(op.ledgerId), oppBadge: op.type, narration: v.narration || "", dr: myLine.type === "Dr" ? amt : 0, cr: myLine.type === "Cr" ? amt : 0, reconDate: rDate });
+          });
+        } else {
+          const rk = `${led.id}__line_${mIdx}`;
+          const rDate = (v.bankRecon && (v.bankRecon[rk] || v.bankRecon[led.id])) || "";
+          const amt = Number(myLine.amount) || 0;
+          const oppName = trueOppLines.map(o => getLedgerName(o.ledgerId)).join(", ") || "Voucher Entry";
+          const oppBadge = trueOppLines[0] ? trueOppLines[0].type : (myLine.type === "Dr" ? "Cr" : "Dr");
+          rows.push({ vid: v.id, rk, date: v.date, vchNo: v.vchNo, type: v.type, oppName, oppBadge, narration: v.narration || "", dr: myLine.type === "Dr" ? amt : 0, cr: myLine.type === "Cr" ? amt : 0, reconDate: rDate });
+        }
+      });
             const rk = `${led.id}__split_${oIdx}_${op.ledgerId}`;
             const rDate = (v.bankRecon && (v.bankRecon[rk] || v.bankRecon[led.id])) || "";
             const amt = Number(op.amount) || 0;
