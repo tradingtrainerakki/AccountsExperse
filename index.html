@@ -173,10 +173,11 @@ function refreshHeaderAndSidebar() {
 // Smart Entity Detector: Checks if current entity is Trust/NGO or Regular Business
   function isTrustEntity(){
     const c = (typeof DB !== "undefined" && DB.company) ? DB.company : {};
-    const t = String(c.orgType || c.type || c.regType || "").toLowerCase();
+    const et = String(c.entityType || c.orgType || c.type || "").toLowerCase();
+    if(et === "company" || et === "business") return false;
+    if(et === "trust" || et === "ngo") return true;
     const n = String(c.name || "").toLowerCase();
-    return t.includes("trust") || t.includes("ngo") || t.includes("society") || t.includes("section 8") ||
-           n.includes("trust") || n.includes("ngo") || n.includes("samiti") || n.includes("sansthan") || n.includes("foundation");
+    return n.includes("trust") || n.includes("ngo") || n.includes("samiti") || n.includes("sansthan") || n.includes("foundation");
   }
 
   // Dynamic Gateway Menu Definition
@@ -2574,8 +2575,15 @@ function entityDetailsFormHtml(p, c, type) {
   const reg = c.regType || "Regular";
 
   return `
-    ${sec("Basic Details")}
-    <div class="form-grid">
+      ${sec("Basic Details")}
+      <div class="form-grid">
+        <div class="field" style="grid-column: 1 / -1; background:#f0fdf4; padding:8px 12px; border:1px solid #86efac; border-radius:6px; margin-bottom:4px;">
+          <label style="color:#0f6e4e; font-weight:700;">Organization / Entity Type *</label>
+          <select id="${p}EntityTypeInp" onchange="(function(sel){ const t = sel.value === 'Trust'; const nl = document.getElementById('${p}NameLbl'); if(nl) nl.innerText = (t ? 'Trust Name' : 'Company Name') + ' *'; const fm = sel.closest('.modal-card, .form-card, div'); if(fm){ fm.querySelectorAll('.ent-co').forEach(el => el.style.display = t ? 'none' : ''); fm.querySelectorAll('.ent-tr').forEach(el => el.style.display = t ? '' : 'none'); } })(this)" style="font-weight:700; color:#0f5132;">
+            <option value="Company" ${!isTrust ? "selected" : ""}>🏢 Company / Regular Business (Trading, P&L, Balance Sheet)</option>
+            <option value="Trust" ${isTrust ? "selected" : ""}>🏛️ Trust / NGO / Section-8 (Receipt & Payment, Income & Expenditure, 80G)</option>
+          </select>
+        </div>
       <div class="field" style="grid-column: 1 / -1;"><label id="${p}NameLbl">${isTrust ? "Trust Name" : "Company Name"} *</label><input id="${p}NameInp" value="${v("name")}" placeholder="${isTrust ? "e.g. Sanrakshan Trust" : "e.g. Shree Ganesh Traders"}"></div>
       <div class="field"><label>Print / Mailing Name</label><input id="${p}MailInp" value="${v("mailName")}" placeholder="Invoice / receipt par naam"></div>
       <div class="field"><label>Contact Person</label><input id="${p}ContactInp" value="${v("contact")}"></div>
@@ -2634,9 +2642,11 @@ function autoRegFromGstin(p) {
 }
 
 function readEntityDetails(p) {
-  const g = id => { const e = document.getElementById(p + id + "Inp"); return e ? e.value.trim() : ""; };
-  return {
-    name: g("Name"), mailName: g("Mail"), contact: g("Contact"),
+    const g = id => { const e = document.getElementById(p + id + "Inp"); return e ? e.value.trim() : ""; };
+    const et = g("EntityType") || "Company";
+    return {
+      entityType: et, orgType: et, type: et,
+      name: g("Name"), mailName: g("Mail"), contact: g("Contact"),
     address: g("Addr"), city: g("City"), pin: g("Pin"), stateCode: g("State"), country: g("Country") || "India",
     phone: g("Phone"), mobile: g("Mobile"), email: g("Email"), website: g("Web"),
     regType: g("Reg") || "Unregistered", gstin: g("Gstin").toUpperCase(), pan: g("Pan").toUpperCase(),
@@ -5968,8 +5978,9 @@ window.renderStockSummaryScreen = function() {
       badge.className = "btn btn-sec";
       badge.style.cssText = "padding:3px 10px; font-size:11.5px; background:#eff6ff; color:#1e3a8a; border:1px solid #93c5fd; font-weight:700; cursor:pointer; margin-bottom:6px;";
       badge.onclick = () => window.openDirectF2DateModal();
-      const firstCard = sb.querySelector(".form-card") || sb.firstElementChild;
-      if(firstCard) firstCard.prepend(badge);
+      badge.style.cssText = "display:inline-block; margin-bottom:6px; padding:3px 10px; background:#f0fdf4; border:1px solid #86efac; color:#0f6e4e; font-size:11.5px; font-weight:700; border-radius:4px; cursor:pointer;";
+      badge.onclick = () => window.openDirectF2DateModal();
+      sb.insertBefore(badge, sb.firstChild);
     }
     badge.innerHTML = `📅 Period: ${fmtDate(f)} to ${fmtDate(t)} (Press F2)`;
   };
@@ -10049,9 +10060,10 @@ window.renderStockSummaryScreen = function() {
         </table>
       </div>
     `;
-    const foot = `
-      <button class="btn btn-sec" onclick="closeModal()">Cancel</button>
-      <button class="btn" onclick="window.saveBulkReorderSettings()">💾 Save Inventory Settings</button>
+   const foot = `
+      <button class="btn" onclick="closeModal()">Close</button>
+      <button class="btn" onclick="window.print()" style="background:#0f766e; color:#fff; border-color:#0f766e;">🖨️ Print Register</button>
+      <button class="btn primary" onclick="window.downloadForm10BDCsv()">📥 Download Form 10BD Excel (.CSV)</button>
     `;
     showModal("📦 Smart Inventory Settings (Reorder Level, Batch & Expiry)", body, foot);
   };
