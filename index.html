@@ -170,20 +170,43 @@ function refreshHeaderAndSidebar() {
   }
 }
 
-// Gateway Menu Definition
-const GATEWAY_MENU = [
-  { section: "Masters", label: "Create / Alter Ledgers", hk: "L", screen: "masters_ledger" },
-  { section: "Masters", label: "Stock Items & HSN Master", hk: "I", screen: "masters_item" },
-  { section: "Masters", label: "Chart of Accounts (28 Groups)", hk: "G", screen: "masters_groups" },
-  { section: "Transactions", label: "Vouchers Entry (F4 - F9)", hk: "V", screen: "voucher_entry" },
-  { section: "Transactions", label: "Day Book / All Transactions", hk: "D", screen: "daybook" },
-  { section: "Accounting Reports", label: "Ledger Account (By Head)", hk: "A", screen: "ledgers_view" },
-  { section: "Accounting Reports", label: "Trial Balance", hk: "T", screen: "trial_balance" },
-  { section: "Accounting Reports", label: "Profit & Loss A/c", hk: "P", screen: "pnl_report" },
-  { section: "Accounting Reports", label: "Balance Sheet", hk: "B", screen: "balance_sheet" },
-  { section: "GST Statutory Reports", label: "GSTR-1 (Outward Supplies & JSON)", hk: "1", screen: "gstr1" },
-  { section: "GST Statutory Reports", label: "GSTR-3B (Tax & ITC Summary)", hk: "3", screen: "gstr3b" }
-];
+// Smart Entity Detector: Checks if current entity is Trust/NGO or Regular Business
+  function isTrustEntity(){
+    const c = (typeof DB !== "undefined" && DB.company) ? DB.company : {};
+    const t = String(c.orgType || c.type || c.regType || "").toLowerCase();
+    const n = String(c.name || "").toLowerCase();
+    return t.includes("trust") || t.includes("ngo") || t.includes("society") || t.includes("section 8") ||
+           n.includes("trust") || n.includes("ngo") || n.includes("samiti") || n.includes("sansthan") || n.includes("foundation");
+  }
+
+  // Dynamic Gateway Menu Definition
+  function getGatewayMenu(){
+    const isTrust = isTrustEntity();
+    return [
+      { section: "Masters", label: "Create / Alter Ledgers", hk: "L", screen: "masters_ledger" },
+      { section: "Masters", label: "Stock Items & HSN Master", hk: "I", screen: "masters_item" },
+      { section: "Masters", label: "Chart of Accounts (28 Groups)", hk: "G", screen: "masters_groups" },
+      { section: "Transactions", label: "Vouchers Entry (F4 - F9)", hk: "V", screen: "voucher_entry" },
+      { section: "Transactions", label: "Day Book / All Transactions", hk: "D", screen: "daybook" },
+      { section: "Accounting Reports", label: "Ledger Account (By Head)", hk: "A", screen: "ledgers_view" },
+      { section: "Accounting Reports", label: "Trial Balance", hk: "T", screen: "trial_balance" },
+      // Dynamic Reports based on Entity Type:
+      ...(isTrust ? [
+        { section: "Accounting Reports", label: "Receipt & Payment A/c", hk: "R", screen: "daybook" },
+        { section: "Accounting Reports", label: "Income & Expenditure A/c", hk: "P", screen: "pnl_report" },
+        { section: "Accounting Reports", label: "Balance Sheet (Corpus Fund)", hk: "B", screen: "balance_sheet" }
+      ] : [
+        { section: "Accounting Reports", label: "Trading Account", hk: "R", screen: "pnl_report" },
+        { section: "Accounting Reports", label: "Profit & Loss A/c", hk: "P", screen: "pnl_report" },
+        { section: "Accounting Reports", label: "Balance Sheet", hk: "B", screen: "balance_sheet" }
+      ]),
+      { section: "GST Statutory Reports", label: "GSTR-1 (Outward Supplies & JSON)", hk: "1", screen: "gstr1" },
+      { section: "GST Statutory Reports", label: "GSTR-3B (Tax & ITC Summary)", hk: "3", screen: "gstr3b" }
+    ];
+  }
+
+  // Backward compatibility getter
+  let GATEWAY_MENU = getGatewayMenu();
 
 function navigate(screen, pushHistory = true) {
   if (pushHistory && CURRENT_SCREEN !== screen) {
@@ -6194,6 +6217,7 @@ window.renderStockSummaryScreen = function() {
     }
   }, true);
   function renderGatewayFolders(){
+    GATEWAY_MENU = getGatewayMenu();
     if(typeof CURRENT_SCREEN === "undefined" || CURRENT_SCREEN !== "gateway") return;
     const box = document.querySelector(".gateway-box") || document.querySelector(".gw-menu");
     if(!box) return;
@@ -10292,6 +10316,47 @@ window.renderStockSummaryScreen = function() {
       <button class="btn" onclick="window.downloadForm10BDCsv()">📥 Download Form 10BD Excel (.CSV)</button>
     `;
     showModal("🏛️ Statutory 80G / Form 10BD Donor Register", body, foot);
+
+    const mBox = document.querySelector("#appModal .modal-card, #appModal .modal-box, #appModal > div");
+    if(mBox){
+      mBox.style.width = "94vw";
+      mBox.style.maxWidth = "1280px";
+      mBox.style.maxHeight = "92vh";
+    }
+
+    const mBody = document.getElementById("modalBody") || (mBox && mBox.querySelector("div[style*='overflow']"));
+    const tblWrap = document.querySelector("#form10BdTable") ? document.querySelector("#form10BdTable").parentElement : mBody;
+    if(tblWrap){
+      tblWrap.style.maxHeight = "70vh";
+      tblWrap.style.overflowY = "auto";
+      tblWrap.setAttribute("tabindex", "0");
+      tblWrap.style.outline = "none";
+      setTimeout(() => tblWrap.focus(), 50);
+    }
+
+    if(window._80gKeyHandler) window.removeEventListener("keydown", window._80gKeyHandler, true);
+    window._80gKeyHandler = function(e){
+      const m = document.getElementById("appModal");
+      if(!m || !m.classList.contains("open")){
+        window.removeEventListener("keydown", window._80gKeyHandler, true);
+        return;
+      }
+      if(e.key === "Escape"){
+        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+        if(typeof closeModal === "function") closeModal();
+        else m.classList.remove("open");
+        window.removeEventListener("keydown", window._80gKeyHandler, true);
+        return;
+      }
+      if(["ArrowDown","ArrowUp","PageDown","PageUp"].includes(e.key)){
+        e.stopPropagation(); e.stopImmediatePropagation();
+        if(tblWrap){
+          const step = (e.key === "PageDown" || e.key === "PageUp") ? 260 : 48;
+          tblWrap.scrollTop += (e.key === "ArrowDown" || e.key === "PageDown") ? step : -step;
+        }
+      }
+    };
+    window.addEventListener("keydown", window._80gKeyHandler, true);
   };
 
   window.downloadForm10BDCsv = function() {
