@@ -5633,8 +5633,6 @@ window.renderStockSummaryScreen = function() {
       window.launchDirectLedgerPicker("recon");
     } else if(hk === "A"){
       window.launchDirectLedgerPicker("ledger_view");
-    } else if(item.screen === "company_modal" || (typeof item.label === "string" && item.label.includes("Company Create"))) {
-      if(typeof openEntitySwitcherModal === "function") openEntitySwitcherModal();
     } else if(hk === "8" && typeof openForm10BDModal === "function"){
       openForm10BDModal();
     } else if(hk === "8" && typeof openForm10BDModal === "function"){
