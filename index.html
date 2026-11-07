@@ -3134,7 +3134,8 @@ function renderGroupsScreen() {
         <td><span class="kbd">${escHtml(g.nature)}</span></td>
         <td>${g.affectsGP ? "Yes (Trading A/c)" : "No (P&L / B/S)"}</td>
         <td class="num"><b>${count}</b> Ledgers</td>
-        <td>
+        <td style="display:flex; gap:5px; align-items:center;">
+          ${count > 0 ? `<button class="btn btn-sec" style="padding:2px 7px; font-size:11px; background:#eff6ff; color:#1d4ed8; border-color:#93c5fd;" onclick="event.stopPropagation(); openMoveGroupLedgersModal(${i})" title="Is group ke ledgers kisi doosre group me shift karein">⇄ Move (${count})</button>` : ''}
           ${isCustom ? `<button class="btn btn-danger" style="padding:2px 7px; font-size:11px;" onclick="event.stopPropagation(); deleteCustomGroup('${escHtml(g.name)}')">Del</button>` : `<span style="color:var(--muted);font-size:11px;">System</span>`}
         </td>
       </tr>
@@ -3197,6 +3198,86 @@ function renderGroupsScreen() {
     </div>
   `;
 }
+  window.openMoveGroupLedgersModal = function(grpIdx) {
+    const srcGrp = DB.groups[grpIdx];
+    if (!srcGrp) return;
+    const ledgersInGroup = DB.ledgers
+      .map((l, idx) => ({ l, idx }))
+      .filter(x => x.l.group === srcGrp.name);
+
+    if (!ledgersInGroup.length) {
+      toast("ℹ️ Is group me abhi koi ledger nahi hai!");
+      return;
+    }
+
+    const targetOpts = DB.groups
+      .filter(g => g.name !== srcGrp.name)
+      .map(g => `<option value="${escHtml(g.name)}">${escHtml(g.name)} (${escHtml(g.nature)})</option>`)
+      .join("");
+
+    const ledRows = ledgersInGroup.map(x => `
+      <label style="display:flex; align-items:center; gap:8px; padding:6px 10px; border-bottom:1px solid #e2e8f0; cursor:pointer; font-size:13px;">
+        <input type="checkbox" class="move-led-chk" value="${x.idx}" checked style="width:15px; height:15px;">
+        <span style="font-weight:600; color:#1e293b;">${escHtml(x.l.name)}</span>
+        <span style="margin-left:auto; font-size:11px; color:#64748b;">Op. Bal: ₹${Number(x.l.opBal || 0).toFixed(2)} ${escHtml(x.l.opType || 'Dr')}</span>
+      </label>
+    `).join("");
+
+    const body = `
+      <div style="margin-bottom:12px; padding:10px 12px; background:#f0fdf4; border:1px solid #86efac; border-radius:6px; font-size:13px;">
+        <div>Current Group: <b style="color:#0f6e4e;">${escHtml(srcGrp.name)}</b> (${ledgersInGroup.length} Ledgers)</div>
+        <div style="font-size:11.5px; color:#475569; margin-top:3px;">✅ Niche jin ledgers ko naye group me shift karna hai unhe tick rakhein. Purana group <b>${escHtml(srcGrp.name)}</b> khatam nahi hoga.</div>
+      </div>
+
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+        <b style="font-size:12px; color:#334155;">Select Ledgers to Move:</b>
+        <div style="display:flex; gap:8px;">
+          <button type="button" class="btn btn-sec" style="padding:2px 8px; font-size:11px;" onclick="document.querySelectorAll('.move-led-chk').forEach(c => c.checked = true)">Select All</button>
+          <button type="button" class="btn btn-sec" style="padding:2px 8px; font-size:11px;" onclick="document.querySelectorAll('.move-led-chk').forEach(c => c.checked = false)">Unselect All</button>
+        </div>
+      </div>
+
+      <div style="max-height:220px; overflow-y:auto; border:1px solid #cbd5e1; border-radius:6px; margin-bottom:14px; background:#fff;">
+        ${ledRows}
+      </div>
+
+      <div class="field">
+        <label style="font-weight:700; color:#0f6e4e;">Move Selected Ledgers To (New Target Group) *</label>
+        <select id="moveTargetGroupSel" style="font-weight:700; padding:8px; border:2px solid #0f6e4e; border-radius:6px; width:100%;">
+          ${targetOpts}
+        </select>
+      </div>
+    `;
+
+    const foot = `
+      <button class="btn btn-sec" onclick="closeModal()">Cancel</button>
+      <button class="btn" style="background:#0f6e4e; color:#fff;" onclick="confirmMoveGroupLedgers('${escHtml(srcGrp.name)}')">⇄ Move Selected Ledgers</button>
+    `;
+
+    showModal("⇄ Bulk Move Ledgers to Another Group", body, foot);
+  };
+
+  window.confirmMoveGroupLedgers = function(srcGrpName) {
+    const targetGrp = document.getElementById("moveTargetGroupSel")?.value;
+    if (!targetGrp) return;
+    const chks = Array.from(document.querySelectorAll(".move-led-chk:checked"));
+    if (!chks.length) {
+      toast("⚠️ Kripya kam se kam 1 ledger select karein!");
+      return;
+    }
+
+    chks.forEach(c => {
+      const idx = Number(c.value);
+      if (DB.ledgers[idx]) {
+        DB.ledgers[idx].group = targetGrp;
+      }
+    });
+
+    if (typeof saveDB === "function") saveDB();
+    closeModal();
+    renderGroupsScreen();
+    toast(`✅ ${chks.length} Ledgers moved from "${srcGrpName}" to "${targetGrp}"!`);
+  };
 
 function syncGroupNatureFromParent() {
   const pName = document.getElementById("grpParentInp").value;
