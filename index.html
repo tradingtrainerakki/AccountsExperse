@@ -1784,47 +1784,140 @@ function removeAcctRow(idx) {
     const el = document.activeElement;
     if (!el) return;
     const tag = el.tagName;
+   // 0. Universal Modal Keyboard Handler (Esc + Arrow Keys + Enter inside F3 Company & all Modals)
+    const openModalEl = (document.getElementById("appModal")?.classList.contains("open") && document.getElementById("appModal")) ||
+                        Array.from(document.querySelectorAll(".modal-overlay, .modal, [id*='Modal']")).find(m => m.offsetParent !== null && m.id !== "tallyAcceptOverlay");
 
+    const hasModalCloseBtn = Array.from(document.querySelectorAll("button")).find(b => 
+      b.offsetParent !== null && ((b.innerText || "").includes("✕ Esc") || (b.innerText || "").includes("Cancel (Esc)"))
+    );
+
+    const activeModalBox = openModalEl || (hasModalCloseBtn ? (hasModalCloseBtn.closest(".modal-card") || hasModalCloseBtn.parentElement?.parentElement?.parentElement) : null);
+
+    if (activeModalBox) {
+      // A. ESC Key -> Close Modal Immediately
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (hasModalCloseBtn) hasModalCloseBtn.click();
+        else if (typeof closeModal === "function") closeModal();
+        else activeModalBox.classList.remove("open");
+        return;
+      }
+
+      // Collect all interactive items inside Modal (Inputs, Selects, Company Rows & Buttons)
+      const modalItems = Array.from(activeModalBox.querySelectorAll(
+        "input:not([type='hidden']):not([disabled]), select:not([disabled]), textarea:not([disabled]), [onclick], button:not([disabled])"
+      )).filter(x => {
+        if (x.offsetParent === null) return false;
+        const txt = (x.innerText || "").trim();
+        if (txt === "✕ Esc") return false; // Skip top-right close icon in arrow cycle
+        return true;
+      });
+
+      // B. Arrow Keys (Up / Down / Left / Right) -> Move Focus across Modal Buttons & Rows
+      if (["ArrowDown", "ArrowUp", "ArrowRight", "ArrowLeft"].includes(e.key)) {
+        const curTag = document.activeElement?.tagName;
+        // Let native <select> use Up/Down arrows when focused
+        if (curTag === "SELECT" && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+          e.stopPropagation();
+          return;
+        }
+        if (modalItems.length > 0) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          let curIdx = modalItems.indexOf(document.activeElement);
+          if (curIdx === -1) {
+            // Highlight first main action button or first item
+            curIdx = modalItems.findIndex(x => (x.innerText || "").includes("Create New") || (x.innerText || "").includes("Alter")) ;
+            if (curIdx === -1) curIdx = 0;
+          } else {
+            const step = (e.key === "ArrowDown" || e.key === "ArrowRight") ? 1 : -1;
+            curIdx = (curIdx + step + modalItems.length) % modalItems.length;
+          }
+          const target = modalItems[curIdx];
+          if (target.tabIndex < 0) target.tabIndex = 0;
+          target.focus();
+          modalItems.forEach(m => { m.style.outline = ""; m.style.boxShadow = ""; });
+          target.style.outline = "2px solid #0f6e4e";
+          target.style.boxShadow = "0 0 0 3px #fef08a";
+          return;
+        }
+      }
+
+      // C. Enter Key inside Modal -> Click focused Button / Row or Move to Next Input
+      if (e.key === "Enter") {
+        const cur = document.activeElement;
+        if (cur && activeModalBox.contains(cur) && (cur.tagName === "BUTTON" || cur.hasAttribute("onclick"))) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          cur.click();
+          return;
+        }
+        // If no input/button is focused yet inside modal (like on F3 Company Manager open), trigger focused or primary button!
+        const hasInputs = modalItems.some(x => ["INPUT", "SELECT", "TEXTAREA"].includes(x.tagName));
+        if (!hasInputs && modalItems.length > 0) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          const primaryBtn = modalItems.find(x => (x.innerText || "").includes("Create New") || (x.innerText || "").includes("Alter")) || modalItems[0];
+          if (primaryBtn) primaryBtn.click();
+          return;
+        }
+      }
+    }
     // A. Allow native Up/Down arrow keys inside <select> dropdowns & number/text inputs without interference
     if (tag === "SELECT" && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
       e.stopPropagation();
       return;
     }
 
-    // B. Enter Key -> Move forward to the next visible field (and auto-submit Login / Forms)
+    // B. Enter Key Navigation + 100% Direct Login Trigger
     if (e.key === "Enter" && (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA")) {
       if (el.type === "button" || el.type === "submit" || el.type === "checkbox") return;
       if (el.id && (el.id.includes("Search") || el.id.includes("Filter"))) return;
 
-      // 1. Special handling for Cloud Login Overlay: Email -> Password -> Click Sign In!
-      const loginBox = el.closest("#loginOverlay") || (el.type === "password" && el.closest("div"));
-      if (loginBox && document.getElementById("loginOverlay")?.classList.contains("active")) {
-        e.preventDefault();
-        e.stopPropagation();
-        const loginInputs = Array.from(loginBox.querySelectorAll("input:not([type='hidden']):not([disabled])")).filter(x => x.offsetParent !== null);
-        const lIdx = loginInputs.indexOf(el);
-        if (lIdx >= 0 && lIdx < loginInputs.length - 1) {
-          loginInputs[lIdx + 1].focus();
-          loginInputs[lIdx + 1].select?.();
-        } else {
-          const signInBtn = loginBox.querySelector("button") || document.querySelector("#loginOverlay button");
-          if (signInBtn) signInBtn.click();
-        }
-        return;
-      }
+      // 1. Direct Cloud Login Handler (Works regardless of button tag or spelling)
+      const lgOverlay = document.getElementById("loginOverlay");
+      const inLoginBox = (lgOverlay && (lgOverlay.contains(el) || lgOverlay.classList.contains("active"))) ||
+                         el.type === "password" ||
+                         (el.placeholder && el.placeholder.toLowerCase().includes("email")) ||
+                         document.body.innerText.includes("CLOUD LOGIN");
 
-      e.preventDefault();
-      e.stopPropagation();
+      if (inLoginBox) {
+        const passInp = (lgOverlay || document).querySelector("input[type='password']");
+        if (passInp && passInp.offsetParent !== null) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
 
-      const container = el.closest(".modal-card") || el.closest(".form-card") || document.getElementById("screenBody") || document.body;
-      const allFields = Array.from(container.querySelectorAll("input:not([type='hidden']):not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])"))
-        .filter(x => {
-          if (x.offsetParent === null) return false;
-          if (x.tagName === "BUTTON") {
-            const txt = (x.innerText || "").toLowerCase();
-            return txt.includes("save") || txt.includes("accept") || txt.includes("update") || txt.includes("move") || txt.includes("sign in") || txt.includes("login") || txt.includes("create");
+          // Agar abhi Email box me hain, toh Password box par le jao
+          if (el !== passInp) {
+            passInp.focus();
+            if (typeof passInp.select === "function") passInp.select();
+            return;
           }
-          return true;
+
+          // Agar Password box me Enter dabaya hai, toh Sign In trigger karo!
+          const rootBox = passInp.closest("#loginOverlay") || passInp.parentElement?.parentElement || document;
+          const loginBtn = Array.from(rootBox.querySelectorAll("button, input[type='submit'], input[type='button'], a, div[onclick], span[onclick], .btn"))
+            .find(b => {
+              const t = (b.innerText || b.value || "").toLowerCase();
+              return t.includes("sign in") || t.includes("supabase") || t.includes("login");
+            });
+
+          if (loginBtn) {
+            loginBtn.click();
+          } else if (passInp.form) {
+            passInp.form.requestSubmit ? passInp.form.requestSubmit() : passInp.form.submit();
+          } else if (typeof doCloudLogin === "function") {
+            doCloudLogin();
+          } else if (typeof handleLogin === "function") {
+            handleLogin();
+          } else if (typeof loginWithSupabase === "function") {
+            loginWithSupabase();
+          }
+          return;
+        }
+      }
         });
 
       const idx = allFields.indexOf(el);
@@ -6062,11 +6155,66 @@ window.renderStockSummaryScreen = function() {
       window.launchDirectLedgerPicker("ledger_view");
       return;
     }
-    if(item.vType){
+   if(item.vType){
       // 1. Update VCH_STATE directly before navigation
       if(typeof VCH_STATE !== "undefined" && VCH_STATE){
         VCH_STATE.vchType = item.vType;
       }
+      if(typeof quickVch === "function") {
+        quickVch(item.vType);
+      } else if(typeof switchVoucherType === "function") {
+        switchVoucherType(item.vType);
+      } else {
+        navigate("voucher_entry");
+      }
+
+      // 2. Remove duplicate "Voucher Type चुनें" popup & sync voucher screen
+      const hideDupVchPopup = () => {
+        // Close or remove the "Voucher Type चुनें" floating box
+        if(typeof closeVchTypePicker === "function") closeVchTypePicker();
+        if(typeof hideVoucherTypeModal === "function") hideVoucherTypeModal();
+        document.querySelectorAll("div").forEach(d => {
+          if(d.innerText && d.innerText.includes("Voucher Type चुनें") && d.id !== "screenBody" && !d.querySelector("#screenBody")){
+            if(d.style.position === "fixed" || d.style.position === "absolute" || d.className.includes("modal") || d.className.includes("popup") || d.className.includes("picker")){
+              d.remove();
+            } else if(d.parentElement && (d.parentElement.style.position === "fixed" || d.parentElement.style.position === "absolute")){
+              d.parentElement.remove();
+            }
+          }
+        });
+      };
+
+      setTimeout(hideDupVchPopup, 10);
+      setTimeout(() => {
+        hideDupVchPopup();
+        if(typeof VCH_STATE !== "undefined" && VCH_STATE && VCH_STATE.vchType !== item.vType){
+          VCH_STATE.vchType = item.vType;
+          if(typeof initNewVoucher === "function") initNewVoucher(item.vType);
+          if(typeof renderVoucherScreen === "function") renderVoucherScreen();
+        }
+        const vBtns = document.querySelectorAll("#screenBody button, #screenBody .vtype-btn, #screenBody .tab-btn");
+        vBtns.forEach(b => {
+          const txt = (b.innerText || "").trim().toLowerCase();
+          if(txt === item.vType.toLowerCase() || txt.startsWith(item.vType.toLowerCase() + " ")){
+            b.click();
+          }
+        });
+
+        if(item.customVoucherName){
+          const titleEl = document.getElementById("screenTitle");
+          if(titleEl) titleEl.textContent = `${item.customVoucherName} (${item.vType} Voucher)`;
+          const cvObj = getCustomVoucherTypes().find(x => x.name === item.customVoucherName);
+          const vNoInp = document.getElementById("vchNoInp") || document.getElementById("vNo") || document.querySelector("#screenBody input[id*='No']");
+          if(cvObj && cvObj.prefix && vNoInp){
+            const rawNum = vNoInp.value.replace(/^[^0-9]*/, "") || "1";
+            vNoInp.value = cvObj.prefix + rawNum;
+            if(typeof VCH_STATE !== "undefined" && VCH_STATE) VCH_STATE.vchNo = vNoInp.value;
+          }
+        }
+        hideDupVchPopup();
+      }, 70);
+      return;
+    }
       // 2. Call built-in voucher switcher if present
       if(typeof quickVch === "function") {
         quickVch(item.vType);
