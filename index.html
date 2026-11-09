@@ -1791,21 +1791,38 @@ function removeAcctRow(idx) {
       return;
     }
 
-    // B. Enter Key -> Move forward to the next visible field on ANY screen
+    // B. Enter Key -> Move forward to the next visible field (and auto-submit Login / Forms)
     if (e.key === "Enter" && (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA")) {
       if (el.type === "button" || el.type === "submit" || el.type === "checkbox") return;
       if (el.id && (el.id.includes("Search") || el.id.includes("Filter"))) return;
 
+      // 1. Special handling for Cloud Login Overlay: Email -> Password -> Click Sign In!
+      const loginBox = el.closest("#loginOverlay") || (el.type === "password" && el.closest("div"));
+      if (loginBox && document.getElementById("loginOverlay")?.classList.contains("active")) {
+        e.preventDefault();
+        e.stopPropagation();
+        const loginInputs = Array.from(loginBox.querySelectorAll("input:not([type='hidden']):not([disabled])")).filter(x => x.offsetParent !== null);
+        const lIdx = loginInputs.indexOf(el);
+        if (lIdx >= 0 && lIdx < loginInputs.length - 1) {
+          loginInputs[lIdx + 1].focus();
+          loginInputs[lIdx + 1].select?.();
+        } else {
+          const signInBtn = loginBox.querySelector("button") || document.querySelector("#loginOverlay button");
+          if (signInBtn) signInBtn.click();
+        }
+        return;
+      }
+
       e.preventDefault();
       e.stopPropagation();
 
-      const container = el.closest(".modal-card") || document.getElementById("screenBody") || document.body;
+      const container = el.closest(".modal-card") || el.closest(".form-card") || document.getElementById("screenBody") || document.body;
       const allFields = Array.from(container.querySelectorAll("input:not([type='hidden']):not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])"))
         .filter(x => {
           if (x.offsetParent === null) return false;
           if (x.tagName === "BUTTON") {
             const txt = (x.innerText || "").toLowerCase();
-            return txt.includes("save") || txt.includes("accept") || txt.includes("update") || txt.includes("move");
+            return txt.includes("save") || txt.includes("accept") || txt.includes("update") || txt.includes("move") || txt.includes("sign in") || txt.includes("login") || txt.includes("create");
           }
           return true;
         });
@@ -1813,7 +1830,6 @@ function removeAcctRow(idx) {
       const idx = allFields.indexOf(el);
       if (idx >= 0 && idx < allFields.length - 1) {
         const nextEl = allFields[idx + 1];
-        // If we are on the Narration field in Voucher Entry and the next element is the Save Voucher button, directly trigger saveCurrentVoucher()!
         if (nextEl.tagName === "BUTTON" && typeof CURRENT_SCREEN !== "undefined" && CURRENT_SCREEN === "voucher_entry") {
           if (typeof window.saveCurrentVoucher === "function") {
             window.saveCurrentVoucher();
@@ -6047,23 +6063,51 @@ window.renderStockSummaryScreen = function() {
       return;
     }
     if(item.vType){
-      navigate("voucher_entry");
+      // 1. Update VCH_STATE directly before navigation
+      if(typeof VCH_STATE !== "undefined" && VCH_STATE){
+        VCH_STATE.vchType = item.vType;
+      }
+      // 2. Call built-in voucher switcher if present
+      if(typeof quickVch === "function") {
+        quickVch(item.vType);
+      } else if(typeof switchVoucherType === "function") {
+        switchVoucherType(item.vType);
+      } else if(typeof selectVoucherType === "function") {
+        selectVoucherType(item.vType);
+      } else {
+        navigate("voucher_entry");
+      }
+
+      // 3. Ensure UI buttons/dropdowns and Custom Voucher prefix match
       setTimeout(() => {
-        if(typeof setVoucherType === "function") setVoucherType(item.vType);
-        const sel = document.getElementById("vType") || document.querySelector("select[onchange*='Voucher']");
-        if(sel){ sel.value = item.vType; sel.dispatchEvent(new Event("change")); }
+        if(typeof VCH_STATE !== "undefined" && VCH_STATE && VCH_STATE.vchType !== item.vType){
+          VCH_STATE.vchType = item.vType;
+          if(typeof initNewVoucher === "function") initNewVoucher(item.vType);
+          if(typeof renderVoucherScreen === "function") renderVoucherScreen();
+        }
+        // Also click matching voucher-type pill/tab button inside screenBody if rendered
+        const vBtns = document.querySelectorAll("#screenBody button, #screenBody .vtype-btn, #screenBody .tab-btn");
+        vBtns.forEach(b => {
+          const txt = (b.innerText || "").trim().toLowerCase();
+          if(txt === item.vType.toLowerCase() || txt.startsWith(item.vType.toLowerCase() + " ")){
+            b.click();
+          }
+        });
+
         if(item.customVoucherName){
           const titleEl = document.getElementById("screenTitle");
           if(titleEl) titleEl.textContent = `${item.customVoucherName} (${item.vType} Voucher)`;
           const cvObj = getCustomVoucherTypes().find(x => x.name === item.customVoucherName);
-          const vNoInp = document.getElementById("vNo") || document.getElementById("vchNoInp");
-          if(cvObj && cvObj.prefix && vNoInp && !vNoInp.value.startsWith(cvObj.prefix)){
-            vNoInp.value = cvObj.prefix + vNoInp.value.replace(/^[^0-9]*/, "");
+          const vNoInp = document.getElementById("vchNoInp") || document.getElementById("vNo") || document.querySelector("#screenBody input[id*='No']");
+          if(cvObj && cvObj.prefix && vNoInp){
+            const rawNum = vNoInp.value.replace(/^[^0-9]*/, "") || "1";
+            vNoInp.value = cvObj.prefix + rawNum;
+            if(typeof VCH_STATE !== "undefined" && VCH_STATE) VCH_STATE.vchNo = vNoInp.value;
           }
         }
       }, 60);
       return;
-    }
+    }   
     const hk = String(item.hk || "").toUpperCase();
     if(hk === "8" && typeof openForm10BDModal === "function"){
       openForm10BDModal();
