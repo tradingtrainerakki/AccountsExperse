@@ -1688,257 +1688,7 @@ function removeAcctRow(idx) {
 // ============================================================================
 // SAVE VOUCHER ENGINE (CONSTRUCTS EXACT DOUBLE-ENTRY LEGS + GST METADATA)
 // ============================================================================
-// ====== TALLY-STYLE ENTER NAVIGATION, ARROW KEYS & VOUCHER ACCEPT (YES/NO) POPUP ======
-(function initTallyKeyboardAndAcceptEngine() {
-  if (window._tallyKbEngineLoaded) return;
-  window._tallyKbEngineLoaded = true;
 
-  let _lastFocusedBeforeAccept = null;
-  let _bypassAcceptPrompt = false;
-
-  // 1. Tally-Style "Accept? Yes or No" Popup Box
-  window.showTallyAcceptBox = function(onYes) {
-    const existing = document.getElementById("tallyAcceptOverlay");
-    if (existing) existing.remove();
-
-    _lastFocusedBeforeAccept = document.activeElement;
-
-    const overlay = document.createElement("div");
-    overlay.id = "tallyAcceptOverlay";
-    overlay.style.cssText = "position:fixed; inset:0; background:rgba(15,23,42,0.35); z-index:99999; display:flex; align-items:center; justify-content:center;";
-
-    overlay.innerHTML = `
-      <div style="background:#fefce8; border:2px solid #0f6e4e; border-radius:6px; padding:16px 26px; min-width:230px; text-align:center; box-shadow:0 12px 30px rgba(0,0,0,0.28); font-family:inherit;">
-        <div style="font-size:15px; font-weight:800; color:#0f6e4e; margin-bottom:10px; border-bottom:1px solid #cbd5e1; padding-bottom:6px;">Accept Voucher?</div>
-        <div style="display:flex; justify-content:center; gap:14px; margin-top:10px;">
-          <button type="button" id="tallyAcceptYesBtn" style="background:#0f6e4e; color:#fff; border:none; padding:6px 18px; border-radius:4px; font-weight:700; cursor:pointer; font-size:13px;">Yes (Enter / Y)</button>
-          <button type="button" id="tallyAcceptNoBtn" style="background:#e2e8f0; color:#1e293b; border:1px solid #94a3b8; padding:6px 18px; border-radius:4px; font-weight:700; cursor:pointer; font-size:13px;">No (Esc / N)</button>
-        </div>
-      </div>
-    `;
-
-    document.body.appendChild(overlay);
-    const yesBtn = document.getElementById("tallyAcceptYesBtn");
-    const noBtn = document.getElementById("tallyAcceptNoBtn");
-    if (yesBtn) yesBtn.focus();
-
-    function closeAccept(restoreFocus) {
-      overlay.remove();
-      window.removeEventListener("keydown", keyHandler, true);
-      if (restoreFocus && _lastFocusedBeforeAccept && typeof _lastFocusedBeforeAccept.focus === "function") {
-        setTimeout(() => _lastFocusedBeforeAccept.focus(), 20);
-      }
-    }
-
-    function triggerYes() {
-      closeAccept(false);
-      _bypassAcceptPrompt = true;
-      try { onYes(); } finally { _bypassAcceptPrompt = false; }
-    }
-
-    function keyHandler(e) {
-      if (e.key === "Enter" || e.key === "y" || e.key === "Y") {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        triggerYes();
-      } else if (e.key === "Escape" || e.key === "n" || e.key === "N") {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        closeAccept(true);
-      } else if (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "Tab") {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        if (document.activeElement === yesBtn) noBtn.focus();
-        else yesBtn.focus();
-      }
-    }
-
-    yesBtn.onclick = triggerYes;
-    noBtn.onclick = () => closeAccept(true);
-    window.addEventListener("keydown", keyHandler, true);
-  };
-
-  // 2. Wrap saveCurrentVoucher so it asks "Accept? Yes or No" after validation checks
-  setTimeout(() => {
-    if (typeof window.saveCurrentVoucher === "function" && !window.saveCurrentVoucher._wrappedForTally) {
-      const origSave = window.saveCurrentVoucher;
-      const wrapped = function(...args) {
-        if (_bypassAcceptPrompt) return origSave.apply(this, args);
-        if (typeof syncVoucherHeaderFromDOM === "function") syncVoucherHeaderFromDOM();
-        const s = (typeof VCH_STATE !== "undefined") ? VCH_STATE : null;
-        if (s && (!s.vchNo || !s.vchNo.trim() || !s.date)) {
-          return origSave.apply(this, args);
-        }
-        window.showTallyAcceptBox(() => origSave.apply(this, args));
-      };
-      wrapped._wrappedForTally = true;
-      window.saveCurrentVoucher = wrapped;
-    }
-  }, 100);
-
-  // 3. Global Enter-to-Next-Field & Arrow Key Navigation across all screens
-  window.addEventListener("keydown", function(e) {
-    if (document.getElementById("tallyAcceptOverlay")) return;
-    if (e.ctrlKey || e.altKey || e.metaKey) return;
-
-    const el = document.activeElement;
-    if (!el) return;
-    const tag = el.tagName;
-   // 0. Universal Modal Keyboard Handler (Esc + Arrow Keys + Enter inside F3 Company & all Modals)
-    const openModalEl = (document.getElementById("appModal")?.classList.contains("open") && document.getElementById("appModal")) ||
-                        Array.from(document.querySelectorAll(".modal-overlay, .modal, [id*='Modal']")).find(m => m.offsetParent !== null && m.id !== "tallyAcceptOverlay");
-
-    const hasModalCloseBtn = Array.from(document.querySelectorAll("button")).find(b => 
-      b.offsetParent !== null && ((b.innerText || "").includes("✕ Esc") || (b.innerText || "").includes("Cancel (Esc)"))
-    );
-
-    const activeModalBox = openModalEl || (hasModalCloseBtn ? (hasModalCloseBtn.closest(".modal-card") || hasModalCloseBtn.parentElement?.parentElement?.parentElement) : null);
-
-    if (activeModalBox) {
-      // A. ESC Key -> Close Modal Immediately
-      if (e.key === "Escape") {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        if (hasModalCloseBtn) hasModalCloseBtn.click();
-        else if (typeof closeModal === "function") closeModal();
-        else activeModalBox.classList.remove("open");
-        return;
-      }
-
-      // Collect all interactive items inside Modal (Inputs, Selects, Company Rows & Buttons)
-      const modalItems = Array.from(activeModalBox.querySelectorAll(
-        "input:not([type='hidden']):not([disabled]), select:not([disabled]), textarea:not([disabled]), [onclick], button:not([disabled])"
-      )).filter(x => {
-        if (x.offsetParent === null) return false;
-        const txt = (x.innerText || "").trim();
-        if (txt === "✕ Esc") return false; // Skip top-right close icon in arrow cycle
-        return true;
-      });
-
-      // B. Arrow Keys (Up / Down / Left / Right) -> Move Focus across Modal Buttons & Rows
-      if (["ArrowDown", "ArrowUp", "ArrowRight", "ArrowLeft"].includes(e.key)) {
-        const curTag = document.activeElement?.tagName;
-        // Let native <select> use Up/Down arrows when focused
-        if (curTag === "SELECT" && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
-          e.stopPropagation();
-          return;
-        }
-        if (modalItems.length > 0) {
-          e.preventDefault();
-          e.stopImmediatePropagation();
-          let curIdx = modalItems.indexOf(document.activeElement);
-          if (curIdx === -1) {
-            // Highlight first main action button or first item
-            curIdx = modalItems.findIndex(x => (x.innerText || "").includes("Create New") || (x.innerText || "").includes("Alter")) ;
-            if (curIdx === -1) curIdx = 0;
-          } else {
-            const step = (e.key === "ArrowDown" || e.key === "ArrowRight") ? 1 : -1;
-            curIdx = (curIdx + step + modalItems.length) % modalItems.length;
-          }
-          const target = modalItems[curIdx];
-          if (target.tabIndex < 0) target.tabIndex = 0;
-          target.focus();
-          modalItems.forEach(m => { m.style.outline = ""; m.style.boxShadow = ""; });
-          target.style.outline = "2px solid #0f6e4e";
-          target.style.boxShadow = "0 0 0 3px #fef08a";
-          return;
-        }
-      }
-
-      // C. Enter Key inside Modal -> Click focused Button / Row or Move to Next Input
-      if (e.key === "Enter") {
-        const cur = document.activeElement;
-        if (cur && activeModalBox.contains(cur) && (cur.tagName === "BUTTON" || cur.hasAttribute("onclick"))) {
-          e.preventDefault();
-          e.stopImmediatePropagation();
-          cur.click();
-          return;
-        }
-        // If no input/button is focused yet inside modal (like on F3 Company Manager open), trigger focused or primary button!
-        const hasInputs = modalItems.some(x => ["INPUT", "SELECT", "TEXTAREA"].includes(x.tagName));
-        if (!hasInputs && modalItems.length > 0) {
-          e.preventDefault();
-          e.stopImmediatePropagation();
-          const primaryBtn = modalItems.find(x => (x.innerText || "").includes("Create New") || (x.innerText || "").includes("Alter")) || modalItems[0];
-          if (primaryBtn) primaryBtn.click();
-          return;
-        }
-      }
-    }
-    // A. Allow native Up/Down arrow keys inside <select> dropdowns & number/text inputs without interference
-    if (tag === "SELECT" && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
-      e.stopPropagation();
-      return;
-    }
-
-    // B. Enter Key Navigation + 100% Direct Login Trigger
-    if (e.key === "Enter" && (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA")) {
-      if (el.type === "button" || el.type === "submit" || el.type === "checkbox") return;
-      if (el.id && (el.id.includes("Search") || el.id.includes("Filter"))) return;
-
-      // 1. Direct Cloud Login Handler (Works regardless of button tag or spelling)
-      const lgOverlay = document.getElementById("loginOverlay");
-      const inLoginBox = (lgOverlay && (lgOverlay.contains(el) || lgOverlay.classList.contains("active"))) ||
-                         el.type === "password" ||
-                         (el.placeholder && el.placeholder.toLowerCase().includes("email")) ||
-                         document.body.innerText.includes("CLOUD LOGIN");
-
-      if (inLoginBox) {
-        const passInp = (lgOverlay || document).querySelector("input[type='password']");
-        if (passInp && passInp.offsetParent !== null) {
-          e.preventDefault();
-          e.stopImmediatePropagation();
-
-          // Agar abhi Email box me hain, toh Password box par le jao
-          if (el !== passInp) {
-            passInp.focus();
-            if (typeof passInp.select === "function") passInp.select();
-            return;
-          }
-
-          // Agar Password box me Enter dabaya hai, toh Sign In trigger karo!
-          const rootBox = passInp.closest("#loginOverlay") || passInp.parentElement?.parentElement || document;
-          const loginBtn = Array.from(rootBox.querySelectorAll("button, input[type='submit'], input[type='button'], a, div[onclick], span[onclick], .btn"))
-            .find(b => {
-              const t = (b.innerText || b.value || "").toLowerCase();
-              return t.includes("sign in") || t.includes("supabase") || t.includes("login");
-            });
-
-          if (loginBtn) {
-            loginBtn.click();
-          } else if (passInp.form) {
-            passInp.form.requestSubmit ? passInp.form.requestSubmit() : passInp.form.submit();
-          } else if (typeof doCloudLogin === "function") {
-            doCloudLogin();
-          } else if (typeof handleLogin === "function") {
-            handleLogin();
-          } else if (typeof loginWithSupabase === "function") {
-            loginWithSupabase();
-          }
-          return;
-        }
-      }
-        });
-
-      const idx = allFields.indexOf(el);
-      if (idx >= 0 && idx < allFields.length - 1) {
-        const nextEl = allFields[idx + 1];
-        if (nextEl.tagName === "BUTTON" && typeof CURRENT_SCREEN !== "undefined" && CURRENT_SCREEN === "voucher_entry") {
-          if (typeof window.saveCurrentVoucher === "function") {
-            window.saveCurrentVoucher();
-            return;
-          }
-        }
-        nextEl.focus();
-        if (nextEl.tagName === "INPUT" && typeof nextEl.select === "function") {
-          try { nextEl.select(); } catch (_) {}
-        }
-      } else if (typeof CURRENT_SCREEN !== "undefined" && CURRENT_SCREEN === "voucher_entry") {
-        if (typeof window.saveCurrentVoucher === "function") window.saveCurrentVoucher();
-      }
-    }
-  }, true);
-})();
 function saveCurrentVoucher() {
   syncVoucherHeaderFromDOM();
   const s = VCH_STATE;
@@ -3566,21 +3316,10 @@ function saveGroupFromForm() {
 
   if (idx !== "") {
     const g = DB.groups[Number(idx)];
-    if (!g) return;
-    if (DB.groups.some((x, i) => i !== Number(idx) && x.name.toLowerCase() === name.toLowerCase())) {
-      toast("⚠ Is naam ka doosra Group pehle se maujood hai!");
-      return;
-    }
     const oldName = g.name;
-    const finalParent = (!g.parent || parent === name) ? g.parent : parent;
-    g.name = name; g.parent = finalParent; g.nature = nature; g.affectsGP = affectsGP;
-    
-    // Auto-update all related Ledgers & child Sub-Groups
-    let ledMoved = 0;
-    DB.ledgers.forEach(l => { if (l.group === oldName) { l.group = name; ledMoved++; } });
-    DB.groups.forEach(sub => { if (sub.parent === oldName) sub.parent = name; });
-    
-    toast(`✅ Group "${name}" Updated! (${ledMoved} Ledgers synced)`);
+    g.name = name; g.parent = parent; g.nature = nature; g.affectsGP = affectsGP;
+    DB.ledgers.forEach(l => { if (l.group === oldName) l.group = name; });
+    toast(`✅ Group "${name}" Updated!`);
   } else {
     if (DB.groups.some(g => g.name.toLowerCase() === name.toLowerCase())) {
       toast("⚠ Is naam ka Group pehle se maujood hai!");
@@ -3592,6 +3331,7 @@ function saveGroupFromForm() {
   saveDB();
   renderGroupsScreen();
 }
+
 function deleteCustomGroup(name) {
   if (DB.ledgers.some(l => l.group === name)) {
     toast("🚫 Is Group me Ledgers bane hue hain, pehle unhe badlein!");
@@ -5919,212 +5659,44 @@ window.renderStockSummaryScreen = function() {
     { id: "TRANSACTIONS", title: "💸 Transactions (Vouchers)",    hk: "T", keys: ["V", "D"] },
     { id: "INVENTORY",    title: "📦 Inventory (Stock & BOM)",    hk: "I", keys: ["I", "K", "S", "M"] },
     { id: "ACC_REPORTS",  title: "📊 Accounting Reports",         hk: "A", keys: ["A", "R", "T", "P", "B", "O"] },
-    { id: "STAT_REPORTS", title: "🏛️ GST & Statutory Reports",   hk: "S", keys: ["1", "3", "8"] },
-    // Tally-Style Sub-Menus inside Gateway:
-    { id: "MASTERS_CREATE", title: "➕ Create Master (Select Type)", hk: "C", parent: "MASTERS" },
-    { id: "MASTERS_ALTER",  title: "✏️ Alter / Edit Master",         hk: "A", parent: "MASTERS" },
-    { id: "VOUCHERS_LIST",  title: "🧾 Select Voucher Type",         hk: "V", parent: "TRANSACTIONS" }
+    { id: "STAT_REPORTS", title: "🏛️ GST & Statutory Reports",   hk: "S", keys: ["1", "3","8"] }
   ];
 
-  function getCustomVoucherTypes(){
-    if(typeof DB === "undefined") return [];
-    if(!Array.isArray(DB.customVoucherTypes)) DB.customVoucherTypes = [];
-    return DB.customVoucherTypes;
-  }
-
   function getActiveList(){
-    if(!window._GW_FOLDER) return FOLDER_DEFS.slice(0, 5);
+    if(!window._GW_FOLDER) return FOLDER_DEFS;
     const f = FOLDER_DEFS.find(x => x.id === window._GW_FOLDER);
     if(!f) return [];
 
-    // 1. MASTERS Root -> Show "Create" and "Alter"
-    if(f.id === "MASTERS"){
-      return [
-        { label: "➕ <span class='hk'>C</span>reate (New Master)", hk: "C", subFolder: "MASTERS_CREATE" },
-        { label: "✏️ <span class='hk'>A</span>lter / Edit (Existing Master)", hk: "A", subFolder: "MASTERS_ALTER" }
-      ];
-    }
-
-    // 2. MASTERS -> CREATE Sub-Menu
-    if(f.id === "MASTERS_CREATE"){
-      return [
-        { label: "🏢 <span class='hk'>C</span>ompany (Create New Company / Trust)", hk: "C", action: "company_create" },
-        { label: "📂 <span class='hk'>G</span>roup (Accounting Group / Sub-Group)", hk: "G", screen: "masters_groups", mode: "create" },
-        { label: "📒 <span class='hk'>L</span>edger (Party / Expense / Income Head)", hk: "L", screen: "masters_ledger", mode: "create" },
-        { label: "📦 Stock <span class='hk'>I</span>tem & HSN Master", hk: "I", screen: "masters_item", mode: "create" },
-        { label: "🧾 <span class='hk'>V</span>oucher Type (Create Custom Voucher)", hk: "V", action: "vtype_create" }
-      ];
-    }
-
-    // 3. MASTERS -> ALTER Sub-Menu
-    if(f.id === "MASTERS_ALTER"){
-      return [
-        { label: "🏢 <span class='hk'>C</span>ompany Alter / Switch Entity", hk: "C", action: "company_alter" },
-        { label: "📂 <span class='hk'>G</span>roup Alter / Bulk Move Ledgers", hk: "G", screen: "masters_groups", mode: "alter" },
-        { label: "📒 <span class='hk'>L</span>edger Alter / Edit", hk: "L", screen: "masters_ledger", mode: "alter" },
-        { label: "📦 Stock <span class='hk'>I</span>tem & HSN Alter", hk: "I", screen: "masters_item", mode: "alter" },
-        { label: "🧾 <span class='hk'>V</span>oucher Type Alter / Delete", hk: "V", action: "vtype_alter" }
-      ];
-    }
-
-    // 4. TRANSACTIONS Root -> Vouchers Entry + Day Book
-    if(f.id === "TRANSACTIONS"){
-      return [
-        { label: "🧾 <span class='hk'>V</span>ouchers Entry (All Vouchers List)", hk: "V", subFolder: "VOUCHERS_LIST" },
-        { label: "📅 <span class='hk'>D</span>ay Book / All Transactions", hk: "D", screen: "daybook" }
-      ];
-    }
-
-    // 5. TRANSACTIONS -> VOUCHERS_LIST (All Standard + Custom Vouchers + Create Option)
-    if(f.id === "VOUCHERS_LIST"){
-      const stdVouchers = [
-        { label: "🔄 <span class='hk'>C</span>ontra Voucher (F4 - Cash/Bank Transfer)", hk: "C", vType: "Contra" },
-        { label: "💸 Pa<span class='hk'>y</span>ment Voucher (F5)", hk: "Y", vType: "Payment" },
-        { label: "💰 <span class='hk'>R</span>eceipt Voucher (F6)", hk: "R", vType: "Receipt" },
-        { label: "📓 <span class='hk'>J</span>ournal Voucher (F7 - Adjustment)", hk: "J", vType: "Journal" },
-        { label: "🧾 <span class='hk'>S</span>ales / Tax Invoice (F8)", hk: "S", vType: "Sales" },
-        { label: "🛒 <span class='hk'>P</span>urchase Voucher (F9)", hk: "P", vType: "Purchase" },
-        { label: "↩️ Credit Note (<span class='hk'>K</span> - Sales Return)", hk: "K", vType: "Credit Note" },
-        { label: "↪️ <span class='hk'>D</span>ebit Note (Purchase Return)", hk: "D", vType: "Debit Note" }
-      ];
-      const customList = getCustomVoucherTypes().map((cv, idx) => ({
-        label: `✨ ${escHtml(cv.name)} <span style="font-size:11px;color:#0f6e4e;">(Under: ${escHtml(cv.baseType)})</span>`,
-        hk: String((idx + 1) % 10),
-        vType: cv.baseType,
-        customVoucherName: cv.name
-      }));
-      return [
-        ...stdVouchers,
-        ...customList,
-        { label: "➕ Create <span class='hk'>N</span>ew Voucher Type", hk: "N", action: "vtype_create" }
-      ];
-    }
-
-    // 6. Other Folders (Inventory, Accounting Reports, GST & Statutory Reports)
     const baseMenu = (typeof GATEWAY_MENU !== "undefined" && Array.isArray(GATEWAY_MENU)) ? GATEWAY_MENU.slice() : [];
-    const isTrust = (typeof isTrustEntity === "function") && isTrustEntity();
-
-    if(f.id === "ACC_REPORTS"){
-      const repList = [
-        { label: "📒 Ledger <span class='hk'>A</span>ccount (By Head)", hk: "A", action: "ledger_view" },
-        { label: "🏦 Account <span class='hk'>R</span>econciliation (Bank / Party)", hk: "R", action: "bank_recon" },
-        { label: "⚖️ <span class='hk'>T</span>rial Balance", hk: "T", screen: "trial_balance" }
-      ];
-      if(isTrust){
-        repList.push(
-          { label: "📥 Receipt & Payment A/c (<span class='hk'>O</span>)", hk: "O", screen: "daybook" },
-          { label: "📊 Income & Expenditure A/c (<span class='hk'>P</span>)", hk: "P", screen: "pnl_report" },
-          { label: "🏛️ <span class='hk'>B</span>alance Sheet (Corpus Fund)", hk: "B", screen: "balance_sheet" }
-        );
-      } else {
-        repList.push(
-          { label: "📈 Trading & <span class='hk'>P</span>rofit / Loss A/c", hk: "P", screen: "pnl_report" },
-          { label: "🏛️ <span class='hk'>B</span>alance Sheet", hk: "B", screen: "balance_sheet" }
-        );
-      }
-      return repList;
+    const rIdx = baseMenu.findIndex(m => String(m.hk).toUpperCase() === "R");
+    if(rIdx >= 0){
+      baseMenu[rIdx] = {
+        label: "Account <span class='hk'>R</span>econciliation (Bank / Party)",
+        hk: "R",
+        screen: "bank_recon"
+      };
+    } else {
+      baseMenu.splice(baseMenu.findIndex(m => String(m.hk).toUpperCase() === "A") + 1, 0, {
+        label: "Account <span class='hk'>R</span>econciliation (Bank / Party)",
+        hk: "R",
+        screen: "bank_recon"
+      });
     }
 
-    if(!baseMenu.some(m => String(m.hk).toUpperCase() === "8") && f.id === "STAT_REPORTS" && isTrust){
+    if(!baseMenu.some(m => String(m.hk).toUpperCase() === "8") && f.id === "STAT_REPORTS"){
       baseMenu.push({
-        label: "🏛️ Statutory <span class='hk'>8</span>0G / Form 10BD Register",
+        label: "<span class='hk'>8</span>0G / Form 10BD Donor Statement",
         hk: "8",
         screen: "form_10bd"
       });
     }
-    return baseMenu.filter(m => f.keys && f.keys.includes(String(m.hk).toUpperCase()));
+    return baseMenu.filter(m => f.keys.includes(String(m.hk).toUpperCase()));
   }
 
-  window.openGwCategory = function(folderId){
+ window.openGwCategory = function(folderId){
     window._GW_FOLDER = folderId;
     GW_INDEX = 0;
     renderGatewayFolders();
-  };
-
-  // Custom Voucher Type Create / Alter Modal
-  window.openVoucherTypeModal = function(){
-    const list = getCustomVoucherTypes();
-    const rows = list.length ? list.map((cv, i) => `
-      <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 10px; border-bottom:1px solid #e2e8f0; font-size:12.5px;">
-        <div><b>${escHtml(cv.name)}</b> <span class="kbd">${escHtml(cv.baseType)}</span> ${cv.prefix ? `<span style="color:#64748b;font-size:11px;">Prefix: ${escHtml(cv.prefix)}</span>` : ""}</div>
-        <div style="display:flex; gap:6px;">
-          <button type="button" class="btn btn-sec" style="padding:2px 7px; font-size:11px;" onclick="editCustomVType(${i})">✏️ Edit</button>
-          <button type="button" class="btn btn-danger" style="padding:2px 7px; font-size:11px;" onclick="deleteCustomVType(${i})">Del</button>
-        </div>
-      </div>
-    `).join("") : `<div style="padding:10px; color:#64748b; font-size:12px;">Abhi koi custom voucher type nahi bana hai. Upar form se naya banayein!</div>`;
-
-    const body = `
-      <input type="hidden" id="vtEditIdx" value="">
-      <div class="form-grid" style="margin-bottom:12px;">
-        <div class="field">
-          <label>Voucher Type Name *</label>
-          <input id="vtNameInp" placeholder="e.g. Donation Receipt / Bhandara Payment">
-        </div>
-        <div class="field">
-          <label>Select Base Type of Voucher *</label>
-          <select id="vtBaseInp">
-            <option value="Receipt">Receipt (F6)</option>
-            <option value="Payment">Payment (F5)</option>
-            <option value="Contra">Contra (F4)</option>
-            <option value="Journal">Journal (F7)</option>
-            <option value="Sales">Sales (F8)</option>
-            <option value="Purchase">Purchase (F9)</option>
-            <option value="Credit Note">Credit Note</option>
-            <option value="Debit Note">Debit Note</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Voucher No. Prefix (Optional)</label>
-          <input id="vtPrefixInp" placeholder="e.g. DON/26-27/ or BHD/">
-        </div>
-      </div>
-      <div style="display:flex; justify-content:flex-end; margin-bottom:12px;">
-        <button type="button" class="btn" style="background:#0f6e4e;color:#fff;" onclick="saveCustomVType()">💾 Save Voucher Type</button>
-      </div>
-      <div style="font-weight:700; font-size:12px; color:#334155; margin-bottom:6px;">Saved Custom Voucher Types:</div>
-      <div style="max-height:180px; overflow-y:auto; border:1px solid #cbd5e1; border-radius:6px; background:#fff;">
-        ${rows}
-      </div>
-    `;
-    showModal("🧾 Create / Alter Custom Voucher Types", body, `<button class="btn btn-sec" onclick="closeModal()">Close</button>`);
-  };
-
-  window.editCustomVType = function(i){
-    const cv = getCustomVoucherTypes()[i];
-    if(!cv) return;
-    document.getElementById("vtEditIdx").value = i;
-    document.getElementById("vtNameInp").value = cv.name || "";
-    document.getElementById("vtBaseInp").value = cv.baseType || "Receipt";
-    document.getElementById("vtPrefixInp").value = cv.prefix || "";
-  };
-
-  window.saveCustomVType = function(){
-    const idx = document.getElementById("vtEditIdx")?.value;
-    const name = (document.getElementById("vtNameInp")?.value || "").trim();
-    const baseType = document.getElementById("vtBaseInp")?.value || "Receipt";
-    const prefix = (document.getElementById("vtPrefixInp")?.value || "").trim();
-    if(!name){ toast("⚠️ Voucher Type ka naam dalein!"); return; }
-    const list = getCustomVoucherTypes();
-    if(idx !== "" && list[Number(idx)]){
-      list[Number(idx)] = { name, baseType, prefix };
-      toast(`✅ Voucher Type "${name}" Updated!`);
-    } else {
-      list.push({ name, baseType, prefix });
-      toast(`✅ Custom Voucher Type "${name}" Created!`);
-    }
-    if(typeof saveDB === "function") saveDB();
-    openVoucherTypeModal();
-    renderGatewayFolders();
-  };
-
-  window.deleteCustomVType = function(i){
-    const list = getCustomVoucherTypes();
-    list.splice(i, 1);
-    if(typeof saveDB === "function") saveDB();
-    openVoucherTypeModal();
-    renderGatewayFolders();
-    toast("🗑️ Custom Voucher Type Deleted");
   };
 
   window.triggerGwRow = function(idx){
@@ -6135,139 +5707,17 @@ window.renderStockSummaryScreen = function() {
       window.openGwCategory(item.id);
       return;
     }
-    if(item.subFolder){
-      window.openGwCategory(item.subFolder);
-      return;
-    }
-    if(item.action === "company_create" || item.action === "company_alter"){
-      if(typeof openEntitySwitcherModal === "function") openEntitySwitcherModal();
-      return;
-    }
-    if(item.action === "vtype_create" || item.action === "vtype_alter"){
-      window.openVoucherTypeModal();
-      return;
-    }
-    if(item.action === "bank_recon"){
-      window.launchDirectLedgerPicker("recon");
-      return;
-    }
-    if(item.action === "ledger_view"){
-      window.launchDirectLedgerPicker("ledger_view");
-      return;
-    }
-   if(item.vType){
-      // 1. Update VCH_STATE directly before navigation
-      if(typeof VCH_STATE !== "undefined" && VCH_STATE){
-        VCH_STATE.vchType = item.vType;
-      }
-      if(typeof quickVch === "function") {
-        quickVch(item.vType);
-      } else if(typeof switchVoucherType === "function") {
-        switchVoucherType(item.vType);
-      } else {
-        navigate("voucher_entry");
-      }
-
-      // 2. Remove duplicate "Voucher Type चुनें" popup & sync voucher screen
-      const hideDupVchPopup = () => {
-        // Close or remove the "Voucher Type चुनें" floating box
-        if(typeof closeVchTypePicker === "function") closeVchTypePicker();
-        if(typeof hideVoucherTypeModal === "function") hideVoucherTypeModal();
-        document.querySelectorAll("div").forEach(d => {
-          if(d.innerText && d.innerText.includes("Voucher Type चुनें") && d.id !== "screenBody" && !d.querySelector("#screenBody")){
-            if(d.style.position === "fixed" || d.style.position === "absolute" || d.className.includes("modal") || d.className.includes("popup") || d.className.includes("picker")){
-              d.remove();
-            } else if(d.parentElement && (d.parentElement.style.position === "fixed" || d.parentElement.style.position === "absolute")){
-              d.parentElement.remove();
-            }
-          }
-        });
-      };
-
-      setTimeout(hideDupVchPopup, 10);
-      setTimeout(() => {
-        hideDupVchPopup();
-        if(typeof VCH_STATE !== "undefined" && VCH_STATE && VCH_STATE.vchType !== item.vType){
-          VCH_STATE.vchType = item.vType;
-          if(typeof initNewVoucher === "function") initNewVoucher(item.vType);
-          if(typeof renderVoucherScreen === "function") renderVoucherScreen();
-        }
-        const vBtns = document.querySelectorAll("#screenBody button, #screenBody .vtype-btn, #screenBody .tab-btn");
-        vBtns.forEach(b => {
-          const txt = (b.innerText || "").trim().toLowerCase();
-          if(txt === item.vType.toLowerCase() || txt.startsWith(item.vType.toLowerCase() + " ")){
-            b.click();
-          }
-        });
-
-        if(item.customVoucherName){
-          const titleEl = document.getElementById("screenTitle");
-          if(titleEl) titleEl.textContent = `${item.customVoucherName} (${item.vType} Voucher)`;
-          const cvObj = getCustomVoucherTypes().find(x => x.name === item.customVoucherName);
-          const vNoInp = document.getElementById("vchNoInp") || document.getElementById("vNo") || document.querySelector("#screenBody input[id*='No']");
-          if(cvObj && cvObj.prefix && vNoInp){
-            const rawNum = vNoInp.value.replace(/^[^0-9]*/, "") || "1";
-            vNoInp.value = cvObj.prefix + rawNum;
-            if(typeof VCH_STATE !== "undefined" && VCH_STATE) VCH_STATE.vchNo = vNoInp.value;
-          }
-        }
-        hideDupVchPopup();
-      }, 70);
-      return;
-    }
-      // 2. Call built-in voucher switcher if present
-      if(typeof quickVch === "function") {
-        quickVch(item.vType);
-      } else if(typeof switchVoucherType === "function") {
-        switchVoucherType(item.vType);
-      } else if(typeof selectVoucherType === "function") {
-        selectVoucherType(item.vType);
-      } else {
-        navigate("voucher_entry");
-      }
-
-      // 3. Ensure UI buttons/dropdowns and Custom Voucher prefix match
-      setTimeout(() => {
-        if(typeof VCH_STATE !== "undefined" && VCH_STATE && VCH_STATE.vchType !== item.vType){
-          VCH_STATE.vchType = item.vType;
-          if(typeof initNewVoucher === "function") initNewVoucher(item.vType);
-          if(typeof renderVoucherScreen === "function") renderVoucherScreen();
-        }
-        // Also click matching voucher-type pill/tab button inside screenBody if rendered
-        const vBtns = document.querySelectorAll("#screenBody button, #screenBody .vtype-btn, #screenBody .tab-btn");
-        vBtns.forEach(b => {
-          const txt = (b.innerText || "").trim().toLowerCase();
-          if(txt === item.vType.toLowerCase() || txt.startsWith(item.vType.toLowerCase() + " ")){
-            b.click();
-          }
-        });
-
-        if(item.customVoucherName){
-          const titleEl = document.getElementById("screenTitle");
-          if(titleEl) titleEl.textContent = `${item.customVoucherName} (${item.vType} Voucher)`;
-          const cvObj = getCustomVoucherTypes().find(x => x.name === item.customVoucherName);
-          const vNoInp = document.getElementById("vchNoInp") || document.getElementById("vNo") || document.querySelector("#screenBody input[id*='No']");
-          if(cvObj && cvObj.prefix && vNoInp){
-            const rawNum = vNoInp.value.replace(/^[^0-9]*/, "") || "1";
-            vNoInp.value = cvObj.prefix + rawNum;
-            if(typeof VCH_STATE !== "undefined" && VCH_STATE) VCH_STATE.vchNo = vNoInp.value;
-          }
-        }
-      }, 60);
-      return;
-    }   
     const hk = String(item.hk || "").toUpperCase();
-    if(hk === "8" && typeof openForm10BDModal === "function"){
+    if(hk === "R"){
+      window.launchDirectLedgerPicker("recon");
+    } else if(hk === "A"){
+      window.launchDirectLedgerPicker("ledger_view");
+    } else if(hk === "8" && typeof openForm10BDModal === "function"){
       openForm10BDModal();
-    } else if(item.screen){
+    } else if(hk === "8" && typeof openForm10BDModal === "function"){
+      openForm10BDModal();
+    } else {
       navigate(item.screen);
-      if(item.mode === "alter"){
-        setTimeout(() => {
-          const tbl = document.querySelector("#screenBody table");
-          if(tbl) tbl.scrollIntoView({ behavior: "smooth", block: "start" });
-          toast("✏️ Niche list me kisi bhi row par click karke Alter (Edit) karein!");
-        }, 80);
-      }
     }
   };
 
