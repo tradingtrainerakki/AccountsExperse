@@ -9222,7 +9222,9 @@ window.renderStockSummaryScreen = function() {
   if (CURRENT_SCREEN === "daybook") {
     renderDayBookScreen();
   }
-})();<!-- ================= UNIFIED SLEEK LEDGER PICKER & F2 DATE POPUP (FOR BOTH LEDGER VIEW 'A' & RECONCILIATION 'R') ================= -->
+})();
+<script>
+<!-- ================= UNIFIED SLEEK LEDGER PICKER & F2 DATE POPUP (FOR BOTH LEDGER VIEW 'A' & RECONCILIATION 'R') ================= -->
 <script>
 (function() {
   window.RECON_STATE = {
@@ -10595,17 +10597,8 @@ window.renderStockSummaryScreen = function() {
   };
 
   // Inject "📊 Excel" and "🏛️ 80G / 10BD" quick buttons into the Top Bar
-  function injectTopStatutoryButtons() {
-    const topRight = document.querySelector(".top-bar") || document.querySelector("header");
-    if (topRight && !document.getElementById("topExcelExportBtn")) {
-      const wrap = document.createElement("div");
-      wrap.style.cssText = "display:inline-flex; gap:6px; align-items:center; margin-left:8px;";
-      wrap.innerHTML = `
-        <button type="button" id="topExcelExportBtn" class="btn btn-sec" style="padding:3px 8px; font-size:11.5px; background:#ecfdf5; color:#0f6e4e; border-color:#0f6e4e;" onclick="window.exportCurrentTableToExcel()" title="Export Current Screen Table to Excel (.CSV)">📊 Excel Export</button>
-        <button type="button" id="top10BdBtn" class="btn btn-sec" style="padding:3px 8px; font-size:11.5px; background:#eff6ff; color:#1...
-      topRight.appendChild(wrap);
-    
-    }
+ function injectTopStatutoryButtons() {
+    // Top bar statutory buttons intentionally kept inside Gateway folders only
   }
 
   const obs = new MutationObserver(() => {
