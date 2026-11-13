@@ -2106,7 +2106,133 @@ function renderLedgersViewScreen() {
     </div>
   `;
 }
+// ====== TALLY-STYLE GROUP SUMMARY -> LEDGER DRILL-DOWN ENGINE ======
+window.SELECTED_GROUP_FOR_SUMMARY = null;
 
+window.openGroupSummary = function(groupName) {
+  if (!groupName) return;
+  window.SELECTED_GROUP_FOR_SUMMARY = groupName;
+  if (typeof closeModal === "function") closeModal();
+  if (typeof CURRENT_SCREEN !== "undefined") CURRENT_SCREEN = "group_summary";
+
+  const titleEl = document.getElementById("screenTitle");
+  const subEl = document.getElementById("screenSub");
+  if (titleEl) titleEl.textContent = `📂 Group Summary: ${groupName}`;
+  if (subEl) subEl.textContent = "Click on any Ledger row below to open its full Ledger Account Vouchers";
+
+  const balMap = (typeof computeAllLedgerBalances === "function") ? computeAllLedgerBalances() : {};
+  const grpObj = (DB.groups || []).find(g => g.name === groupName);
+
+  // Include direct ledgers of this group (and child sub-groups if any)
+  const childGroups = (DB.groups || []).filter(g => g.parent === groupName).map(g => g.name);
+  const allTargetGroups = [groupName, ...childGroups];
+
+  const grpLedgers = (DB.ledgers || []).filter(l => allTargetGroups.includes(l.group));
+
+  let totDr = 0, totCr = 0;
+
+  const rowsHtml = grpLedgers.length ? grpLedgers.map((l, idx) => {
+    const b = balMap[l.id] || { netSigned: 0, opSigned: 0, drTotal: 0, crTotal: 0 };
+    const net = Number(b.netSigned || 0);
+    const dr = net > 0 ? net : 0;
+    const cr = net < 0 ? Math.abs(net) : 0;
+    totDr = +(totDr + dr).toFixed(2);
+    totCr = +(totCr + cr).toFixed(2);
+
+    const opVal = Number(l.opBal || 0);
+    const opStr = opVal > 0 ? `₹${fmtINR(opVal)} ${l.opType || "Dr"}` : "-";
+
+    return `
+      <tr onclick="openLedgerFromGroup('${l.id}')" style="cursor:pointer;" title="Click to open Ledger Account: ${escHtml(l.name)}">
+        <td>${idx + 1}</td>
+        <td><b style="color:#0f6e4e; text-decoration:underline;">${escHtml(l.name)}</b></td>
+        <td><span class="kbd">${escHtml(l.group)}</span></td>
+        <td class="num">${opStr}</td>
+        <td class="num" style="color:#0f6e4e; font-weight:700;">${dr ? `₹${fmtINR(dr)} Dr` : "-"}</td>
+        <td class="num" style="color:#b91c1c; font-weight:700;">${cr ? `₹${fmtINR(cr)} Cr` : "-"}</td>
+      </tr>
+    `;
+  }).join("") : `
+    <tr>
+      <td colspan="6" style="text-align:center; padding:24px; color:#64748b;">
+        Is Group (<b>${escHtml(groupName)}</b>) me abhi koi Ledger nahi bana hai.
+      </td>
+    </tr>
+  `;
+
+  const allGrpOpts = (DB.groups || []).map(g => 
+    `<option value="${escHtml(g.name)}" ${g.name === groupName ? "selected" : ""}>${escHtml(g.name)} (${escHtml(g.nature)})</option>`
+  ).join("");
+
+  const netDiff = +(totDr - totCr).toFixed(2);
+  const netSummary = netDiff === 0 ? "₹0.00" : (netDiff > 0 ? `₹${fmtINR(netDiff)} Dr` : `₹${fmtINR(Math.abs(netDiff))} Cr`);
+
+  document.getElementById("screenBody").innerHTML = `
+    <div class="form-card" style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+      <div class="field" style="flex:1; min-width:240px;">
+        <label>Select Accounting Group:</label>
+        <select style="padding:7px; font-size:13px; font-weight:700;" onchange="openGroupSummary(this.value)">
+          ${allGrpOpts}
+        </select>
+      </div>
+      <div style="display:flex; gap:18px; align-items:center;">
+        <div>
+          <div style="font-size:11px; color:var(--muted);">Group Nature:</div>
+          <div style="font-size:13px; font-weight:700;">${escHtml(grpObj ? grpObj.nature : "-")} ${grpObj && grpObj.parent ? `(Under: ${escHtml(grpObj.parent)})` : ""}</div>
+        </div>
+        <div>
+          <div style="font-size:11px; color:var(--muted);">Group Net Balance:</div>
+          <div style="font-size:16px; font-weight:800; color:var(--pri-dark);">${netSummary}</div>
+        </div>
+        <button class="btn btn-sec" onclick="navigate('masters_groups')">⬅ All Groups</button>
+      </div>
+    </div>
+
+    <div class="form-card" style="padding:0; overflow:hidden;">
+      <table class="tally-tbl">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Ledger Name (Click to Open Ledger)</th>
+            <th>Group</th>
+            <th class="num">Opening Bal</th>
+            <th class="num">Closing Debit (Dr)</th>
+            <th class="num">Closing Credit (Cr)</th>
+          </tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+        <tfoot>
+          <tr style="background:#f8fafc; font-weight:800; border-top:2px solid #cbd5e1;">
+            <td colspan="4" style="text-align:right;">Group Total (${grpLedgers.length} Ledgers):</td>
+            <td class="num" style="color:#0f6e4e;">₹${fmtINR(totDr)} Dr</td>
+            <td class="num" style="color:#b91c1c;">₹${fmtINR(totCr)} Cr</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  `;
+};
+
+window.openLedgerFromGroup = function(ledgerId) {
+  if (!ledgerId) return;
+  SELECTED_LEDGER_FOR_VIEW = ledgerId;
+  if (typeof CURRENT_SCREEN !== "undefined") CURRENT_SCREEN = "ledger_view";
+  renderLedgersViewScreen();
+
+  // Add a convenient "Back to Group Summary" button on the Ledger View screen
+  if (window.SELECTED_GROUP_FOR_SUMMARY) {
+    const topCard = document.querySelector("#screenBody .form-card");
+    if (topCard && !document.getElementById("backToGrpBtn")) {
+      const btn = document.createElement("button");
+      btn.id = "backToGrpBtn";
+      btn.className = "btn btn-sec";
+      btn.style.marginLeft = "10px";
+      btn.innerHTML = `⬅ Back to Group (${escHtml(window.SELECTED_GROUP_FOR_SUMMARY)})`;
+      btn.onclick = () => window.openGroupSummary(window.SELECTED_GROUP_FOR_SUMMARY);
+      topCard.appendChild(btn);
+    }
+  }
+};
 
 // ============================================================================
 // SCREEN 6: TRIAL BALANCE
@@ -2129,8 +2255,8 @@ function renderTrialBalanceScreen() {
     return `
       <tr>
         <td>${i + 1}</td>
-        <td><b>${l.name}</b></td>
-        <td>${l.group}</td>
+        <td onclick="openLedgerFromGroup('${l.id}')" style="cursor:pointer;" title="Click to open Ledger"><b>${l.name}</b></td>
+        <td onclick="openGroupSummary('${escHtml(l.group)}')" style="cursor:pointer; color:#0f6e4e; font-weight:700; text-decoration:underline;" title="Click to view all Ledgers in this Group">${l.group}</td>
         <td class="num">${dr ? `₹${fmtINR(dr)}` : "-"}</td>
         <td class="num">${cr ? `₹${fmtINR(cr)}` : "-"}</td>
       </tr>
