@@ -10527,7 +10527,7 @@ window.renderStockSummaryScreen = function() {
 
     // 1. CLOUD LOGIN SCREEN (#supa-auth-overlay)
     const supaOv = document.getElementById("supa-auth-overlay");
-    if (supaOv && supaOv.offsetParent !== null) {
+    if (supaOv && getComputedStyle(supaOv).display !== "none") {
       if (key === "Enter") {
         const emailInp = document.getElementById("supa-email");
         const passInp = document.getElementById("supa-pass");
