@@ -10737,3 +10737,280 @@ window.renderStockSummaryScreen = function() {
   }, true);
 })();
 </script>
+<script>
+(function() {
+  // =========================================================================
+  // TALLY-STYLE GROUP SUMMARY -> LEDGERS WITH BALANCE -> LEDGER DRILL-DOWN
+  // =========================================================================
+
+  window.SELECTED_GROUP_FOR_SUMMARY = "";
+  window._RETURN_TO_GROUP_SUMMARY = "";
+
+  // Helper: Group ke saare sub-groups (nested) nikalna
+  function getGroupHierarchyNames(rootGroupName) {
+    const names = new Set([rootGroupName]);
+    let added = true;
+    while (added) {
+      added = false;
+      (DB.groups || []).forEach(g => {
+        if (g.parent && names.has(g.parent) && !names.has(g.name)) {
+          names.add(g.name);
+          added = true;
+        }
+      });
+    }
+    return names;
+  }
+
+  // 1. Group Summary Screen Open Karna
+  window.openGroupSummary = function(groupName) {
+    if (groupName) {
+      window.SELECTED_GROUP_FOR_SUMMARY = groupName;
+    } else if (!window.SELECTED_GROUP_FOR_SUMMARY) {
+      const firstWithLed = (DB.groups || []).find(g => (DB.ledgers || []).some(l => l.group === g.name));
+      window.SELECTED_GROUP_FOR_SUMMARY = firstWithLed ? firstWithLed.name : ((DB.groups[0] && DB.groups[0].name) || "Cash-in-Hand");
+    }
+    window._RETURN_TO_GROUP_SUMMARY = "";
+    navigate("group_summary");
+  };
+
+  // 2. Group Summary Screen Render Karna (Group -> Saare Ledgers Balance Sahit)
+  window.renderGroupSummaryScreen = function() {
+    const groupName = window.SELECTED_GROUP_FOR_SUMMARY || ((DB.groups[0] && DB.groups[0].name) || "");
+    const titleEl = document.getElementById("screenTitle");
+    const subEl = document.getElementById("screenSub");
+    if (titleEl) titleEl.textContent = `📂 Group Summary: ${groupName}`;
+    if (subEl) subEl.textContent = "↑ ↓ + Enter ya Click karke kisi bhi Ledger ko kholein | Esc: Wapas";
+
+    const balMap = (typeof computeAllLedgerBalances === "function") ? computeAllLedgerBalances() : {};
+    const grpObj = (DB.groups || []).find(g => g.name === groupName);
+    const targetGroups = getGroupHierarchyNames(groupName);
+    const grpLedgers = (DB.ledgers || []).filter(l => targetGroups.has(l.group));
+
+    let totOpDr = 0, totOpCr = 0, totCurDr = 0, totCurCr = 0, totCloseDr = 0, totCloseCr = 0;
+
+    const rowsHtml = grpLedgers.length ? grpLedgers.map((l, idx) => {
+      const b = balMap[l.id] || { opDr: 0, opCr: 0, curDr: 0, curCr: 0, netSigned: 0 };
+      const net = Number(b.netSigned || 0);
+      const closeDr = net > 0 ? net : 0;
+      const closeCr = net < 0 ? Math.abs(net) : 0;
+
+      totOpDr = +(totOpDr + (b.opDr || 0)).toFixed(2);
+      totOpCr = +(totOpCr + (b.opCr || 0)).toFixed(2);
+      totCurDr = +(totCurDr + (b.curDr || 0)).toFixed(2);
+      totCurCr = +(totCurCr + (b.curCr || 0)).toFixed(2);
+      totCloseDr = +(totCloseDr + closeDr).toFixed(2);
+      totCloseCr = +(totCloseCr + closeCr).toFixed(2);
+
+      const opStr = b.opDr ? `₹${fmtINR(b.opDr)} Dr` : (b.opCr ? `₹${fmtINR(b.opCr)} Cr` : "-");
+
+      return `
+        <tr onclick="window.openLedgerFromGroup('${l.id}')" style="cursor:pointer;" title="Click ya Enter dabakar ${escHtml(l.name)} kholein">
+          <td>${idx + 1}</td>
+          <td><b style="color:#0f6e4e; text-decoration:underline;">${escHtml(l.name)}</b></td>
+          <td><span class="kbd">${escHtml(l.group)}</span></td>
+          <td class="num">${opStr}</td>
+          <td class="num">${b.curDr ? `₹${fmtINR(b.curDr)}` : "-"}</td>
+          <td class="num">${b.curCr ? `₹${fmtINR(b.curCr)}` : "-"}</td>
+          <td class="num" style="color:#0f6e4e; font-weight:700;">${closeDr ? `₹${fmtINR(closeDr)} Dr` : "-"}</td>
+          <td class="num" style="color:#b91c1c; font-weight:700;">${closeCr ? `₹${fmtINR(closeCr)} Cr` : "-"}</td>
+        </tr>
+      `;
+    }).join("") : `
+      <tr>
+        <td colspan="8" style="text-align:center; padding:24px; color:#64748b;">
+          Is Group (<b>${escHtml(groupName)}</b>) me abhi koi Ledger nahi hai.
+        </td>
+      </tr>
+    `;
+
+    const grpOpts = (DB.groups || []).map(g => {
+      const cnt = (DB.ledgers || []).filter(l => getGroupHierarchyNames(g.name).has(l.group)).length;
+      return `<option value="${escHtml(g.name)}" ${g.name === groupName ? "selected" : ""}>${escHtml(g.name)} (${escHtml(g.nature)}) — ${cnt} Ledgers</option>`;
+    }).join("");
+
+    const netGroup = +(totCloseDr - totCloseCr).toFixed(2);
+    const netText = netGroup === 0 ? "₹0.00" : (netGroup > 0 ? `₹${fmtINR(netGroup)} Dr` : `₹${fmtINR(Math.abs(netGroup))} Cr`);
+
+    document.getElementById("screenBody").innerHTML = `
+      <div class="form-card" style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+        <div class="field" style="flex:1; min-width:250px;">
+          <label>Select Group (Tally Group Summary):</label>
+          <select style="padding:7px; font-size:13px; font-weight:700;" onchange="window.openGroupSummary(this.value)">
+            ${grpOpts}
+          </select>
+        </div>
+        <div style="display:flex; gap:16px; align-items:center;">
+          <div>
+            <div style="font-size:11px; color:var(--muted);">Nature / Parent:</div>
+            <div style="font-size:12.5px; font-weight:700;">${escHtml(grpObj ? grpObj.nature : "-")}${grpObj && grpObj.parent ? ` (${escHtml(grpObj.parent)})` : ""}</div>
+          </div>
+          <div>
+            <div style="font-size:11px; color:var(--muted);">Net Group Balance:</div>
+            <div style="font-size:16px; font-weight:800; color:var(--pri-dark);">${netText}</div>
+          </div>
+          <button class="btn btn-sec" onclick="navigate('masters_groups')">⬅ All Groups</button>
+        </div>
+      </div>
+
+      <div class="form-card" style="padding:0; overflow:hidden;">
+        <table class="tally-tbl">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Ledger Name (Click / Enter to Open)</th>
+              <th>Group</th>
+              <th class="num">Opening Bal</th>
+              <th class="num">Period Debit</th>
+              <th class="num">Period Credit</th>
+              <th class="num">Closing Dr</th>
+              <th class="num">Closing Cr</th>
+            </tr>
+          </thead>
+          <tbody>${rowsHtml}</tbody>
+          <tfoot>
+            <tr style="background:#f1f5f9; font-weight:800; border-top:2px solid #cbd5e1;">
+              <td colspan="4" style="text-align:right;">Group Total (${grpLedgers.length} Ledgers):</td>
+              <td class="num">₹${fmtINR(totCurDr)}</td>
+              <td class="num">₹${fmtINR(totCurCr)}</td>
+              <td class="num" style="color:#0f6e4e;">₹${fmtINR(totCloseDr)} Dr</td>
+              <td class="num" style="color:#b91c1c;">₹${fmtINR(totCloseCr)} Cr</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    `;
+  };
+
+  // 3. Group Summary se kisi Ledger par click karne par Seedha Ledger Khule
+  window.openLedgerFromGroup = function(ledgerId) {
+    if (!ledgerId) return;
+    window._RETURN_TO_GROUP_SUMMARY = window.SELECTED_GROUP_FOR_SUMMARY || "";
+    SELECTED_LEDGER_FOR_VIEW = ledgerId;
+    navigate("ledgers_view", true);
+
+    setTimeout(() => {
+      if (window._RETURN_TO_GROUP_SUMMARY) {
+        const topCard = document.querySelector("#screenBody .form-card");
+        if (topCard && !document.getElementById("backToGrpSumBtn")) {
+          const btn = document.createElement("button");
+          btn.id = "backToGrpSumBtn";
+          btn.className = "btn";
+          btn.style.marginLeft = "8px";
+          btn.innerHTML = `⬅ Back to Group (${escHtml(window._RETURN_TO_GROUP_SUMMARY)})`;
+          btn.onclick = () => window.openGroupSummary(window._RETURN_TO_GROUP_SUMMARY);
+          topCard.appendChild(btn);
+        }
+      }
+    }, 60);
+  };
+
+  // 4. Esc dabane par Ledger se wapas usi Group Summary par aaye
+  if (typeof window.launchDirectLedgerPicker === "function") {
+    const _origPicker = window.launchDirectLedgerPicker;
+    window.launchDirectLedgerPicker = function(mode) {
+      const ev = window.event;
+      if (mode === "ledger_view" && window._RETURN_TO_GROUP_SUMMARY && ev && ev.type === "keydown" && ev.key === "Escape") {
+        const grp = window._RETURN_TO_GROUP_SUMMARY;
+        window._RETURN_TO_GROUP_SUMMARY = "";
+        window.openGroupSummary(grp);
+        return;
+      }
+      return _origPicker.apply(this, arguments);
+    };
+  }
+
+  // 5. Router me "group_summary" screen jodein
+  if (typeof window.renderScreen === "function") {
+    const _origRenderScreen = window.renderScreen;
+    window.renderScreen = function(screen) {
+      if (screen === "group_summary") {
+        if (typeof closeModal === "function") closeModal();
+        window.renderGroupSummaryScreen();
+        return;
+      }
+      return _origRenderScreen.apply(this, arguments);
+    };
+  }
+
+  // 6. Chart of Accounts (Groups Screen) par har Group clickable banayein
+  if (typeof window.renderGroupsScreen === "function") {
+    const _origGroups = window.renderGroupsScreen;
+    window.renderGroupsScreen = function() {
+      _origGroups.apply(this, arguments);
+      const rows = document.querySelectorAll("#screenBody table.tally-tbl tbody tr");
+      rows.forEach((tr, i) => {
+        const g = (DB.groups || [])[i];
+        if (!g) return;
+        // Row click -> Seedha Group Summary khule (Ledgers with Balance)
+        tr.onclick = () => window.openGroupSummary(g.name);
+        tr.title = `Click ya Enter dabakar "${g.name}" ke saare Ledgers & Balance dekhein`;
+        const nameTd = tr.children[1];
+        if (nameTd) {
+          nameTd.style.color = "#0f6e4e";
+          nameTd.style.textDecoration = "underline";
+        }
+        // Action column me "Alter" button jod dein taaki edit bhi kar sakein
+        const actTd = tr.lastElementChild;
+        if (actTd && !actTd.querySelector(".grp-alter-btn")) {
+          const altBtn = document.createElement("button");
+          altBtn.className = "btn btn-sec grp-alter-btn";
+          altBtn.style.cssText = "padding:2px 7px; font-size:11px;";
+          altBtn.textContent = "Alter";
+          altBtn.onclick = (ev) => { ev.stopPropagation(); populateGroupForm(i); };
+          actTd.prepend(altBtn);
+        }
+      });
+    };
+  }
+
+  // 7. Trial Balance me bhi Group click -> Group Summary & Ledger click -> Ledger Open
+  if (typeof window.renderTrialBalanceScreen === "function") {
+    const _origTB = window.renderTrialBalanceScreen;
+    window.renderTrialBalanceScreen = function() {
+      _origTB.apply(this, arguments);
+      const rows = document.querySelectorAll("#screenBody table.tally-tbl tbody tr");
+      rows.forEach((tr, i) => {
+        const l = (DB.ledgers || [])[i];
+        if (!l) return;
+        const ledTd = tr.children[1];
+        const grpTd = tr.children[2];
+        if (ledTd) {
+          ledTd.style.cursor = "pointer";
+          ledTd.style.color = "#0f172a";
+          ledTd.title = "Click to open Ledger";
+          ledTd.onclick = (ev) => { ev.stopPropagation(); window.openLedgerFromGroup(l.id); };
+        }
+        if (grpTd) {
+          grpTd.style.cursor = "pointer";
+          grpTd.style.color = "#0f6e4e";
+          grpTd.style.fontWeight = "700";
+          grpTd.style.textDecoration = "underline";
+          grpTd.title = "Click to view Group Summary";
+          grpTd.onclick = (ev) => { ev.stopPropagation(); window.openGroupSummary(l.group); };
+        }
+      });
+    };
+  }
+
+  // 8. Right Bar me direct "Group Sum (Alt+U)" button jodein
+  const rb = document.querySelector(".right-bar");
+  if (rb && !document.getElementById("fnGrpSumBtn")) {
+    const btn = document.createElement("button");
+    btn.id = "fnGrpSumBtn";
+    btn.className = "fn-btn";
+    btn.style.borderLeftColor = "#0f6e4e";
+    btn.innerHTML = `<span class="fn-key">Alt+U</span><span>Grp Sum</span>`;
+    btn.onclick = () => window.openGroupSummary();
+    rb.appendChild(btn);
+  }
+
+  window.addEventListener("keydown", function(e) {
+    if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === "u" || e.key === "U")) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      window.openGroupSummary();
+    }
+  }, true);
+})();
+</script>
