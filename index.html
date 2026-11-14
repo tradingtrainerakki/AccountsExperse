@@ -10494,3 +10494,170 @@ window.renderStockSummaryScreen = function() {
   injectTopStatutoryButtons();
 })();
 </script>
+<script>
+(function() {
+  // =========================================================================
+  // UNIVERSAL MASTER KEYBOARD ENGINE (ENTER + ESC + MODAL ARROWS EVERYWHERE)
+  // =========================================================================
+
+  function isVisible(el) {
+    return !!(el && el.offsetParent !== null && !el.disabled && el.type !== "hidden");
+  }
+
+  function getFocusableList(root, includeButtons) {
+    const sel = includeButtons
+      ? "input:not([type='hidden']):not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])"
+      : "input:not([type='hidden']):not([disabled]), select:not([disabled]), textarea:not([disabled])";
+    return Array.from(root.querySelectorAll(sel)).filter(el => {
+      if (!isVisible(el)) return false;
+      if (el.readOnly && el.tagName === "INPUT") return false;
+      if (el.tagName === "BUTTON") {
+        const txt = (el.innerText || "").trim();
+        if (txt === "✕ Esc" || txt === "✕") return false;
+      }
+      return true;
+    });
+  }
+
+  window.addEventListener("keydown", function(e) {
+    if (e.isComposing || e.ctrlKey || e.altKey || e.metaKey) return;
+
+    const key = e.key;
+    const active = document.activeElement;
+
+    // 1. CLOUD LOGIN SCREEN (#supa-auth-overlay)
+    const supaOv = document.getElementById("supa-auth-overlay");
+    if (supaOv && supaOv.offsetParent !== null) {
+      if (key === "Enter") {
+        const emailInp = document.getElementById("supa-email");
+        const passInp = document.getElementById("supa-pass");
+        const loginBtn = document.getElementById("supa-login-btn");
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (active === emailInp && passInp) {
+          passInp.focus();
+          passInp.select?.();
+        } else if (loginBtn) {
+          loginBtn.click();
+        }
+      }
+      return;
+    }
+
+    // 2. LET DEDICATED POPUPS HANDLE THEIR OWN KEYS (Zero Conflict)
+    const kdPop = document.getElementById("kdPop");
+    if (kdPop && kdPop.style.display === "flex") return;
+
+    const quitBox = document.getElementById("quitBox");
+    if (quitBox && quitBox.style.display === "flex") return;
+
+    const vtBox = document.getElementById("vtBox");
+    if (vtBox && vtBox.style.display === "flex") return;
+
+    if (document.getElementById("directF2DateModal")) return;
+    if (document.getElementById("directLedgerPickerModal")) return;
+
+    // 3. ALL APP MODALS (#appModal: F3 Company, F2 Date, Period, Quick Ledger, Help, Restore, etc.)
+    const appModal = document.getElementById("appModal");
+    if (appModal && appModal.classList.contains("open")) {
+      // A. ESC -> Close Modal Immediately
+      if (key === "Escape") {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (typeof closeModal === "function") closeModal();
+        else appModal.classList.remove("open");
+        return;
+      }
+
+      // Bill Allocation popup (#baWrap) has its own Enter handler
+      if (document.getElementById("baWrap")) return;
+
+      const card = appModal.querySelector(".modal-card") || appModal;
+      const inputsOnly = getFocusableList(card, false);
+      const allItems = getFocusableList(card, true);
+
+      // B. Arrow Keys inside Modals without inputs (like F3 Company Manager)
+      if (inputsOnly.length === 0 && ["ArrowDown", "ArrowUp", "ArrowRight", "ArrowLeft"].includes(key)) {
+        if (allItems.length > 0) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          let idx = allItems.indexOf(active);
+          const step = (key === "ArrowDown" || key === "ArrowRight") ? 1 : -1;
+          idx = idx < 0 ? 0 : (idx + step + allItems.length) % allItems.length;
+          allItems.forEach(x => { x.style.outline = ""; });
+          allItems[idx].focus();
+          allItems[idx].style.outline = "2px solid #0f6e4e";
+        }
+        return;
+      }
+
+      // C. ENTER inside Modal -> Next Field or Click Focused / Primary Button
+      if (key === "Enter") {
+        if (active && active.tagName === "SELECT") return; // Let kdPop open select
+        if (active && active.tagName === "TEXTAREA" && e.shiftKey) return;
+
+        if (active && active.tagName === "BUTTON" && card.contains(active)) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          active.click();
+          return;
+        }
+
+        if (inputsOnly.length > 0 && active && card.contains(active)) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          const i = inputsOnly.indexOf(active);
+          if (i >= 0 && i < inputsOnly.length - 1) {
+            inputsOnly[i + 1].focus();
+            if (inputsOnly[i + 1].tagName === "INPUT") {
+              try { inputsOnly[i + 1].select(); } catch (_) {}
+            }
+          } else {
+            // Last input -> Click primary button in modal footer
+            const primaryBtn = card.querySelector("#modalFoot .btn:not(.btn-sec):not(.btn-danger)") || card.querySelector("#modalFoot button");
+            if (primaryBtn) primaryBtn.click();
+          }
+          return;
+        }
+      }
+      return;
+    }
+
+    // 4. NORMAL SCREENS (Masters, Reports, etc.)
+    const scr = typeof CURRENT_SCREEN !== "undefined" ? CURRENT_SCREEN : "";
+    if (!scr || scr === "gateway" || scr === "voucher_entry") return;
+
+    // A. ESC on ANY screen (even if cursor is inside an input/search box) -> Go Back!
+    if (key === "Escape") {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (typeof goBack === "function") goBack();
+      return;
+    }
+
+    // B. ENTER on Master Forms (Ledger, Item, Group, Stock Group, BOM) -> Move to Next Field / Save
+    if (key === "Enter" && active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA")) {
+      if (active.tagName === "TEXTAREA" && e.shiftKey) return;
+      const sb = document.getElementById("screenBody");
+      if (!sb || !sb.contains(active)) return;
+
+      e.preventDefault();
+      e.stopImmediatePropagation();
+
+      const fields = getFocusableList(sb, false);
+      const idx = fields.indexOf(active);
+      if (idx >= 0 && idx < fields.length - 1) {
+        fields[idx + 1].focus();
+        if (fields[idx + 1].tagName === "INPUT") {
+          try { fields[idx + 1].select(); } catch (_) {}
+        }
+      } else {
+        // Last field on form -> Focus the Save button
+        const saveBtn = Array.from(sb.querySelectorAll("button.btn:not(.btn-sec):not(.btn-danger)"))
+          .find(b => isVisible(b));
+        if (saveBtn) saveBtn.focus();
+      }
+    }
+  }, true);
+})();
+</script>
