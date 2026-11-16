@@ -728,3 +728,42 @@ function saveMfgProductionVoucher() {
   DB.vouchers.push({ id: uid("V"), vchNo: MFG_STATE.vchNo, date: MFG_STATE.date, type: "Stock Journal", subType: "BOM Manufacturing", mode: "item", narration: MFG_STATE.narration || `Manufactured ${prodQty} ${fg.uom} of ${fg.name}`, amount: totalCost, entries: [], itemLines: lines });
   saveDB(); toast(`✅ Produced ${prodQty} ${fg.uom} of ${fg.name}!`); navigate("stock_summary");
 }
+// ============================================================================
+// FIX: ALWAYS OPEN FRESH VOUCHER + AUTO FOCUS ON DATE / MANUAL VOUCHER NO.
+// ============================================================================
+(function patchFreshVoucherAndFocus() {
+  if (typeof openVoucherScreen !== "function" || window._VCH_FRESH_PATCHED) return;
+  const origOpenVch = openVoucherScreen;
+
+  window.openVoucherScreen = function (type, editId) {
+    // Agar editId nahi di gayi (yaani fresh voucher kholna hai), toh purana edit state clear karein
+    if (!editId) {
+      if (typeof EDIT_VOUCHER_ID !== "undefined") EDIT_VOUCHER_ID = null;
+      if (typeof CUR_EDIT_VCH_ID !== "undefined") CUR_EDIT_VCH_ID = null;
+      if (typeof ACTIVE_VCH_ID !== "undefined") ACTIVE_VCH_ID = null;
+      window._editingVchId = null;
+    }
+
+    const res = origOpenVch.call(this, type, editId || null);
+
+    // Focus Logic: Manual mode -> Voucher No., Auto mode -> Voucher Date
+    setTimeout(() => {
+      const body = document.getElementById("screenBody");
+      if (!body) return;
+      const vchNoInp = body.querySelector("#vchNo, #vNo, input[id*='vchNo' i], input[placeholder*='Voucher' i]");
+      const vchDateInp = body.querySelector("#vchDate, #vDate, input[type='date']");
+      const isManual = (typeof VCH_MANUAL_NO !== "undefined" && VCH_MANUAL_NO) ||
+                       (vchNoInp && !vchNoInp.readOnly && !vchNoInp.disabled && !(vchNoInp.style.background || "").includes("f1f5f9"));
+
+      if (isManual && vchNoInp) {
+        vchNoInp.focus();
+        vchNoInp.select();
+      } else if (vchDateInp) {
+        vchDateInp.focus();
+      }
+    }, 60);
+
+    return res;
+  };
+  window._VCH_FRESH_PATCHED = true;
+})();
