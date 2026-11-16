@@ -207,7 +207,16 @@ function renderDayBookScreen() {
 
   const rowsHtml = sorted.map((v, idx) => {
     totAmt = +(totAmt + (Number(v.amount) || 0)).toFixed(2);
-    const partyName = getLedgerName(v.partyLedgerId || v.drLedgerId);
+    const ens = getVoucherEntries(v);
+    let mainLedId = "";
+    if (v.mode === "item" && v.partyLedgerId) {
+      mainLedId = v.partyLedgerId;
+    } else if (v.type === "Receipt") {
+      mainLedId = (ens.find(e => e.type === "Cr") || ens[0] || {}).ledgerId || v.crLedgerId || v.drLedgerId;
+    } else {
+      mainLedId = (ens.find(e => e.type === "Dr") || ens[0] || {}).ledgerId || v.drLedgerId || v.crLedgerId;
+    }
+    const partyName = getLedgerName(mainLedId);
     return `
       <tr data-vid="${v.id}" onclick="openVoucherScreen('${v.type}','${v.id}')" style="cursor:pointer;">
         <td>${idx + 1}</td>
