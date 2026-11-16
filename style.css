@@ -984,3 +984,42 @@ table.ba-tbl input {
     margin: 8mm;
   }
 }
+@media print {
+  .form-card label,
+  .form-card input[type="checkbox"],
+  .form-card button {
+    display: none !important;
+  }
+}
+// ============================================================================
+// FULL COMPANY / TRUST DETAILS IN PRINT HEADER
+// ============================================================================
+window.addEventListener("beforeprint", function () {
+  const c = (typeof DB !== "undefined" && DB.company) ? DB.company : null;
+  if (!c) return;
+
+  const addrParts = [c.address, c.address2, c.city, c.state, c.pincode ? ("- " + c.pincode) : ""].filter(Boolean);
+  const contactParts = [
+    c.phone ? ("Ph: " + c.phone) : "",
+    c.email ? ("Email: " + c.email) : "",
+    c.website ? ("Web: " + c.website) : ""
+  ].filter(Boolean);
+  const regParts = [
+    c.regNo ? ("Reg. No: " + c.regNo) : "",
+    c.pan ? ("PAN: " + c.pan) : "",
+    c.reg12A ? ("12A: " + c.reg12A) : "",
+    c.reg80G ? ("80G: " + c.reg80G) : "",
+    c.gstin ? ("GSTIN: " + c.gstin) : ""
+  ].filter(Boolean);
+
+  const ph = document.querySelector("#printHeader, .print-header, #printCompHeader");
+  if (ph) {
+    ph.innerHTML = `
+      <div style="text-align:center; padding-bottom:6px; border-bottom:2px solid #000; margin-bottom:8px;">
+        <div style="font-size:18px; font-weight:800;">${escHtml(c.name || "")}</div>
+        ${addrParts.length ? `<div style="font-size:11px; margin-top:2px;">${escHtml(addrParts.join(", "))}</div>` : ""}
+        ${contactParts.length ? `<div style="font-size:10.5px; margin-top:2px;">${escHtml(contactParts.join(" | "))}</div>` : ""}
+        ${regParts.length ? `<div style="font-size:10.5px; font-weight:700; margin-top:2px;">${escHtml(regParts.join(" | "))}</div>` : ""}
+      </div>`;
+  }
+});
