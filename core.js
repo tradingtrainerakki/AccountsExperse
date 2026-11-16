@@ -207,6 +207,7 @@ function loadDB(entityId = "DEFAULT_ENTITY") {
       seedDefaultMasters();
     }
   } catch (e) { console.error("DB load failed:", e); }
+  if (DB.company) DB.company.curDate = new Date().toISOString().slice(0, 10);
   ensureStockGroupsInitialized();
   refreshHeaderAndSidebar();
 }
