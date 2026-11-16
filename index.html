@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="hi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AccountsExperse GST - Complete Accounting &amp; ERP</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- TOP BAR -->
+  <header class="top-bar">
+    <div class="brand-area">
+      <span class="brand-badge">PRIME GST</span>
+      <span id="topCmpName">AccountsExperse Accounting ERP</span>
+    </div>
+    <div class="top-meta">
+      <span onclick="openPeriodModal()" title="Alt+F2: Change Period">📅 Period: <b id="topPeriod">01-Apr-2026 to 31-Mar-2027</b></span>
+      <span onclick="openDateModal()" title="F2: Current Date">🕒 Date: <b id="topCurDate">21-Oct-2026</b></span>
+      <span onclick="openEntitySwitcherModal()" title="F3: Company / Trust">🏢 Company (<kbd class="kbd">F3</kbd>)</span>
+      <span onclick="openHelpModal()" title="Shortcut Help">❓ Help (<kbd class="kbd">?</kbd>)</span>
+      <span id="topUserBadge" style="display:none;"></span>
+    </div>
+  </header>
+
+  <!-- MAIN 3-COLUMN APP SHELL -->
+  <div class="app-shell">
+
+    <!-- LEFT PANEL -->
+    <aside class="left-panel">
+      <div class="info-box">
+        <h4>Current Company</h4>
+        <div class="info-row"><span>Name</span><span class="info-val" id="lpCmpName">-</span></div>
+        <div class="info-row"><span>GSTIN</span><span class="info-val" id="lpCmpGstin">-</span></div>
+        <div class="info-row"><span>State</span><span class="info-val" id="lpCmpState">-</span></div>
+        <div class="info-row"><span>Reg. Type</span><span class="info-val" id="lpCmpReg">Regular</span></div>
+      </div>
+
+      <div class="info-box">
+        <h4>Quick Financial Pulse</h4>
+        <div class="info-row"><span>Cash / Bank</span><span class="info-val" id="lpCashBal">₹0.00</span></div>
+        <div class="info-row"><span>Total Sales</span><span class="info-val" id="lpSalesTot">₹0.00</span></div>
+        <div class="info-row"><span>Total Purchase</span><span class="info-val" id="lpPurcTot">₹0.00</span></div>
+        <div class="info-row"><span>Net GST Payable</span><span class="info-val" id="lpGstNet">₹0.00</span></div>
+        <div class="info-row"><span>Vouchers Entered</span><span class="info-val" id="lpVchCount">0</span></div>
+      </div>
+
+      <div class="info-box">
+        <h4>Quick Shortcuts</h4>
+        <div class="shortcut-list">
+          <div><span class="kbd">Alt+C</span> Ledger On-Spot</div>
+          <div><span class="kbd">Ctrl+A</span> Accept / Save</div>
+          <div><span class="kbd">Esc</span> Quit / Go Back</div>
+          <div><span class="kbd">↑</span> <span class="kbd">↓</span> Select &amp; <span class="kbd">Enter</span> Open</div>
+          <div><span class="kbd">Alt+P</span> Print Screen</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- CENTER WORKSPACE -->
+    <main class="center-panel">
+      <div class="screen-header">
+        <span id="screenTitle">Gateway of AccountsExperse</span>
+        <span class="sub-info" id="screenSub">Use ↑ ↓ &amp; Enter or Hotkeys | Esc to Go Back</span>
+      </div>
+      <div class="screen-body" id="screenBody"></div>
+    </main>
+
+    <!-- RIGHT FUNCTION BAR -->
+    <aside class="right-bar">
+      <button class="fn-btn fn-print" onclick="smartPrint()"><span class="fn-key">Alt+P</span><span>🖨️ Print</span></button>
+      <button class="fn-btn" onclick="navigate('gateway')"><span class="fn-key">Esc</span><span>Gateway</span></button>
+      <button class="fn-btn" onclick="openDateModal()"><span class="fn-key">F2</span><span>Date</span></button>
+      <button class="fn-btn" onclick="openPeriodModal()"><span class="fn-key">A+F2</span><span>Period</span></button>
+      <button class="fn-btn" onclick="openEntitySwitcherModal()"><span class="fn-key">F3</span><span>Company</span></button>
+
+      <hr class="rb-sep">
+      <button class="fn-btn" onclick="openVoucherScreen('Contra')"><span class="fn-key">C</span><span>Contra</span></button>
+      <button class="fn-btn" onclick="openVoucherScreen('Payment')"><span class="fn-key">Y</span><span>Payment</span></button>
+      <button class="fn-btn" onclick="openVoucherScreen('Receipt')"><span class="fn-key">R</span><span>Receipt</span></button>
+      <button class="fn-btn" onclick="openVoucherScreen('Journal')"><span class="fn-key">J</span><span>Journal</span></button>
+      <button class="fn-btn" onclick="openVoucherScreen('Sales')"><span class="fn-key">S</span><span>Sales</span></button>
+      <button class="fn-btn" onclick="openVoucherScreen('Purchase')"><span class="fn-key">P</span><span>Purchase</span></button>
+      <button class="fn-btn" onclick="openVoucherScreen('Credit Note')"><span class="fn-key">K</span><span>Cr Note</span></button>
+      <button class="fn-btn" onclick="openVoucherScreen('Debit Note')"><span class="fn-key">D</span><span>Dr Note</span></button>
+
+      <hr class="rb-sep">
+      <button class="fn-btn" onclick="navigate('daybook')"><span class="fn-key">Alt+D</span><span>Day Book</span></button>
+      <button class="fn-btn" onclick="launchDirectLedgerPicker('ledger_view')"><span class="fn-key">Alt+L</span><span>Ledger</span></button>
+      <button class="fn-btn" onclick="openGroupSummary()"><span class="fn-key">Alt+U</span><span>Grp Sum</span></button>
+      <button class="fn-btn" onclick="launchDirectLedgerPicker('recon')"><span class="fn-key">Alt+R</span><span>Recon</span></button>
+      <button class="fn-btn" onclick="navigate('outstanding')"><span class="fn-key">Alt+O</span><span>Outstdg</span></button>
+      <button class="fn-btn" onclick="navigate('stock_summary')"><span class="fn-key">Alt+S</span><span>Stock Sum</span></button>
+      <button class="fn-btn" onclick="openBomProductionScreen()"><span class="fn-key">Alt+M</span><span>BOM Prod</span></button>
+      <button class="fn-btn" onclick="navigate('gstr1')"><span class="fn-key">Alt+G</span><span>GSTR-1</span></button>
+      <button class="fn-btn" onclick="navigate('gstr3b')"><span class="fn-key">Alt+3</span><span>GSTR-3B</span></button>
+
+      <hr class="rb-sep">
+      <button class="fn-btn" onclick="exportBackupJSON()"><span class="fn-key">Ctrl+E</span><span>Backup</span></button>
+      <button class="fn-btn" onclick="openRestoreModal()"><span class="fn-key">Upload</span><span>Restore</span></button>
+      <button class="fn-btn fn-danger" onclick="supaLogout()"><span class="fn-key">Lock</span><span>Logout</span></button>
+    </aside>
+  </div>
+
+  <!-- BOTTOM STATUS BAR -->
+  <footer class="status-bar">
+    <div>AccountsExperse GST Core Engine v2.0 | Double-Entry + Auto GST + Inventory/BOM + Cloud Sync</div>
+    <div id="statusRight">Ready</div>
+  </footer>
+
+  <!-- STANDARD APP MODAL -->
+  <div class="modal-backdrop" id="appModal">
+    <div class="modal-card">
+      <div class="modal-head">
+        <span id="modalTitle">Modal</span>
+        <button class="btn btn-sec" onclick="closeModal()" style="padding:2px 8px;">✕ Esc</button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-foot" id="modalFoot"></div>
+    </div>
+  </div>
+
+  <!-- SEARCHABLE DROPDOWN POPUP (FOR ALL SELECT BOXES) -->
+  <div id="kdPop">
+    <input id="kdSearch" placeholder="Type to search / ↑ ↓ / Enter" autocomplete="off">
+    <div id="kdList"></div>
+  </div>
+
+  <!-- VOUCHER TYPE SWITCHER POPUP -->
+  <div id="vtBox">
+    <div class="vcard">
+      <div class="vhead">Select Voucher Type</div>
+      <div id="vtList"></div>
+      <div class="vfoot">↑ ↓ + Enter Select &nbsp;|&nbsp; Hotkey &nbsp;|&nbsp; <b>Esc</b> = Gateway</div>
+    </div>
+  </div>
+
+  <!-- QUIT CONFIRMATION POPUP -->
+  <div id="quitBox">
+    <div class="qcard">
+      <div class="qhead">Quit?</div>
+      <div class="qbody">Kya aap software se bahar nikalna chahte hain?</div>
+      <div class="qbtns">
+        <button class="qbtn" id="qYes"><u>Y</u>es</button>
+        <button class="qbtn act" id="qNo"><u>N</u>o</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SUPABASE CLOUD LOGIN OVERLAY -->
+  <div id="supaAuthOverlay" class="login-overlay">
+    <div class="login-card">
+      <div class="login-head">
+        <div class="login-title">🔐 AccountsExperse CLOUD LOGIN</div>
+        <div class="login-sub">Authorized Email ID &amp; Password</div>
+      </div>
+      <div class="login-body">
+        <div class="field">
+          <label>Email ID *</label>
+          <input id="supa-email" type="email" placeholder="example@gmail.com" autocomplete="username">
+        </div>
+        <div class="field">
+          <label>Password *</label>
+          <input id="supa-pass" type="password" placeholder="Enter your password" autocomplete="current-password">
+        </div>
+        <div id="supa-err" class="login-err"></div>
+        <button id="supa-login-btn" class="btn" style="padding:10px; font-size:13.5px;">🔓 Sign In with Supabase</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST & PRINT CONTAINER -->
+  <div id="toastBox"></div>
+  <div id="printArea"></div>
+
+  <!-- MODULAR SCRIPTS (EXACT LOAD ORDER) -->
+  <script src="core.js"></script>
+  <script src="masters.js"></script>
+  <script src="vouchers.js"></script>
+  <script src="reports.js"></script>
+  <script src="keyboard.js"></script>
+</body>
+</html>
