@@ -363,6 +363,22 @@
     // K. VOUCHER ENTRY SCREEN
     if (CURRENT_SCREEN === "voucher_entry") {
       if (k === "Escape") { e.preventDefault(); e.stopImmediatePropagation(); openVtBox(); return; }
+
+      // Voucher Type Hotkeys (C, Y, R, J, S, P, K, D) — Text/Narration box ke bahar (Date box par bhi chalega)
+      const isTextTyping = active && (
+        active.tagName === "TEXTAREA" ||
+        (active.tagName === "INPUT" && ["text", "search", "email", "password"].includes((active.type || "text").toLowerCase()))
+      );
+      if (!isTextTyping && k.length === 1) {
+        const vt = VCH_TYPES.find(x => x.k === k.toLowerCase());
+        if (vt) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          openVoucherScreen(vt.t);
+          return;
+        }
+      }
+
       const sb = document.getElementById("screenBody");
       if (k === "Enter" && active && sb.contains(active) && (active.tagName === "INPUT" || active.tagName === "TEXTAREA")) {
         if (active.tagName === "TEXTAREA" && e.shiftKey) return;
