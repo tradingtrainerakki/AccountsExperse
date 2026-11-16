@@ -384,6 +384,12 @@ function renderLedgersViewScreen() {
           </tr>
         </tfoot>
       </table>
+      <div style="display:flex; justify-content:flex-end; margin-top:40px; padding-right:10px;">
+        <div style="text-align:center;">
+          <div style="font-size:12px; font-weight:700;">For ${escHtml(c.name || "")}</div>
+          <div style="margin-top:36px; font-size:11.5px; color:#334155;">Authorised Signatory</div>
+        </div>
+      </div>
     </div>`;
 }
 // ============================================================================
