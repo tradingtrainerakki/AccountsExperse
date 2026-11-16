@@ -569,60 +569,56 @@ window.addEventListener("keydown", function (e) {
   window._openGroupPickerModal();
 }, true);
 // ============================================================================
-// FIX: ARROW KEY NAVIGATION & ENTER TO EDIT ON LEDGER VOUCHERS SCREEN
+// FIX V2: BULLETPROOF ARROW KEY NAVIGATION & ENTER ON LEDGER SCREEN
 // ============================================================================
 window.addEventListener("keydown", function(e) {
-  // Check karein ki hum "Ledger" screen par hain ya nahi
-  const titleEl = document.querySelector("#screenTitle, .screen-title, .screen-bar");
-  const isLedger = titleEl && /Ledger/i.test(titleEl.textContent);
-  
-  const bodyEl = document.getElementById("screenBody");
-  if (!isLedger || !bodyEl) return;
+  // Sirf Up, Down aur Enter par chale
+  if (["ArrowDown", "ArrowUp", "Enter"].indexOf(e.key) === -1) return;
 
-  // Agar koi input box ya modal active hai, toh arrow keys ko interfere na karne dein
+  const bodyEl = document.getElementById("screenBody");
+  // Check karein ki screen par "Ledger:" likha hai ya nahi (Jaise "Ledger: Bank of India")
+  if (!bodyEl || !bodyEl.textContent.includes("Ledger:")) return;
+
+  // Agar input me typing chal rahi ho ya koi modal khula ho toh skip karein
   const activeTag = (document.activeElement || {}).tagName;
   if (activeTag === "INPUT" || activeTag === "TEXTAREA" || activeTag === "SELECT") return;
-  if (document.querySelector("[id*='Overlay'], .modal-overlay.show")) return;
+  if (document.querySelector("[id*='Overlay'], .modal-overlay.show, #customGrpPickerOverlay")) return;
 
-  if (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter") {
-    // Ledger table ki body select karein
-    const tbody = bodyEl.querySelector("table tbody");
-    if (!tbody) return;
+  // Sirf un rows ko lein jisme data ho (<th> wale header ko chhod de)
+  const rows = Array.from(bodyEl.querySelectorAll("table tr")).filter(tr => tr.querySelector("td") && tr.textContent.trim().length > 0);
+  if (rows.length === 0) return;
 
-    // Table ki saari rows nikal lein (khali rows ko ignore karke)
-    const rows = Array.from(tbody.querySelectorAll("tr")).filter(tr => tr.innerText.trim().length > 0);
-    if (rows.length === 0) return;
+  e.preventDefault();
+  e.stopPropagation();
 
-    // Pata lagayein ki abhi kaun si row select hai (jispar highlight hai)
-    let activeIdx = rows.findIndex(tr => tr.style.backgroundColor === "rgb(254, 240, 138)" || tr.style.backgroundColor === "var(--highlight-bg, #fef08a)" || tr.classList.contains("row-highlight"));
+  // Pata karein konsi row active hai (custom attribute 'data-active-row' se track karenge)
+  let activeIdx = rows.findIndex(tr => tr.hasAttribute("data-active-row"));
 
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      activeIdx = activeIdx >= rows.length - 1 ? 0 : activeIdx + 1; // Neeche jaye ya wapas upar aaye
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      activeIdx = activeIdx <= 0 ? rows.length - 1 : activeIdx - 1; // Upar jaye ya sabse neeche aaye
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      // Agar row select hai, toh uspe click event trigger kar dein (jisse edit voucher khul jayega)
-      if (activeIdx >= 0 && rows[activeIdx]) {
-        rows[activeIdx].click(); 
-      }
-      return;
-    }
-
-    // Purani select ki hui row se highlight hata dein
-    rows.forEach(tr => {
-       tr.classList.remove("row-highlight");
-       tr.style.backgroundColor = ""; // Default color wapas aa jayega
-    });
-
-    // Nayi select ki hui row par Tally jaisa yellow highlight lagayein
+  if (e.key === "ArrowDown") {
+    activeIdx = activeIdx >= rows.length - 1 ? 0 : activeIdx + 1;
+  } else if (e.key === "ArrowUp") {
+    activeIdx = activeIdx <= 0 ? rows.length - 1 : activeIdx - 1;
+  } else if (e.key === "Enter") {
     if (activeIdx >= 0 && rows[activeIdx]) {
-       rows[activeIdx].classList.add("row-highlight");
-       rows[activeIdx].style.backgroundColor = "#fef08a"; // Tally yellow highlight
-       // Row ko screen par auto-scroll karke visible rakhein
-       rows[activeIdx].scrollIntoView({ block: "nearest" });
+      // Row click karein, ya agar onclick attribute kisi cell me hai toh use click karein
+      const clickTarget = rows[activeIdx].hasAttribute("onclick") ? rows[activeIdx] : rows[activeIdx].querySelector("[onclick]") || rows[activeIdx];
+      clickTarget.click(); 
     }
+    return;
+  }
+
+  // Sabhi rows se highlight clear karein
+  rows.forEach(tr => {
+    tr.style.backgroundColor = ""; 
+    tr.removeAttribute("data-active-row");
+  });
+
+  // Nayi row par highlight lagayein aur focus track karein
+  if (activeIdx >= 0 && rows[activeIdx]) {
+    rows[activeIdx].style.backgroundColor = "#fef08a"; // Yellow highlight
+    rows[activeIdx].setAttribute("data-active-row", "true");
+    
+    // Row screen par visible rahe isliye scroll karein
+    rows[activeIdx].scrollIntoView({ block: "nearest", behavior: "smooth" });
   }
 }, true);
