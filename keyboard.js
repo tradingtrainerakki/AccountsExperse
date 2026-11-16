@@ -568,3 +568,61 @@ window.addEventListener("keydown", function (e) {
   e.stopImmediatePropagation();
   window._openGroupPickerModal();
 }, true);
+// ============================================================================
+// FIX: ARROW KEY NAVIGATION & ENTER TO EDIT ON LEDGER VOUCHERS SCREEN
+// ============================================================================
+window.addEventListener("keydown", function(e) {
+  // Check karein ki hum "Ledger" screen par hain ya nahi
+  const titleEl = document.querySelector("#screenTitle, .screen-title, .screen-bar");
+  const isLedger = titleEl && /Ledger/i.test(titleEl.textContent);
+  
+  const bodyEl = document.getElementById("screenBody");
+  if (!isLedger || !bodyEl) return;
+
+  // Agar koi input box ya modal active hai, toh arrow keys ko interfere na karne dein
+  const activeTag = (document.activeElement || {}).tagName;
+  if (activeTag === "INPUT" || activeTag === "TEXTAREA" || activeTag === "SELECT") return;
+  if (document.querySelector("[id*='Overlay'], .modal-overlay.show")) return;
+
+  if (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter") {
+    // Ledger table ki body select karein
+    const tbody = bodyEl.querySelector("table tbody");
+    if (!tbody) return;
+
+    // Table ki saari rows nikal lein (khali rows ko ignore karke)
+    const rows = Array.from(tbody.querySelectorAll("tr")).filter(tr => tr.innerText.trim().length > 0);
+    if (rows.length === 0) return;
+
+    // Pata lagayein ki abhi kaun si row select hai (jispar highlight hai)
+    let activeIdx = rows.findIndex(tr => tr.style.backgroundColor === "rgb(254, 240, 138)" || tr.style.backgroundColor === "var(--highlight-bg, #fef08a)" || tr.classList.contains("row-highlight"));
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      activeIdx = activeIdx >= rows.length - 1 ? 0 : activeIdx + 1; // Neeche jaye ya wapas upar aaye
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      activeIdx = activeIdx <= 0 ? rows.length - 1 : activeIdx - 1; // Upar jaye ya sabse neeche aaye
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      // Agar row select hai, toh uspe click event trigger kar dein (jisse edit voucher khul jayega)
+      if (activeIdx >= 0 && rows[activeIdx]) {
+        rows[activeIdx].click(); 
+      }
+      return;
+    }
+
+    // Purani select ki hui row se highlight hata dein
+    rows.forEach(tr => {
+       tr.classList.remove("row-highlight");
+       tr.style.backgroundColor = ""; // Default color wapas aa jayega
+    });
+
+    // Nayi select ki hui row par Tally jaisa yellow highlight lagayein
+    if (activeIdx >= 0 && rows[activeIdx]) {
+       rows[activeIdx].classList.add("row-highlight");
+       rows[activeIdx].style.backgroundColor = "#fef08a"; // Tally yellow highlight
+       // Row ko screen par auto-scroll karke visible rakhein
+       rows[activeIdx].scrollIntoView({ block: "nearest" });
+    }
+  }
+}, true);
