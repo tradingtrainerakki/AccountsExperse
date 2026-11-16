@@ -472,3 +472,77 @@
     }
   }, true);
 })();
+// ============================================================================
+// DEDICATED F4 KEY FOR "CHANGE GROUP" ON GROUP SUMMARY SCREEN
+// ============================================================================
+window.addEventListener("keydown", function (e) {
+  if (e.key !== "F4" || e.altKey || e.ctrlKey || e.shiftKey) return;
+
+  // Check karein ki abhi Group Summary screen khuli hai
+  const titleEl = document.querySelector("#screenTitle, .screen-title, .screen-bar");
+  const isGroupSummary = titleEl && /Group Summary/i.test(titleEl.textContent || "");
+  if (!isGroupSummary) return;
+
+  // Agar koi modal pehle se khula ho toh skip karein
+  const modalOpen = document.querySelector("#modalOverlay.show, #modalOverlay[style*='flex'], .modal-overlay.show");
+  if (modalOpen) return;
+
+  const grpSelect = document.querySelector("#screenBody select");
+  if (!grpSelect) return;
+
+  e.preventDefault();
+  e.stopImmediatePropagation();
+
+  const options = Array.from(grpSelect.options).map(o => ({ val: o.value, text: o.textContent.trim() }));
+  let selIdx = Math.max(0, options.findIndex(o => o.val === grpSelect.value));
+
+  const body = `
+    <input id="f4GrpSearch" type="text" placeholder="Type Group name to search... (↑ ↓ + Enter)"
+      style="width:100%; padding:8px 10px; font-size:13px; border:1.5px solid var(--pri); border-radius:4px; margin-bottom:8px;">
+    <div id="f4GrpList" style="max-height:300px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:4px;"></div>`;
+
+  showModal("Change Group (F4)", body, `<button class="btn btn-sec" onclick="closeModal()">Cancel (Esc)</button>`);
+
+  const inp = document.getElementById("f4GrpSearch");
+  const listEl = document.getElementById("f4GrpList");
+  let filtered = options.slice();
+
+  function renderList() {
+    if (selIdx >= filtered.length) selIdx = Math.max(0, filtered.length - 1);
+    listEl.innerHTML = filtered.map((o, i) => `
+      <div class="f4-grp-item" data-idx="${i}"
+        style="padding:7px 10px; cursor:pointer; font-size:13px; border-bottom:1px solid #f1f5f9;
+        background:${i === selIdx ? "#fef08a" : "#fff"}; font-weight:${i === selIdx ? "700" : "500"};">
+        ${escHtml(o.text)}
+      </div>`).join("") || `<div style="padding:12px; text-align:center; color:#64748b;">No group found</div>`;
+
+    listEl.querySelectorAll(".f4-grp-item").forEach(el => {
+      el.onclick = () => pickGroup(Number(el.dataset.idx));
+    });
+    const activeEl = listEl.querySelector(`[data-idx="${selIdx}"]`);
+    if (activeEl) activeEl.scrollIntoView({ block: "nearest" });
+  }
+
+  function pickGroup(idx) {
+    if (!filtered[idx]) return;
+    grpSelect.value = filtered[idx].val;
+    closeModal();
+    grpSelect.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  inp.addEventListener("input", () => {
+    const q = inp.value.trim().toLowerCase();
+    filtered = options.filter(o => o.text.toLowerCase().includes(q));
+    selIdx = 0;
+    renderList();
+  });
+
+  inp.addEventListener("keydown", (ev) => {
+    if (ev.key === "ArrowDown") { ev.preventDefault(); selIdx = Math.min(filtered.length - 1, selIdx + 1); renderList(); }
+    else if (ev.key === "ArrowUp") { ev.preventDefault(); selIdx = Math.max(0, selIdx - 1); renderList(); }
+    else if (ev.key === "Enter") { ev.preventDefault(); pickGroup(selIdx); }
+  });
+
+  renderList();
+  setTimeout(() => inp.focus(), 40);
+}, true);
