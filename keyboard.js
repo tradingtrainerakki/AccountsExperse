@@ -436,7 +436,7 @@
     if (!sb) return;
 
     // Inside Form Inputs (Masters / BOM / Search)
-    if (active && sb.contains(active) && (active.tagName === "INPUT" || active.tagName === "TEXTAREA")) {
+   if (active && sb.contains(active) && ((active.tagName === "INPUT" && !["checkbox", "radio", "button"].includes(active.type)) || active.tagName === "TEXTAREA")) {
       if (k === "ArrowDown" || k === "ArrowUp") {
         e.preventDefault(); e.stopImmediatePropagation();
         const fields = getFocusableList(sb, false);
