@@ -566,7 +566,19 @@ function saveCurrentVoucher() {
 
   saveDB();
   if (s.editingId) goBack();
-  else { initVoucherState(s.vchType, null); renderVoucherEntryScreen(); }
+  else {
+    initVoucherState(s.vchType, null);
+    renderVoucherEntryScreen();
+    setTimeout(() => {
+      const target = (VCH_NO_MODE === "auto")
+        ? document.getElementById("vchDateInp")
+        : document.getElementById("vchNoInp");
+      if (target) {
+        target.focus();
+        if (target.select) try { target.select(); } catch {}
+      }
+    }, 50);
+  }
 }
 
 function deleteVoucher(vid) {
