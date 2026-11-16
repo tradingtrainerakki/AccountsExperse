@@ -385,6 +385,7 @@ function renderLedgersViewScreen() {
         </tfoot>
       </table>
     </div>`;
+}
 // ============================================================================
 // 3. GROUP SUMMARY (GROUP -> LEDGERS WITH BALANCE -> LEDGER VOUCHERS)
 // ============================================================================
