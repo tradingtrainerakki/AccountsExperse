@@ -470,9 +470,26 @@ function kbOverlayOpen() {
 }
 
 function openDateModal() {
-  const body = `<div class="field"><label>Current Voucher Date (F2)</label><input type="date" id="curDateInp" value="${DB.company.curDate}"></div>`;
-  const foot = `<button class="btn btn-sec" onclick="closeModal()">Cancel</button><button class="btn" onclick="DB.company.curDate=document.getElementById('curDateInp').value; saveDB(); closeModal(); toast('📅 Date Updated');">Apply</button>`;
-  showModal("Change Current Date (F2)", body, foot);
+  const curVal = (CURRENT_SCREEN === "voucher_entry" && typeof VCH_STATE !== "undefined" && VCH_STATE.date)
+    ? VCH_STATE.date
+    : DB.company.curDate;
+  const body = `<div class="field"><label>Voucher / Current Date (F2)</label><input type="date" id="curDateInp" value="${curVal}"></div>`;
+  const foot = `<button class="btn btn-sec" onclick="closeModal()">Cancel</button><button class="btn" onclick="applyF2VoucherDate()">Apply (Enter)</button>`;
+  showModal("Change Date (F2)", body, foot);
+}
+
+function applyF2VoucherDate() {
+  const val = document.getElementById("curDateInp")?.value;
+  if (!val) return;
+  DB.company.curDate = val;
+  if (CURRENT_SCREEN === "voucher_entry" && typeof VCH_STATE !== "undefined") {
+    VCH_STATE.date = val;
+    const inp = document.getElementById("vchDateInp");
+    if (inp) inp.value = val;
+  }
+  saveDB();
+  closeModal();
+  toast("📅 Date Updated: " + fmtDate(val));
 }
 
 function openPeriodModal() {
