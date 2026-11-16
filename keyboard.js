@@ -322,7 +322,7 @@
       return;
     }
 
-    // I. FUNCTION KEYS (F2, F3, F4, ?)
+    // I. FUNCTION KEYS (F2, F3, F4-F9 VOUCHER SWITCH, ?)
     if (k === "F3") { e.preventDefault(); e.stopImmediatePropagation(); openEntitySwitcherModal(); return; }
     if (k === "?") { e.preventDefault(); e.stopImmediatePropagation(); openHelpModal(); return; }
     if (k === "F2") {
@@ -337,6 +337,32 @@
       return;
     }
 
+    // Standard Tally Function Keys (F4-F9) — Works everywhere (even inside dropdowns/inputs)
+    const FN_VCH = { F4: "Contra", F5: "Payment", F6: "Receipt", F7: "Journal", F8: "Sales", F9: "Purchase" };
+    if (FN_VCH[k]) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      openVoucherScreen(FN_VCH[k]);
+      return;
+    }
+
+    // Single-Letter Voucher Keys (C, Y, R, J, S, P, K, D) — Works on Voucher Entry & Report screens
+    if (CURRENT_SCREEN !== "gateway") {
+      const isTypingBox = active && (
+        active.tagName === "TEXTAREA" ||
+        active.tagName === "SELECT" ||
+        (active.tagName === "INPUT" && ["text", "search", "email", "password", "number"].includes((active.type || "text").toLowerCase()))
+      );
+      if (!isTypingBox && k.length === 1) {
+        const vt = VCH_TYPES.find(x => x.k === k.toLowerCase());
+        if (vt) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          openVoucherScreen(vt.t);
+          return;
+        }
+      }
+    }
     // J. GATEWAY SCREEN
     if (CURRENT_SCREEN === "gateway") {
       const list = getActiveGatewayList();
