@@ -1047,3 +1047,153 @@ function applyRestore(mode) {
     }
   });
 })();
+// ============================================================================
+// USER ROLE & ACCESS MANAGER (ADMIN / OPERATOR / VIEWER + READ-ONLY LOCK)
+// ============================================================================
+const MASTER_ADMIN_EMAIL = "tradingtrainerakki@gmail.com";
+
+function getLoggedInEmail() {
+  const badge = document.querySelector("#supaUserBadge, .supa-user-badge");
+  if (window._SUPA_USER && window._SUPA_USER.email) return String(window._SUPA_USER.email).toLowerCase().trim();
+  const saved = localStorage.getItem("SUPA_LAST_EMAIL") || "";
+  if (saved) return saved.toLowerCase().trim();
+  if (badge && badge.textContent.includes("tradingtrainerakki")) return MASTER_ADMIN_EMAIL;
+  return "";
+}
+
+function getCurrentUserRole() {
+  const email = getLoggedInEmail();
+  if (!email || email === MASTER_ADMIN_EMAIL) return "admin";
+  const list = (DB && Array.isArray(DB.userRoles)) ? DB.userRoles : [];
+  const found = list.find(u => String(u.email || "").toLowerCase().trim() === email);
+  if (!found) return "viewer";
+  if (found.blocked) return "blocked";
+  return found.role || "viewer";
+}
+
+// 1. Read-Only / Blocked Guard on saveDB
+(function wrapSaveDBForRoles() {
+  if (typeof saveDB !== "function" || window._SAVE_DB_ROLE_WRAPPED) return;
+  const origSaveDB = saveDB;
+  window.saveDB = function (...args) {
+    const role = getCurrentUserRole();
+    if (role === "blocked") {
+      toast("🚫 Aapka access Admin dwara block kar diya gaya hai!");
+      return;
+    }
+    if (role === "viewer") {
+      toast("🔒 Read-Only Mode: Viewer sirf reports dekh aur print kar sakta hai!");
+      return;
+    }
+    return origSaveDB.apply(this, args);
+  };
+  window._SAVE_DB_ROLE_WRAPPED = true;
+})();
+
+// 2. Auto-Add "👥 Users" Button in Top Bar (Only for Admin)
+function injectUserManagerButton() {
+  const oldBtn = document.getElementById("aeUsersMgrBtn");
+  const role = getCurrentUserRole();
+  if (role !== "admin") {
+    if (oldBtn) oldBtn.remove();
+    return;
+  }
+  if (oldBtn) return;
+
+  const topbar = document.querySelector(".topbar-right, .topbar, header");
+  if (!topbar) return;
+
+  const btn = document.createElement("button");
+  btn.id = "aeUsersMgrBtn";
+  btn.className = "btn btn-sec";
+  btn.style.cssText = "padding:3px 9px; font-size:11.5px; font-weight:700; margin-left:6px; background:#fef08a; color:#0f172a; border-color:#eab308;";
+  btn.innerHTML = "👥 Users";
+  btn.onclick = openUserManagerModal;
+  topbar.appendChild(btn);
+}
+
+setInterval(injectUserManagerButton, 1200);
+
+// 3. Users Manager Popup
+function openUserManagerModal() {
+  if (getCurrentUserRole() !== "admin") {
+    toast("🚫 Sirf Admin hi Users manage kar sakta hai!");
+    return;
+  }
+  if (!Array.isArray(DB.userRoles)) DB.userRoles = [];
+
+  const rowsHtml = DB.userRoles.map((u, idx) => `
+    <tr style="${u.blocked ? "background:#fef2f2; opacity:0.75;" : ""}">
+      <td>${idx + 1}</td>
+      <td><b>${escHtml(u.email)}</b></td>
+      <td>
+        <select onchange="updateUserRoleItem(${idx}, 'role', this.value)" style="padding:3px 6px; font-size:12px;">
+          <option value="viewer" ${u.role === "viewer" ? "selected" : ""}>👁️ Viewer (Read-Only)</option>
+          <option value="operator" ${u.role === "operator" ? "selected" : ""}>✏️ Operator (Data Entry)</option>
+          <option value="admin" ${u.role === "admin" ? "selected" : ""}>👑 Admin (Full Access)</option>
+        </select>
+      </td>
+      <td>
+        <button class="btn btn-sec" style="padding:2px 7px; font-size:11px; color:${u.blocked ? "var(--ok)" : "var(--danger)"};"
+          onclick="updateUserRoleItem(${idx}, 'blocked', ${!u.blocked})">
+          ${u.blocked ? "🔓 Unblock" : "🚫 Block"}
+        </button>
+        <button class="btn btn-danger" style="padding:2px 7px; font-size:11px;" onclick="removeUserRoleItem(${idx})">✕</button>
+      </td>
+    </tr>`).join("");
+
+  const body = `
+    <div style="font-size:12px; color:#475569; margin-bottom:10px; background:#f8fafc; padding:8px; border-radius:4px; border:1px solid #e2e8f0;">
+      <b>Master Admin:</b> ${MASTER_ADMIN_EMAIL}<br>
+      Naye user ko pehle <b>Supabase → Authentication → Users</b> me add karein, phir uski email yahan set karein.
+    </div>
+    <div class="form-grid" style="margin-bottom:12px; grid-template-columns: 2fr 1fr auto; align-items:end;">
+      <div class="field"><label>User Email *</label><input id="umEmailInp" type="email" placeholder="member@gmail.com"></div>
+      <div class="field"><label>Role *</label>
+        <select id="umRoleInp">
+          <option value="viewer">👁️ Viewer (Read-Only)</option>
+          <option value="operator">✏️ Operator (Data Entry)</option>
+          <option value="admin">👑 Admin (Full Access)</option>
+        </select>
+      </div>
+      <button class="btn" style="height:33px;" onclick="addUserRoleItem()">➕ Add</button>
+    </div>
+    <table class="tally-tbl">
+      <thead><tr><th>#</th><th>Email</th><th>Role</th><th>Action</th></tr></thead>
+      <tbody>${rowsHtml || `<tr><td colspan="4" style="text-align:center; padding:16px; color:var(--muted);">Abhi koi extra user add nahi hai.</td></tr>`}</tbody>
+    </table>`;
+
+  showModal("👥 Users & Role Manager (Admin Only)", body, `<button class="btn" onclick="closeModal()">Done (Esc)</button>`);
+}
+
+function addUserRoleItem() {
+  const email = (document.getElementById("umEmailInp")?.value || "").trim().toLowerCase();
+  const role = document.getElementById("umRoleInp")?.value || "viewer";
+  if (!email || !email.includes("@")) { toast("⚠ Valid Email dalein!"); return; }
+  if (email === MASTER_ADMIN_EMAIL) { toast("ℹ️ Master Admin pehle se full access par hai!"); return; }
+  if (!Array.isArray(DB.userRoles)) DB.userRoles = [];
+
+  const existing = DB.userRoles.find(u => u.email.toLowerCase() === email);
+  if (existing) { existing.role = role; existing.blocked = false; }
+  else DB.userRoles.push({ email, role, blocked: false });
+
+  saveDB();
+  openUserManagerModal();
+  toast(`✅ ${email} (${role}) Saved & Synced!`);
+}
+
+function updateUserRoleItem(idx, field, val) {
+  if (!DB.userRoles || !DB.userRoles[idx]) return;
+  DB.userRoles[idx][field] = val;
+  saveDB();
+  openUserManagerModal();
+  toast("✅ User Access Updated!");
+}
+
+function removeUserRoleItem(idx) {
+  if (!DB.userRoles) return;
+  DB.userRoles.splice(idx, 1);
+  saveDB();
+  openUserManagerModal();
+  toast("🗑️ User Removed");
+}
