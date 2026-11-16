@@ -299,6 +299,7 @@
     // H. APP MODAL (#appModal: F3 Company, F2 Date, Period, Quick Ledger, etc.)
     if (kbOverlayOpen()) {
       if (k === "Escape") { e.preventDefault(); e.stopImmediatePropagation(); closeModal(); return; }
+      if (document.getElementById("gGrpSearch")) return;
       const card = document.querySelector("#appModal .modal-card");
       const inputs = getFocusableList(card, false);
       const all = getFocusableList(card, true);
@@ -472,80 +473,6 @@
     }
   }, true);
 })();
-// ============================================================================
-// DEDICATED "G" KEY FOR "CHANGE GROUP" ON GROUP SUMMARY SCREEN
-// ============================================================================
-window.addEventListener("keydown", function (e) {
-  if (e.key.toLowerCase() !== "g" || e.altKey || e.ctrlKey || e.metaKey) return;
-
-  // Agar kisi input/textarea me type kar rahe hon ya modal khula ho toh skip karein
-  const tag = (document.activeElement && document.activeElement.tagName || "").toUpperCase();
-  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-  if (document.querySelector("#modalOverlay.show, #modalOverlay[style*='flex'], .modal-overlay.show")) return;
-
-  // Check karein ki screen par "Select Group" wala dropdown maujood hai
-  const bodyEl = document.getElementById("screenBody");
-  if (!bodyEl || !/Select Group/i.test(bodyEl.textContent || "")) return;
-
-  const grpSelect = bodyEl.querySelector("select");
-  if (!grpSelect) return;
-
-  e.preventDefault();
-  e.stopImmediatePropagation();
-
-  const options = Array.from(grpSelect.options).map(o => ({ val: o.value, text: o.textContent.trim() }));
-  let selIdx = Math.max(0, options.findIndex(o => o.val === grpSelect.value));
-
-  const body = `
-    <input id="gGrpSearch" type="text" placeholder="Type Group name... (↑ ↓ + Enter)"
-      style="width:100%; padding:8px 10px; font-size:13px; border:1.5px solid var(--pri); border-radius:4px; margin-bottom:8px;">
-    <div id="gGrpList" style="max-height:300px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:4px;"></div>`;
-
-  showModal("Change Group (G)", body, `<button class="btn btn-sec" onclick="closeModal()">Cancel (Esc)</button>`);
-
-  const inp = document.getElementById("gGrpSearch");
-  const listEl = document.getElementById("gGrpList");
-  let filtered = options.slice();
-
-  function renderList() {
-    if (selIdx >= filtered.length) selIdx = Math.max(0, filtered.length - 1);
-    listEl.innerHTML = filtered.map((o, i) => `
-      <div class="g-grp-item" data-idx="${i}"
-        style="padding:7px 10px; cursor:pointer; font-size:13px; border-bottom:1px solid #f1f5f9;
-        background:${i === selIdx ? "#fef08a" : "#fff"}; font-weight:${i === selIdx ? "700" : "500"};">
-        ${escHtml(o.text)}
-      </div>`).join("") || `<div style="padding:12px; text-align:center; color:#64748b;">No group found</div>`;
-
-    listEl.querySelectorAll(".g-grp-item").forEach(el => {
-      el.onclick = () => pickGroup(Number(el.dataset.idx));
-    });
-    const activeEl = listEl.querySelector(`[data-idx="${selIdx}"]`);
-    if (activeEl) activeEl.scrollIntoView({ block: "nearest" });
-  }
-
-  function pickGroup(idx) {
-    if (!filtered[idx]) return;
-    grpSelect.value = filtered[idx].val;
-    closeModal();
-    grpSelect.dispatchEvent(new Event("change", { bubbles: true }));
-  }
-
-  inp.addEventListener("input", () => {
-    const q = inp.value.trim().toLowerCase();
-    filtered = options.filter(o => o.text.toLowerCase().includes(q));
-    selIdx = 0;
-    renderList();
-  });
-
-  inp.addEventListener("keydown", (ev) => {
-    if (ev.key === "ArrowDown") { ev.preventDefault(); selIdx = Math.min(filtered.length - 1, selIdx + 1); renderList(); }
-    else if (ev.key === "ArrowUp") { ev.preventDefault(); selIdx = Math.max(0, selIdx - 1); renderList(); }
-    else if (ev.key === "Enter") { ev.preventDefault(); pickGroup(selIdx); }
-  });
-
-  renderList();
-  setTimeout(() => inp.focus(), 40);
-}, true);
 // ============================================================================
 // DEDICATED "CHANGE GROUP" BUTTON & "G" KEY FOR GROUP SUMMARY SCREEN
 // ============================================================================
