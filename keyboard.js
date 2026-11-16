@@ -556,7 +556,7 @@ setInterval(injectGroupChangeButton, 800);
 
 // Keyboard listener for 'G' key
 window.addEventListener("keydown", function (e) {
-  if (e.key.toLowerCase() !== "g" || e.altKey || e.ctrlKey || e.metaKey) return;
+  if (!e.key || e.key.toLowerCase() !== "g" || e.altKey || e.ctrlKey || e.metaKey) return;
   const tag = (document.activeElement && document.activeElement.tagName || "").toUpperCase();
   if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
   if (document.querySelector("#modalOverlay.show, #modalOverlay[style*='flex'], .modal-overlay.show")) return;
