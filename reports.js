@@ -5,6 +5,7 @@
 
 let SELECTED_LEDGER_FOR_VIEW = "";
 let SHOW_NARRATION_IN_LEDGER = true;
+let SHOW_DETAILS_IN_LEDGER = false;
 let SHOW_ZERO_BALANCES = false;
 let BS_DETAILED_MODE = false;
 window._BS_ACTIVE_GROUP_DRILL = null;
@@ -289,7 +290,7 @@ function renderLedgersViewScreen() {
     running = +(running + drAmt - crAmt).toFixed(2);
 
     const opp = getOppositeParticulars(v, SELECTED_LEDGER_FOR_VIEW);
-    const subHtml = opp.subLines.length > 1
+    const subHtml = (SHOW_DETAILS_IN_LEDGER && opp.subLines.length > 1)
       ? `<div style="padding-left:20px;font-size:11px;color:#475569;">${opp.subLines.map(s => `• ${escHtml(s.name)}: ₹${fmtINR(s.amount)} ${s.type}`).join("<br>")}</div>` : "";
     const narrHtml = (SHOW_NARRATION_IN_LEDGER && v.narration)
       ? `<div style="padding-left:20px;font-size:11px;color:#64748b;font-style:italic;">${escHtml(v.narration)}</div>` : "";
@@ -315,6 +316,7 @@ function renderLedgersViewScreen() {
         <button class="btn btn-sec" style="padding:3px 9px;font-size:11.5px;" onclick="launchDirectLedgerPicker('ledger_view')">🔄 Change Ledger (F4)</button>
         <button class="btn btn-sec" style="padding:3px 9px;font-size:11.5px;" onclick="openDirectF2DateModal()">📅 ${fmtDate(p.from)} to ${fmtDate(p.to)} (F2)</button>
         <label style="font-size:12px;cursor:pointer;"><input type="checkbox" ${SHOW_NARRATION_IN_LEDGER ? "checked" : ""} onchange="SHOW_NARRATION_IN_LEDGER=this.checked; renderLedgersViewScreen();"> Narration</label>
+        <label style="font-size:12px;cursor:pointer;"><input type="checkbox" ${SHOW_DETAILS_IN_LEDGER ? "checked" : ""} onchange="SHOW_DETAILS_IN_LEDGER=this.checked; renderLedgersViewScreen();"> As per details</label>
       </div>
       <div style="font-size:14.5px;font-weight:800;color:var(--pri-dark);">Closing: ₹${fmtINR(Math.abs(running))} ${running >= 0 ? "Dr" : "Cr"}</div>
     </div>
