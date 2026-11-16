@@ -473,21 +473,21 @@
   }, true);
 })();
 // ============================================================================
-// DEDICATED F4 KEY FOR "CHANGE GROUP" ON GROUP SUMMARY SCREEN
+// DEDICATED "G" KEY FOR "CHANGE GROUP" ON GROUP SUMMARY SCREEN
 // ============================================================================
 window.addEventListener("keydown", function (e) {
-  if (e.key !== "F4" || e.altKey || e.ctrlKey || e.shiftKey) return;
+  if (e.key.toLowerCase() !== "g" || e.altKey || e.ctrlKey || e.metaKey) return;
 
-  // Check karein ki abhi Group Summary screen khuli hai
-  const titleEl = document.querySelector("#screenTitle, .screen-title, .screen-bar");
-  const isGroupSummary = titleEl && /Group Summary/i.test(titleEl.textContent || "");
-  if (!isGroupSummary) return;
+  // Agar kisi input/textarea me type kar rahe hon ya modal khula ho toh skip karein
+  const tag = (document.activeElement && document.activeElement.tagName || "").toUpperCase();
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+  if (document.querySelector("#modalOverlay.show, #modalOverlay[style*='flex'], .modal-overlay.show")) return;
 
-  // Agar koi modal pehle se khula ho toh skip karein
-  const modalOpen = document.querySelector("#modalOverlay.show, #modalOverlay[style*='flex'], .modal-overlay.show");
-  if (modalOpen) return;
+  // Check karein ki screen par "Select Group" wala dropdown maujood hai
+  const bodyEl = document.getElementById("screenBody");
+  if (!bodyEl || !/Select Group/i.test(bodyEl.textContent || "")) return;
 
-  const grpSelect = document.querySelector("#screenBody select");
+  const grpSelect = bodyEl.querySelector("select");
   if (!grpSelect) return;
 
   e.preventDefault();
@@ -497,26 +497,26 @@ window.addEventListener("keydown", function (e) {
   let selIdx = Math.max(0, options.findIndex(o => o.val === grpSelect.value));
 
   const body = `
-    <input id="f4GrpSearch" type="text" placeholder="Type Group name to search... (↑ ↓ + Enter)"
+    <input id="gGrpSearch" type="text" placeholder="Type Group name... (↑ ↓ + Enter)"
       style="width:100%; padding:8px 10px; font-size:13px; border:1.5px solid var(--pri); border-radius:4px; margin-bottom:8px;">
-    <div id="f4GrpList" style="max-height:300px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:4px;"></div>`;
+    <div id="gGrpList" style="max-height:300px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:4px;"></div>`;
 
-  showModal("Change Group (F4)", body, `<button class="btn btn-sec" onclick="closeModal()">Cancel (Esc)</button>`);
+  showModal("Change Group (G)", body, `<button class="btn btn-sec" onclick="closeModal()">Cancel (Esc)</button>`);
 
-  const inp = document.getElementById("f4GrpSearch");
-  const listEl = document.getElementById("f4GrpList");
+  const inp = document.getElementById("gGrpSearch");
+  const listEl = document.getElementById("gGrpList");
   let filtered = options.slice();
 
   function renderList() {
     if (selIdx >= filtered.length) selIdx = Math.max(0, filtered.length - 1);
     listEl.innerHTML = filtered.map((o, i) => `
-      <div class="f4-grp-item" data-idx="${i}"
+      <div class="g-grp-item" data-idx="${i}"
         style="padding:7px 10px; cursor:pointer; font-size:13px; border-bottom:1px solid #f1f5f9;
         background:${i === selIdx ? "#fef08a" : "#fff"}; font-weight:${i === selIdx ? "700" : "500"};">
         ${escHtml(o.text)}
       </div>`).join("") || `<div style="padding:12px; text-align:center; color:#64748b;">No group found</div>`;
 
-    listEl.querySelectorAll(".f4-grp-item").forEach(el => {
+    listEl.querySelectorAll(".g-grp-item").forEach(el => {
       el.onclick = () => pickGroup(Number(el.dataset.idx));
     });
     const activeEl = listEl.querySelector(`[data-idx="${selIdx}"]`);
