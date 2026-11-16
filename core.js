@@ -1197,3 +1197,108 @@ function removeUserRoleItem(idx) {
   openUserManagerModal();
   toast("🗑️ User Removed");
 }
+// ============================================================================
+// ENHANCED COMPANY / TRUST ALTERATION (F3) WITH ALL DETAILS
+// ============================================================================
+function openCompanyAlterModal() {
+  const c = DB.company || {};
+  const stateOpts = (typeof STATE_LIST !== "undefined" ? STATE_LIST : ["05 - Uttarakhand"])
+    .map(s => `<option value="${escHtml(s)}" ${c.state === s ? "selected" : ""}>${escHtml(s)}</option>`).join("");
+
+  const body = `
+    <div style="max-height:68vh; overflow-y:auto; padding-right:6px;">
+      <div style="font-size:11px; font-weight:800; color:var(--pri); text-transform:uppercase; border-bottom:1px solid #e2e8f0; padding-bottom:3px; margin-bottom:8px;">Basic Info</div>
+      <div class="form-grid" style="grid-template-columns: 1fr 2fr; gap:8px; margin-bottom:10px;">
+        <div class="field"><label>Organization Type *</label>
+          <select id="caEntityType">
+            <option value="company" ${(c.entityType || "company") === "company" ? "selected" : ""}>🏢 Company / Business</option>
+            <option value="trust" ${c.entityType === "trust" ? "selected" : ""}>🏛️ Trust / NGO / Section-8</option>
+          </select>
+        </div>
+        <div class="field"><label>Company / Trust Name *</label><input id="caName" value="${escHtml(c.name || "")}"></div>
+      </div>
+      <div class="form-grid" style="grid-template-columns: 1fr 1fr 1fr; gap:8px; margin-bottom:12px;">
+        <div class="field"><label>Registration Number</label><input id="caRegNo" value="${escHtml(c.regNo || "")}" placeholder="e.g. UK/403-IV/2025"></div>
+        <div class="field"><label>Registration Date</label><input type="date" id="caRegDate" value="${escHtml(c.regDate || "")}"></div>
+        <div class="field"><label>PAN Number</label><input id="caPan" value="${escHtml(c.pan || "")}" placeholder="e.g. ABMTS4018D"></div>
+      </div>
+
+      <div style="font-size:11px; font-weight:800; color:var(--pri); text-transform:uppercase; border-bottom:1px solid #e2e8f0; padding-bottom:3px; margin-bottom:8px;">Tax Registrations &amp; Bank</div>
+      <div class="form-grid" style="grid-template-columns: 1fr 1fr 1fr; gap:8px; margin-bottom:8px;">
+        <div class="field"><label>12A Number</label><input id="ca12A" value="${escHtml(c.reg12A || "")}" placeholder="e.g. 12A/2020-21/5678"></div>
+        <div class="field"><label>80G Number</label><input id="ca80G" value="${escHtml(c.reg80G || "")}" placeholder="e.g. 80G/2020-21/1234"></div>
+        <div class="field"><label>Bank Account</label><input id="caBankAcc" value="${escHtml(c.bankAccount || "")}" placeholder="e.g. 721110210000007"></div>
+      </div>
+      <div class="form-grid" style="grid-template-columns: 1fr 1fr 1fr 1fr; gap:8px; margin-bottom:12px;">
+        <div class="field"><label>GST Reg. Type</label>
+          <select id="caRegType">
+            <option value="Regular" ${(c.regType || "Regular") === "Regular" ? "selected" : ""}>Regular</option>
+            <option value="Composition" ${c.regType === "Composition" ? "selected" : ""}>Composition</option>
+            <option value="Unregistered" ${c.regType === "Unregistered" ? "selected" : ""}>Unregistered</option>
+          </select>
+        </div>
+        <div class="field"><label>GSTIN (15 Digits)</label><input id="caGstin" value="${escHtml(c.gstin || "")}" placeholder="Optional"></div>
+        <div class="field"><label>FY From *</label><input type="date" id="caFyFrom" value="${escHtml(c.fyFrom || "2026-04-01")}"></div>
+        <div class="field"><label>FY To *</label><input type="date" id="caFyTo" value="${escHtml(c.fyTo || "2027-03-31")}"></div>
+      </div>
+
+      <div style="font-size:11px; font-weight:800; color:var(--pri); text-transform:uppercase; border-bottom:1px solid #e2e8f0; padding-bottom:3px; margin-bottom:8px;">Address &amp; Contact</div>
+      <div class="form-grid" style="grid-template-columns: 1fr 1fr 1fr; gap:8px; margin-bottom:8px;">
+        <div class="field"><label>Address Line 1</label><input id="caAddr" value="${escHtml(c.address || "")}" placeholder="e.g. Ganga Enclave"></div>
+        <div class="field"><label>Address Line 2</label><input id="caAddr2" value="${escHtml(c.address2 || "")}" placeholder="e.g. Area / Landmark"></div>
+        <div class="field"><label>City</label><input id="caCity" value="${escHtml(c.city || "")}" placeholder="e.g. Roorkee"></div>
+      </div>
+      <div class="form-grid" style="grid-template-columns: 1fr 1fr 1fr; gap:8px; margin-bottom:8px;">
+        <div class="field"><label>State</label><select id="caState">${stateOpts}</select></div>
+        <div class="field"><label>Pincode</label><input id="caPin" value="${escHtml(c.pincode || "")}" placeholder="e.g. 247667"></div>
+        <div class="field"><label>Phone</label><input id="caPhone" value="${escHtml(c.phone || "")}" placeholder="e.g. 9897346272"></div>
+      </div>
+      <div class="form-grid" style="grid-template-columns: 1fr 1fr; gap:8px; margin-bottom:12px;">
+        <div class="field"><label>Email</label><input type="email" id="caEmail" value="${escHtml(c.email || "")}" placeholder="e.g. trust@gmail.com"></div>
+        <div class="field"><label>Website</label><input id="caWeb" value="${escHtml(c.website || "")}" placeholder="e.g. www.trust.org"></div>
+      </div>
+
+      <div style="font-size:11px; font-weight:800; color:var(--pri); text-transform:uppercase; border-bottom:1px solid #e2e8f0; padding-bottom:3px; margin-bottom:8px;">Authorised Signatory (Print Ke Liye)</div>
+      <div class="form-grid" style="grid-template-columns: 1fr 1fr; gap:8px;">
+        <div class="field"><label>Signatory Name</label><input id="caSigName" value="${escHtml(c.signatoryName || "")}" placeholder="e.g. Suresh Kumar"></div>
+        <div class="field"><label>Designation</label><input id="caSigDesig" value="${escHtml(c.signatoryDesig || "Authorised Signatory")}" placeholder="Authorised Signatory"></div>
+      </div>
+    </div>`;
+
+  const foot = `<button class="btn btn-sec" onclick="closeModal()">Cancel</button><button class="btn" onclick="saveCompanyAlter()">Save (Ctrl+A)</button>`;
+  showModal("Company / Trust Alteration (F3)", body, foot);
+}
+
+function saveCompanyAlter() {
+  const name = (document.getElementById("caName")?.value || "").trim();
+  if (!name) { toast("⚠ Company / Trust Name zaroori hai!"); return; }
+
+  DB.company.entityType = document.getElementById("caEntityType")?.value || "company";
+  DB.company.name = name;
+  DB.company.regNo = (document.getElementById("caRegNo")?.value || "").trim();
+  DB.company.regDate = document.getElementById("caRegDate")?.value || "";
+  DB.company.pan = (document.getElementById("caPan")?.value || "").trim().toUpperCase();
+  DB.company.reg12A = (document.getElementById("ca12A")?.value || "").trim();
+  DB.company.reg80G = (document.getElementById("ca80G")?.value || "").trim();
+  DB.company.bankAccount = (document.getElementById("caBankAcc")?.value || "").trim();
+  DB.company.regType = document.getElementById("caRegType")?.value || "Regular";
+  DB.company.gstin = (document.getElementById("caGstin")?.value || "").trim().toUpperCase();
+  DB.company.fyFrom = document.getElementById("caFyFrom")?.value || DB.company.fyFrom;
+  DB.company.fyTo = document.getElementById("caFyTo")?.value || DB.company.fyTo;
+  DB.company.address = (document.getElementById("caAddr")?.value || "").trim();
+  DB.company.address2 = (document.getElementById("caAddr2")?.value || "").trim();
+  DB.company.city = (document.getElementById("caCity")?.value || "").trim();
+  DB.company.state = document.getElementById("caState")?.value || DB.company.state;
+  DB.company.pincode = (document.getElementById("caPin")?.value || "").trim();
+  DB.company.phone = (document.getElementById("caPhone")?.value || "").trim();
+  DB.company.email = (document.getElementById("caEmail")?.value || "").trim();
+  DB.company.website = (document.getElementById("caWeb")?.value || "").trim();
+  DB.company.signatoryName = (document.getElementById("caSigName")?.value || "").trim();
+  DB.company.signatoryDesig = (document.getElementById("caSigDesig")?.value || "Authorised Signatory").trim();
+
+  if (typeof syncEntityMeta === "function") syncEntityMeta();
+  saveDB();
+  closeModal();
+  if (typeof updateShellUI === "function") updateShellUI();
+  toast("✅ Company / Trust Details Saved!");
+}
