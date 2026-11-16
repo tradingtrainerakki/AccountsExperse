@@ -547,7 +547,7 @@ window.addEventListener("keydown", function (e) {
   setTimeout(() => inp.focus(), 40);
 }, true);
 // ============================================================================
-// DEDICATED "CHANGE GROUP" BUTTON & "G" KEY FOR GROUP SUMMARY SCREEN
+// DEDICATED "CHANGE GROUP" BUTTON & "G" KEY FOR GROUP SUMMARY SCREEN (ULTIMATE FIX)
 // ============================================================================
 window._openGroupPickerModal = function() {
   const bodyEl = document.getElementById("screenBody");
@@ -599,11 +599,27 @@ window._openGroupPickerModal = function() {
     renderList();
   });
 
+  // Capture phase me event sunenge taaki koi doosra handler focus na hatae
   inp.addEventListener("keydown", (ev) => {
-    if (ev.key === "ArrowDown") { ev.preventDefault(); selIdx = Math.min(filtered.length - 1, selIdx + 1); renderList(); }
-    else if (ev.key === "ArrowUp") { ev.preventDefault(); selIdx = Math.max(0, selIdx - 1); renderList(); }
-    else if (ev.key === "Enter") { ev.preventDefault(); pickGroup(selIdx); }
-  });
+    if (ev.key === "ArrowDown") {
+      ev.preventDefault();
+      ev.stopPropagation();
+      ev.stopImmediatePropagation();
+      selIdx = Math.min(filtered.length - 1, selIdx + 1);
+      renderList();
+    } else if (ev.key === "ArrowUp") {
+      ev.preventDefault();
+      ev.stopPropagation();
+      ev.stopImmediatePropagation();
+      selIdx = Math.max(0, selIdx - 1);
+      renderList();
+    } else if (ev.key === "Enter") {
+      ev.preventDefault();
+      ev.stopPropagation();
+      ev.stopImmediatePropagation();
+      pickGroup(selIdx);
+    }
+  }, true);
 
   renderList();
   setTimeout(() => inp.focus(), 40);
