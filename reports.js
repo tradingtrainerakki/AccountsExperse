@@ -297,54 +297,94 @@ function renderLedgersViewScreen() {
 
     rowsHtml += `
       <tr data-vid="${v.id}" onclick="openVoucherScreen('${v.type}','${v.id}')" style="cursor:pointer;">
-        <td style="white-space:nowrap;"><b>${fmtDate(v.date)}</b></td>
-        <td><span class="kbd" style="background:${opp.prefix === "Dr" ? "#dbeafe" : "#fef3c7"};margin-right:5px;">${opp.prefix}</span><b>${escHtml(opp.mainName)}</b>${subHtml}${narrHtml}</td>
-        <td><span class="kbd">${escHtml(v.type)}</span></td>
-        <td><b>${escHtml(v.vchNo)}</b></td>
-        <td class="num" style="font-weight:700;">${drAmt ? `₹${fmtINR(drAmt)}` : ""}</td>
-        <td class="num" style="font-weight:700;">${crAmt ? `₹${fmtINR(crAmt)}` : ""}</td>
-        <td class="num" style="font-weight:700;color:var(--pri-dark);">₹${fmtINR(Math.abs(running))} ${running >= 0 ? "Dr" : "Cr"}</td>
+        <td style="white-space:nowrap;">${fmtDate(v.date)}</td>
+        <td><b>${escHtml(opp.mainName)}</b>${subHtml}${narrHtml}</td>
+        <td>${escHtml(v.type)}</td>
+        <td>${escHtml(v.vchNo)}</td>
+        <td class="num">${drAmt ? fmtINR(drAmt) : ""}</td>
+        <td class="num">${crAmt ? fmtINR(crAmt) : ""}</td>
       </tr>`;
   });
 
   const opNet = +(curBal.opDr - curBal.opCr).toFixed(2);
+  const opDr = opNet > 0 ? opNet : 0;
+  const opCr = opNet < 0 ? Math.abs(opNet) : 0;
+  const curTotDr = +(opDr + totDr).toFixed(2);
+  const curTotCr = +(opCr + totCr).toFixed(2);
+  const clsDiff = +(curTotDr - curTotCr).toFixed(2);
+  const grandTot = Math.max(curTotDr, curTotCr);
+
+  const c = DB.company || {};
+  const regLine = [c.regNo ? `Reg. No: ${c.regNo}` : "", c.pan ? `PAN: ${c.pan}` : "", c.gstin ? `GSTIN: ${c.gstin}` : ""].filter(Boolean).join(" | ");
+  const addrLine = [c.address, c.address2, c.city, c.state, c.pincode ? `- ${c.pincode}` : ""].filter(Boolean).join(", ");
+  const contLine = [c.phone ? `Ph: ${c.phone}` : "", c.email ? c.email : ""].filter(Boolean).join(" | ");
+
   document.getElementById("screenBody").innerHTML = `
-    <div class="form-card" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;background:#f8fafc;">
+    <div class="form-card no-print" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;background:#f8fafc;">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        <button class="btn btn-sec" onclick="goBack()">⬅ Back (Esc)</button>
-        <span style="font-weight:800;font-size:13.5px;">📒 ${escHtml(led ? led.name : "-")} <small style="color:var(--muted);">[${escHtml(led ? led.group : "")}]</small></span>
+        <button class="btn btn-sec" onclick="goBack()">← Back (Esc)</button>
         <button class="btn btn-sec" style="padding:3px 9px;font-size:11.5px;" onclick="launchDirectLedgerPicker('ledger_view')">🔄 Change Ledger (F4)</button>
         <button class="btn btn-sec" style="padding:3px 9px;font-size:11.5px;" onclick="openDirectF2DateModal()">📅 ${fmtDate(p.from)} to ${fmtDate(p.to)} (F2)</button>
         <label style="font-size:12px;cursor:pointer;"><input type="checkbox" ${SHOW_NARRATION_IN_LEDGER ? "checked" : ""} onchange="SHOW_NARRATION_IN_LEDGER=this.checked; renderLedgersViewScreen();"> Narration</label>
         <label style="font-size:12px;cursor:pointer;"><input type="checkbox" ${SHOW_DETAILS_IN_LEDGER ? "checked" : ""} onchange="SHOW_DETAILS_IN_LEDGER=this.checked; renderLedgersViewScreen();"> As per details</label>
       </div>
-      <div style="font-size:14.5px;font-weight:800;color:var(--pri-dark);">Closing: ₹${fmtINR(Math.abs(running))} ${running >= 0 ? "Dr" : "Cr"}</div>
+      <div style="font-size:14px;font-weight:800;color:var(--pri-dark);">Closing: ₹${fmtINR(Math.abs(clsDiff))} ${clsDiff >= 0 ? "Dr" : "Cr"}</div>
     </div>
 
-    <div class="form-card" style="padding:0;overflow:hidden;">
-      <table class="tally-tbl">
-        <thead><tr><th>Date</th><th>Particulars (Opposite Dr/Cr Head)</th><th>Vch Type</th><th>Vch No</th><th class="num">Debit (₹)</th><th class="num">Credit (₹)</th><th class="num">Running Bal</th></tr></thead>
-        <tbody>
-          <tr style="background:#f8fafc;font-weight:700;">
-            <td>${fmtDate(p.from)}</td><td colspan="3">📂 Opening Balance (b/f)</td>
-            <td class="num">${opNet > 0 ? `₹${fmtINR(opNet)}` : ""}</td>
-            <td class="num">${opNet < 0 ? `₹${fmtINR(Math.abs(opNet))}` : ""}</td>
-            <td class="num">₹${fmtINR(Math.abs(opNet))} ${opNet >= 0 ? "Dr" : "Cr"}</td>
+    <div class="clean-ledger-sheet">
+      <div class="cls-comp-head">
+        <div class="cls-comp-name">${escHtml(c.name || "")}</div>
+        ${regLine ? `<div class="cls-comp-sub">${escHtml(regLine)}</div>` : ""}
+        ${addrLine ? `<div class="cls-comp-sub">${escHtml(addrLine)}</div>` : ""}
+        ${contLine ? `<div class="cls-comp-sub">${escHtml(contLine)}</div>` : ""}
+      </div>
+
+      <div class="cls-led-head">
+        <div class="cls-led-title">Ledger: ${escHtml(led ? led.name : "-")}</div>
+        <div class="cls-led-meta">Group: ${escHtml(led ? led.group : "")} | Period: ${fmtDate(p.from)} to ${fmtDate(p.to)}</div>
+      </div>
+
+      <table class="clean-led-tbl">
+        <thead>
+          <tr>
+            <th style="width:12%;">Date</th>
+            <th style="width:44%;">Particulars</th>
+            <th style="width:12%;">Vch Type</th>
+            <th style="width:10%;">Vch No.</th>
+            <th class="num" style="width:11%;">Debit</th>
+            <th class="num" style="width:11%;">Credit</th>
           </tr>
-          ${rowsHtml || `<tr><td colspan="7" style="text-align:center;padding:22px;color:var(--muted);">No transactions in this period.</td></tr>`}
+        </thead>
+        <tbody>
+          ${opNet !== 0 ? `
+          <tr>
+            <td>${fmtDate(p.from)}</td>
+            <td><b>Opening Balance (b/f)</b></td>
+            <td></td><td></td>
+            <td class="num">${opDr ? fmtINR(opDr) : ""}</td>
+            <td class="num">${opCr ? fmtINR(opCr) : ""}</td>
+          </tr>` : ""}
+          ${rowsHtml || `<tr><td colspan="6" style="text-align:center;padding:18px;color:#64748b;">No transactions in this period.</td></tr>`}
         </tbody>
         <tfoot>
-          <tr style="background:#f1f5f9;font-weight:800;">
-            <td colspan="4" style="text-align:right;">Period Total:</td>
-            <td class="num">₹${fmtINR(totDr)}</td>
-            <td class="num">₹${fmtINR(totCr)}</td>
-            <td class="num" style="color:var(--pri-dark);">₹${fmtINR(Math.abs(running))} ${running >= 0 ? "Dr" : "Cr"}</td>
+          <tr class="cls-tot-row">
+            <td></td><td><b>Current Total</b></td><td></td><td></td>
+            <td class="num"><b>${fmtINR(curTotDr)}</b></td>
+            <td class="num"><b>${fmtINR(curTotCr)}</b></td>
+          </tr>
+          <tr>
+            <td></td><td><b>Closing Balance ${clsDiff >= 0 ? "Dr" : "Cr"}</b></td><td></td><td></td>
+            <td class="num">${clsDiff < 0 ? `<b>${fmtINR(Math.abs(clsDiff))}</b>` : ""}</td>
+            <td class="num">${clsDiff >= 0 ? `<b>${fmtINR(Math.abs(clsDiff))}</b>` : ""}</td>
+          </tr>
+          <tr class="cls-grand-row">
+            <td></td><td><b>Total</b></td><td></td><td></td>
+            <td class="num"><b>${fmtINR(grandTot)}</b></td>
+            <td class="num"><b>${fmtINR(grandTot)}</b></td>
           </tr>
         </tfoot>
       </table>
     </div>`;
-}
-
 // ============================================================================
 // 3. GROUP SUMMARY (GROUP -> LEDGERS WITH BALANCE -> LEDGER VOUCHERS)
 // ============================================================================
