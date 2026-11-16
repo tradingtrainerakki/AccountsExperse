@@ -341,7 +341,7 @@ function renderLedgersViewScreen() {
 
       <div class="cls-led-head">
         <div class="cls-led-title">Ledger: ${escHtml(led ? led.name : "-")}</div>
-        <div class="cls-led-meta">Group: ${escHtml(led ? led.group : "")} | Period: ${fmtDate(p.from)} to ${fmtDate(p.to)}</div>
+        <div class="cls-led-meta">Period: ${fmtDate(p.from)} to ${fmtDate(p.to)}</div>
       </div>
 
       <table class="clean-led-tbl">
