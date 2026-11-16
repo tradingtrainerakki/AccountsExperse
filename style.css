@@ -1044,3 +1044,13 @@ window.addEventListener("beforeprint", function () {
   .no-print, #printHeader, .print-header { display: none !important; }
   .clean-ledger-sheet { border: none !important; padding: 0 !important; }
 }
+@media print {
+  body:has(.clean-ledger-sheet) :has(~ #screenBody),
+  body:has(.clean-ledger-sheet) #printHeader,
+  body:has(.clean-ledger-sheet) .print-header,
+  body:has(.clean-ledger-sheet) .print-comp-head,
+  body:has(.clean-ledger-sheet) .screen-bar,
+  body:has(.clean-ledger-sheet) #screenTitle {
+    display: none !important;
+  }
+}
