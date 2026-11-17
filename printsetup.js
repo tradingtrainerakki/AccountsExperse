@@ -150,6 +150,7 @@
 
     // ---- UPI QR section ----
     window._caQrData = (DB.company && DB.company.upiQr) || "";
+    window._caQrAuto = !!(DB.company && DB.company.upiQrAuto);
     const qsec = document.createElement("div");
     qsec.style.marginBottom = "12px";
     qsec.innerHTML = `
@@ -160,9 +161,12 @@
           <span id="caQrEmpty" style="font-size:11px;color:#64748b;text-align:center;${window._caQrData ? "display:none;" : ""}">QR nahi<br>laga hai</span>
         </div>
         <div style="flex:1;">
-          <div class="field" style="margin-bottom:6px;"><label>UPI QR ki photo (PNG / JPG)</label><input type="file" id="caQrFile" accept="image/*"></div>
-          <div class="field" style="margin-bottom:6px;"><label>UPI ID (optional)</label><input id="caUpiId" value="${escHtml((DB.company && DB.company.upiId) || "")}" placeholder="e.g. sanrakshan@sbi"></div>
-          <button type="button" class="btn btn-danger" style="padding:3px 9px;font-size:11.5px;" onclick="window._caQrClear()">✕ QR Hatayein</button>
+          <div class="field" style="margin-bottom:6px;"><label>UPI ID (isi se QR khud ban jayega)</label><input id="caUpiId" value="${escHtml((DB.company && DB.company.upiId) || "")}" placeholder="e.g. sanrakshan@sbi"></div>
+          <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+            <button type="button" class="btn" style="padding:3px 10px;font-size:11.5px;" onclick="window._caQrMake()">⚡ UPI ID se QR Banao</button>
+            <button type="button" class="btn btn-danger" style="padding:3px 9px;font-size:11.5px;" onclick="window._caQrClear()">✕ QR Hatayein</button>
+          </div>
+          <div class="field" style="margin-bottom:0;"><label>Ya apni QR ki photo lagayein (PNG / JPG)</label><input type="file" id="caQrFile" accept="image/*"></div>
         </div>
       </div>`;
     if (anchor) scroller.insertBefore(qsec, anchor); else scroller.appendChild(qsec);
@@ -173,6 +177,35 @@
     if (!banks.length) window._caAddBank(true);
   }
 
+  // UPI ID se QR khud banata hai (qrcode.js library chahiye)
+  function makeUpiQr(upiId, name) {
+    if (typeof qrcode !== "function") return "";
+    const vpa = String(upiId || "").trim();
+    if (!/^[A-Za-z0-9._-]{2,}@[A-Za-z0-9.-]{2,}$/.test(vpa)) return "";
+    const url = "upi://pay?pa=" + encodeURIComponent(vpa).replace(/%40/g, "@") +
+                "&pn=" + encodeURIComponent(String(name || "").trim()) + "&cu=INR";
+    try {
+      const qr = qrcode(0, "M");
+      qr.addData(url);
+      qr.make();
+      return qr.createDataURL(8, 4);
+    } catch (e) { return ""; }
+  }
+
+  window._caQrAuto = false;
+
+  window._caQrMake = function () {
+    if (typeof qrcode !== "function") { toast("⚠ qrcode.js file jodi nahi gayi (index.html me script lagayein)"); return; }
+    const upi = ((document.getElementById("caUpiId") || {}).value || "").trim();
+    const nm = ((document.getElementById("caName") || {}).value || (DB.company && DB.company.name) || "").trim();
+    const out = makeUpiQr(upi, nm);
+    if (!out) { toast("⚠ Pehle sahi UPI ID likhein (jaise name@sbi)"); return; }
+    window._caQrData = out;
+    window._caQrAuto = true;
+    _setQrPreview(out);
+    toast("✅ QR ban gaya — Save (Ctrl+A) dabayein");
+  };
+
   function _setQrPreview(src) {
     const img = document.getElementById("caQrPreview"), emp = document.getElementById("caQrEmpty");
     if (img) { img.src = src || ""; img.style.display = src ? "" : "none"; }
@@ -181,6 +214,7 @@
 
   window._caQrClear = function () {
     window._caQrData = "";
+    window._caQrAuto = false;
     const f = document.getElementById("caQrFile"); if (f) f.value = "";
     _setQrPreview("");
   };
@@ -205,6 +239,7 @@
         let out = cv.toDataURL("image/png");
         if (out.length > 150000) out = cv.toDataURL("image/jpeg", 0.92);
         window._caQrData = out;
+        window._caQrAuto = false;
         _setQrPreview(out);
         toast("✅ QR laga diya — Save (Ctrl+A) dabayein");
       };
@@ -257,8 +292,17 @@
         if (hid) hid.value = def ? def.accNo : "";
       }
       if (document.getElementById("caQrFile")) {
-        DB.company.upiQr = window._caQrData || "";
-        DB.company.upiId = ((document.getElementById("caUpiId") || {}).value || "").trim();
+        const upi = ((document.getElementById("caUpiId") || {}).value || "").trim();
+        const nm = ((document.getElementById("caName") || {}).value || "").trim();
+        let data = window._caQrData || "", auto = !!window._caQrAuto;
+        // UPI ID bhari hai aur QR nahi laga (ya pehle wala khud bana tha) -> naya khud bana do
+        if (upi && (auto || !data)) {
+          const g = makeUpiQr(upi, nm);
+          if (g) { data = g; auto = true; }
+        }
+        DB.company.upiQr = data;
+        DB.company.upiQrAuto = auto;
+        DB.company.upiId = upi;
       }
       return _origSave.apply(this, arguments);
     };
