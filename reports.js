@@ -393,8 +393,74 @@ function renderLedgersViewScreen() {
     </div>`;
 }
 // ============================================================================
-// 3. GROUP SUMMARY (GROUP -> LEDGERS WITH BALANCE -> LEDGER VOUCHERS)
+// 3. GROUP SUMMARY & UNIVERSAL GROUP PICKER (G / F4) — EXACT F4 PATTERN
 // ============================================================================
+function launchDirectGroupPicker() {
+  const allGroups = (DB.groups || []).slice();
+  if (!allGroups.length) return;
+
+  let pickerIdx = Math.max(0, allGroups.findIndex(g => g.name === window.SELECTED_GROUP_FOR_SUMMARY));
+  document.getElementById("directGroupPickerModal")?.remove();
+
+  const ov = document.createElement("div");
+  ov.id = "directGroupPickerModal";
+  ov.style.cssText = "position:fixed;inset:0;background:rgba(15,23,42,0.6);z-index:999999;display:flex;align-items:flex-start;justify-content:center;padding-top:55px;";
+
+  ov.innerHTML = `
+    <div style="width:100%;max-width:520px;background:#fff;border:2px solid #0f6e4e;border-radius:6px;box-shadow:0 15px 35px rgba(0,0,0,0.3);overflow:hidden;">
+      <div style="background:#0f6e4e;color:#fff;padding:9px 14px;font-weight:800;font-size:13px;display:flex;justify-content:space-between;">
+        <span>📂 Select Group (Group Summary)</span><span style="font-size:11px;">↑ ↓ Select • Enter Open • Esc Close</span>
+      </div>
+      <div style="padding:10px;background:#f8fafc;border-bottom:1px solid #cbd5e1;">
+        <input type="text" id="directGrpSearchInp" placeholder="Search Group or Nature (${allGroups.length} Groups)..."
+               style="width:100%;padding:8px 10px;font-size:13px;font-weight:600;border:1.5px solid #0f6e4e;border-radius:4px;outline:none;">
+      </div>
+      <div id="directGrpListBox" style="max-height:340px;overflow-y:auto;"></div>
+    </div>`;
+  document.body.appendChild(ov);
+
+  const inp = document.getElementById("directGrpSearchInp");
+  const box = document.getElementById("directGrpListBox");
+
+  function drawList() {
+    const q = (inp.value || "").trim().toLowerCase();
+    const filtered = allGroups.filter(g => (g.name || "").toLowerCase().includes(q) || (g.nature || "").toLowerCase().includes(q));
+    if (pickerIdx >= filtered.length) pickerIdx = 0;
+
+    box.innerHTML = filtered.length ? filtered.map((g, i) => `
+      <div class="d-pick-row" data-gname="${escHtml(g.name)}"
+           style="padding:8px 14px;border-bottom:1px solid #f1f5f9;display:flex;justify-content:space-between;align-items:center;cursor:pointer;font-size:13px;${i === pickerIdx ? "background:#fef08a;font-weight:800;border-left:4px solid #0f6e4e;" : ""}">
+        <span>${escHtml(g.name)}</span>
+        <span style="font-size:11px;color:#475569;background:#e2e8f0;padding:1px 7px;border-radius:10px;">${escHtml(g.nature || "")}</span>
+      </div>`).join("") : `<div style="padding:18px;text-align:center;color:#64748b;">Koi matching group nahi mila.</div>`;
+
+    const rows = box.querySelectorAll(".d-pick-row");
+    rows.forEach(r => {
+      r.onclick = () => pickDirectGroup(r.getAttribute("data-gname"));
+    });
+    if (rows[pickerIdx]) rows[pickerIdx].scrollIntoView({ block: "nearest" });
+    return filtered;
+  }
+
+  inp.oninput = () => { pickerIdx = 0; drawList(); };
+  inp.onkeydown = (e) => {
+    const filtered = drawList();
+    if (e.key === "ArrowDown") { e.preventDefault(); e.stopImmediatePropagation(); if (filtered.length) pickerIdx = (pickerIdx + 1) % filtered.length; drawList(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); e.stopImmediatePropagation(); if (filtered.length) pickerIdx = (pickerIdx - 1 + filtered.length) % filtered.length; drawList(); }
+    else if (e.key === "Enter") { e.preventDefault(); e.stopImmediatePropagation(); const ch = filtered[pickerIdx]; if (ch) pickDirectGroup(ch.name); }
+    else if (e.key === "Escape") { e.preventDefault(); e.stopImmediatePropagation(); ov.remove(); }
+  };
+
+  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+  drawList();
+  setTimeout(() => inp.focus(), 20);
+}
+
+function pickDirectGroup(groupName) {
+  document.getElementById("directGroupPickerModal")?.remove();
+  if (groupName) openGroupSummary(groupName);
+}
+
 function openGroupSummary(groupName) {
   if (groupName) window.SELECTED_GROUP_FOR_SUMMARY = groupName;
   else if (!window.SELECTED_GROUP_FOR_SUMMARY) {
@@ -408,7 +474,7 @@ function renderGroupSummaryScreen() {
   const p = getTempPeriod();
   const groupName = window.SELECTED_GROUP_FOR_SUMMARY || ((DB.groups[0] && DB.groups[0].name) || "");
   document.getElementById("screenTitle").textContent = `📂 Group Summary: ${groupName}`;
-  document.getElementById("screenSub").textContent = "↑ ↓ + Enter ya Click se Ledger kholein | F2: Period | Esc: Back";
+  document.getElementById("screenSub").textContent = "G / F4: Change Group | ↑ ↓ + Enter ya Click se Ledger kholein | F2: Period | Esc: Back";
 
   const balMap = computeAllLedgerBalances(p.from, p.to);
   const targetGroups = getGroupHierarchyNames(groupName);
@@ -443,7 +509,8 @@ function renderGroupSummaryScreen() {
         <label>Select Group:</label>
         <select onchange="openGroupSummary(this.value)">${grpOpts}</select>
       </div>
-      <div style="display:flex;gap:12px;align-items:center;">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <button class="btn btn-sec" onclick="launchDirectGroupPicker()">🔄 Change Group (G)</button>
         <button class="btn btn-sec" onclick="openDirectF2DateModal()">📅 ${fmtDate(p.from)} to ${fmtDate(p.to)} (F2)</button>
         <div style="font-size:15px;font-weight:800;color:var(--pri-dark);">Net: ₹${fmtINR(Math.abs(netGrp))} ${netGrp >= 0 ? "Dr" : "Cr"}</div>
       </div>
@@ -456,7 +523,6 @@ function renderGroupSummaryScreen() {
       </table>
     </div>`;
 }
-
 // ============================================================================
 // 4. SLEEK ACCOUNT / BANK RECONCILIATION (ALT+R)
 // ============================================================================
