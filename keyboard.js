@@ -547,27 +547,50 @@ window.addEventListener("keydown", function (e) {
   setTimeout(() => inp.focus(), 40);
 }, true);
 // ============================================================================
-// DEDICATED "CHANGE GROUP" BUTTON & "G" KEY FOR GROUP SUMMARY SCREEN
+// 1. CHANGE GROUP (G) — STANDALONE PICKER (NO BUTTON FOCUS JUMP)
 // ============================================================================
-window._openGroupPickerModal = function() {
+window._openGroupPickerModal = function () {
   const bodyEl = document.getElementById("screenBody");
   if (!bodyEl) return;
   const grpSelect = bodyEl.querySelector("select");
   if (!grpSelect) return;
 
+  const old = document.getElementById("customGrpPickerOverlay");
+  if (old) old.remove();
+
   const options = Array.from(grpSelect.options).map(o => ({ val: o.value, text: o.textContent.trim() }));
   let selIdx = Math.max(0, options.findIndex(o => o.val === grpSelect.value));
+  let filtered = options.slice();
 
-  const body = `
-    <input id="gGrpSearch" type="text" placeholder="Type Group name... (↑ ↓ + Enter)"
-      style="width:100%; padding:8px 10px; font-size:13px; border:1.5px solid var(--pri); border-radius:4px; margin-bottom:8px;">
-    <div id="gGrpList" style="max-height:300px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:4px;"></div>`;
+  const overlay = document.createElement("div");
+  overlay.id = "customGrpPickerOverlay";
+  overlay.style.cssText = "position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:99999; display:flex; align-items:center; justify-content:center;";
 
-  showModal("Change Group (G)", body, `<button class="btn btn-sec" onclick="closeModal()">Cancel (Esc)</button>`);
+  overlay.innerHTML = `
+    <div style="background:#fff; width:460px; max-width:92vw; border-radius:6px; box-shadow:0 12px 30px rgba(0,0,0,0.25); overflow:hidden;">
+      <div style="background:#047857; color:#fff; padding:10px 14px; font-weight:700; font-size:14px; display:flex; justify-content:space-between; align-items:center;">
+        <span>Change Group (G)</span>
+        <span id="customGrpClose" style="cursor:pointer; background:#fff; color:#1e293b; padding:2px 8px; border-radius:3px; font-size:12px;">✕ Esc</span>
+      </div>
+      <div style="padding:12px 14px;">
+        <input id="gGrpSearch" type="text" autocomplete="off" placeholder="Type Group name... (↑ ↓ + Enter)"
+          style="width:100%; box-sizing:border-box; padding:8px 10px; font-size:13.5px; border:1.5px solid #047857; border-radius:4px; outline:none; margin-bottom:8px;">
+        <div id="gGrpList" style="max-height:290px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:4px;"></div>
+        <div style="text-align:right; margin-top:10px;">
+          <span id="customGrpCancel" style="display:inline-block; cursor:pointer; padding:5px 12px; font-size:12.5px; border:1px solid #cbd5e1; border-radius:4px; background:#f8fafc;">Cancel (Esc)</span>
+        </div>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
 
   const inp = document.getElementById("gGrpSearch");
   const listEl = document.getElementById("gGrpList");
-  let filtered = options.slice();
+
+  function closePicker() {
+    window.removeEventListener("keydown", onPickerKey, true);
+    overlay.remove();
+  }
 
   function renderList() {
     if (selIdx >= filtered.length) selIdx = Math.max(0, filtered.length - 1);
@@ -579,7 +602,10 @@ window._openGroupPickerModal = function() {
       </div>`).join("") || `<div style="padding:12px; text-align:center; color:#64748b;">No group found</div>`;
 
     listEl.querySelectorAll(".g-grp-item").forEach(el => {
-      el.onclick = () => pickGroup(Number(el.dataset.idx));
+      el.onmousedown = (ev) => {
+        ev.preventDefault();
+        pickGroup(Number(el.dataset.idx));
+      };
     });
     const activeEl = listEl.querySelector(`[data-idx="${selIdx}"]`);
     if (activeEl) activeEl.scrollIntoView({ block: "nearest" });
@@ -588,8 +614,33 @@ window._openGroupPickerModal = function() {
   function pickGroup(idx) {
     if (!filtered[idx]) return;
     grpSelect.value = filtered[idx].val;
-    closeModal();
+    closePicker();
     grpSelect.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  function onPickerKey(ev) {
+    if (!document.getElementById("customGrpPickerOverlay")) return;
+    if (ev.key === "ArrowDown") {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      selIdx = Math.min(filtered.length - 1, selIdx + 1);
+      renderList();
+      inp.focus();
+    } else if (ev.key === "ArrowUp") {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      selIdx = Math.max(0, selIdx - 1);
+      renderList();
+      inp.focus();
+    } else if (ev.key === "Enter") {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      pickGroup(selIdx);
+    } else if (ev.key === "Escape") {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      closePicker();
+    }
   }
 
   inp.addEventListener("input", () => {
@@ -599,14 +650,13 @@ window._openGroupPickerModal = function() {
     renderList();
   });
 
-  inp.addEventListener("keydown", (ev) => {
-    if (ev.key === "ArrowDown") { ev.preventDefault(); selIdx = Math.min(filtered.length - 1, selIdx + 1); renderList(); }
-    else if (ev.key === "ArrowUp") { ev.preventDefault(); selIdx = Math.max(0, selIdx - 1); renderList(); }
-    else if (ev.key === "Enter") { ev.preventDefault(); pickGroup(selIdx); }
-  });
+  document.getElementById("customGrpClose").onclick = closePicker;
+  document.getElementById("customGrpCancel").onclick = closePicker;
+  overlay.onclick = (e) => { if (e.target === overlay) closePicker(); };
 
+  window.addEventListener("keydown", onPickerKey, true);
   renderList();
-  setTimeout(() => inp.focus(), 40);
+  setTimeout(() => inp.focus(), 30);
 };
 
 // Auto-inject "🔄 Change Group (G)" button on Group Summary top bar
@@ -632,7 +682,8 @@ window.addEventListener("keydown", function (e) {
   if (e.key.toLowerCase() !== "g" || e.altKey || e.ctrlKey || e.metaKey) return;
   const tag = (document.activeElement && document.activeElement.tagName || "").toUpperCase();
   if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-  if (document.querySelector("#modalOverlay.show, #modalOverlay[style*='flex'], .modal-overlay.show")) return;
+  const modal = document.getElementById("modalOverlay");
+  if ((modal && window.getComputedStyle(modal).display !== "none") || document.getElementById("customGrpPickerOverlay")) return;
 
   const bodyEl = document.getElementById("screenBody");
   if (!bodyEl || !/Select Group/i.test(bodyEl.textContent || "")) return;
@@ -640,4 +691,56 @@ window.addEventListener("keydown", function (e) {
   e.preventDefault();
   e.stopImmediatePropagation();
   window._openGroupPickerModal();
+}, true);
+
+// ============================================================================
+// 2. ARROW KEY NAVIGATION & ENTER ON LEDGER VOUCHERS SCREEN
+// ============================================================================
+window.addEventListener("keydown", function (e) {
+  if (e.key !== "ArrowDown" && e.key !== "ArrowUp" && e.key !== "Enter") return;
+
+  const bodyEl = document.getElementById("screenBody");
+  if (!bodyEl || !bodyEl.textContent.includes("Ledger:")) return;
+
+  const active = document.activeElement;
+  if (active && ((active.tagName === "INPUT" && active.type !== "checkbox") || active.tagName === "TEXTAREA" || active.tagName === "SELECT")) return;
+
+  const modal = document.getElementById("modalOverlay");
+  const isModalVisible = modal && window.getComputedStyle(modal).display !== "none";
+  if (isModalVisible || document.getElementById("customGrpPickerOverlay")) return;
+
+  const rows = Array.from(bodyEl.querySelectorAll("table tbody tr, table tr"))
+    .filter(tr => tr.querySelector("td") && tr.textContent.trim().length > 0);
+  if (!rows.length) return;
+
+  e.preventDefault();
+  e.stopPropagation();
+  e.stopImmediatePropagation();
+
+  let activeIdx = rows.findIndex(tr => tr.getAttribute("data-ledger-active") === "1");
+
+  if (e.key === "ArrowDown") {
+    activeIdx = activeIdx >= rows.length - 1 ? 0 : activeIdx + 1;
+  } else if (e.key === "ArrowUp") {
+    activeIdx = activeIdx <= 0 ? rows.length - 1 : activeIdx - 1;
+  } else if (e.key === "Enter") {
+    if (activeIdx >= 0 && rows[activeIdx]) {
+      const target = rows[activeIdx].hasAttribute("onclick")
+        ? rows[activeIdx]
+        : rows[activeIdx].querySelector("[onclick]") || rows[activeIdx];
+      target.click();
+    }
+    return;
+  }
+
+  rows.forEach(tr => {
+    tr.style.removeProperty("background-color");
+    tr.removeAttribute("data-ledger-active");
+  });
+
+  if (activeIdx >= 0 && rows[activeIdx]) {
+    rows[activeIdx].style.setProperty("background-color", "#fef08a", "important");
+    rows[activeIdx].setAttribute("data-ledger-active", "1");
+    rows[activeIdx].scrollIntoView({ block: "nearest" });
+  }
 }, true);
