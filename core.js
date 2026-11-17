@@ -61,7 +61,7 @@ const GST_SLABS = [0, 5, 12, 18, 28];
 const UOM_LIST = ["NOS", "PCS", "KG", "GM", "LTR", "MTR", "SQFT", "BOX", "BAG", "SET", "TON"];
 
 // ================= GLOBAL STATE =================
-let ROLE = "admin";
+let ROLE = "viewer";
 let CURRENT_SCREEN = "gateway";
 let NAV_STACK = [];
 let GW_INDEX = 0;
@@ -84,7 +84,8 @@ let DB = {
   stockGroups: JSON.parse(JSON.stringify(DEFAULT_STOCK_GROUPS)),
   ledgers: [],
   items: [],
-  vouchers: []
+  vouchers: [],
+  userRoles: []
 };
 
 // ================= COMMON UTILITIES =================
@@ -189,7 +190,8 @@ function loadDB(entityId = "DEFAULT_ENTITY") {
         stockGroups: JSON.parse(JSON.stringify(DEFAULT_STOCK_GROUPS)),
         ledgers: [],
         items: [],
-        vouchers: []
+        vouchers: [],
+        userRoles: []
       }, parsed);
       if (!Array.isArray(DB.groups) || !DB.groups.length) DB.groups = [...DEFAULT_GROUPS];
     } else {
@@ -202,7 +204,7 @@ function loadDB(entityId = "DEFAULT_ENTITY") {
         },
         groups: [...DEFAULT_GROUPS],
         stockGroups: JSON.parse(JSON.stringify(DEFAULT_STOCK_GROUPS)),
-        ledgers: [], items: [], vouchers: []
+        ledgers: [], items: [], vouchers: [], userRoles: []
       };
       seedDefaultMasters();
     }
@@ -213,12 +215,22 @@ function loadDB(entityId = "DEFAULT_ENTITY") {
 }
 
 function saveDB() {
+  const role = getCurrentUserRole();
+  if (role === "blocked") {
+    toast("🚫 Aapka access Admin dwara block kar diya gaya hai!");
+    return;
+  }
+  if (role === "viewer") {
+    toast("🔒 Read-Only Mode: Viewer sirf reports dekh aur print kar sakta hai!");
+    return;
+  }
   localStorage.setItem("TALLY_PRIME_GST_DB_" + CURRENT_ENTITY_ID, JSON.stringify(DB));
   refreshHeaderAndSidebar();
   toast("💾 Saved!");
 }
 
 function persistCurrentEntitySilently() {
+  if (!canWriteData()) return;
   try { localStorage.setItem("TALLY_PRIME_GST_DB_" + CURRENT_ENTITY_ID, JSON.stringify(DB)); } catch (e) {}
 }
 
@@ -451,6 +463,10 @@ function computeInventoryStockSummary() {
 
 // ================= MODALS & STANDARD POPUPS =================
 function showModal(title, bodyHtml, footHtml) {
+  if (/Users\s*&\s*Role\s*Manager/i.test(String(title || "")) && !isSuperAdmin()) {
+    toast("🚫 Security Lock: Sirf Master Admin hi Users manage kar sakta hai!");
+    return;
+  }
   document.getElementById("modalTitle").textContent = title;
   document.getElementById("modalBody").innerHTML = bodyHtml;
   document.getElementById("modalFoot").innerHTML = footHtml || "";
@@ -741,33 +757,19 @@ function openEntitySwitcherModal() {
         <div><b>${escHtml(lb.name)}</b> <span class="kbd">${escHtml(lb.type)}</span></div>
         <div style="display:flex; gap:6px; align-items:center;">
           ${isActive ? '<span style="color:var(--ok);font-weight:700;">Active ✔</span>' : `<button class="btn" style="padding:2px 8px;font-size:11px;" onclick="switchEntity('${ent}')">Select</button>`}
-          <button class="btn btn-danger" style="padding:2px 8px;font-size:11px;" onclick="openDeleteEntityModal('${ent}')">Delete</button>
+          ${isSuperAdmin() ? `<button class="btn btn-danger" style="padding:2px 8px;font-size:11px;" onclick="openDeleteEntityModal('${ent}')">Delete</button>` : ""}
         </div>
       </div>`;
   }).join("");
   const foot = `
     <button class="btn btn-sec" onclick="closeModal()">Cancel (Esc)</button>
-    <button class="btn btn-sec" onclick="openCompanyAlterModal()">Alter Current</button>
-    <button class="btn btn-sec" onclick="openRestoreModal()">📤 Restore</button>
-    <button class="btn" onclick="openCreateEntityModal()">➕ Create New</button>`;
+    ${canWriteData() ? `<button class="btn btn-sec" onclick="openCompanyAlterModal()">Alter Current</button>` : ""}
+    ${isSuperAdmin() ? `<button class="btn btn-sec" onclick="openRestoreModal()">📤 Restore</button><button class="btn" onclick="openCreateEntityModal()">➕ Create New</button>` : ""}`;
   showModal("Company / Trust Manager (F3)", `<div style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:3px;">${listHtml}</div>`, foot);
 }
 
-function openCompanyAlterModal() {
-  const body = entityDetailsFormHtml("cmp", DB.company, DB.company.entityType || "Company");
-  const foot = `<button class="btn btn-sec" onclick="closeModal()">Cancel</button><button class="btn" onclick="saveCompanyModal()">Save (Ctrl+A)</button>`;
-  showModal("Company Alteration (F3)", body, foot);
-}
-
-function saveCompanyModal() {
-  const d = readEntityDetails("cmp");
-  if (!d.name) { toast("⚠ Naam dalein!"); return; }
-  if (entityNameExists(d.name, CURRENT_ENTITY_ID)) { toast("⚠ Is naam ki doosri entity pehle se hai!"); return; }
-  Object.assign(DB.company, d);
-  saveDB(); closeModal(); renderScreen(CURRENT_SCREEN);
-}
-
 function openCreateEntityModal() {
+  if (!isSuperAdmin()) { toast("🚫 Sirf Admin nayi Company/Trust bana sakta hai!"); return; }
   const fy = defaultFY();
   const body = entityDetailsFormHtml("ent", { stateCode: "05", regType: "Unregistered", fyFrom: fy.from, fyTo: fy.to }, "Company");
   const foot = `<button class="btn btn-sec" onclick="openEntitySwitcherModal()">← Back</button><button class="btn" onclick="createNewEntity()">Create &amp; Switch</button>`;
@@ -775,6 +777,7 @@ function openCreateEntityModal() {
 }
 
 function createNewEntity() {
+  if (!isSuperAdmin()) return;
   const d = readEntityDetails("ent");
   if (!d.name || !d.fyFrom || !d.fyTo) { toast("⚠ Name aur Financial Year dalein!"); return; }
   if (entityNameExists(d.name, null)) { toast("⚠ Is naam ki entity pehle se hai!"); return; }
@@ -785,7 +788,7 @@ function createNewEntity() {
     company: Object.assign({ curDate: new Date().toISOString().slice(0, 10) }, d),
     groups: [...DEFAULT_GROUPS],
     stockGroups: JSON.parse(JSON.stringify(DEFAULT_STOCK_GROUPS)),
-    ledgers: [], items: [], vouchers: []
+    ledgers: [], items: [], vouchers: [], userRoles: []
   };
   seedDefaultMasters();
   if (d.entityType === "Trust") {
@@ -805,11 +808,14 @@ function switchEntity(entId) {
   persistCurrentEntitySilently();
   loadDB(entId);
   localStorage.setItem("TALLY_PRIME_LAST_ENTITY", entId);
+  syncUserRolesStorage();
+  window.applyUserBadge && window.applyUserBadge();
   closeModal(); navigate("gateway", false);
   toast(`🏢 Active: ${DB.company.name}`);
 }
 
 function openDeleteEntityModal(ent) {
+  if (!isSuperAdmin()) return;
   if (getSavedEntitiesList().length <= 1) { toast("⚠ Kam se kam 1 Company/Trust rehni zaroori hai!"); return; }
   const lb = entityLabel(ent);
   const body = `<p style="margin-bottom:10px;"><b>"${escHtml(lb.name)}"</b> ko delete karne ke liye naam type karein:</p><input id="delConfirmInp" style="width:100%;padding:7px;" placeholder="${escHtml(lb.name)}">`;
@@ -818,6 +824,7 @@ function openDeleteEntityModal(ent) {
 }
 
 function confirmDeleteEntity(ent) {
+  if (!isSuperAdmin()) return;
   const lb = entityLabel(ent);
   if ((document.getElementById("delConfirmInp").value || "").trim().toLowerCase() !== lb.name.trim().toLowerCase()) {
     toast("⚠ Naam match nahi hua!"); return;
@@ -845,6 +852,7 @@ function exportBackupJSON() {
 
 let RESTORE_DATA = null;
 function openRestoreModal() {
+  if (!isSuperAdmin()) { toast("🚫 Sirf Admin backup restore kar sakta hai!"); return; }
   RESTORE_DATA = null;
   const body = `
     <div class="field"><label>Select Backup (.json)</label><input type="file" accept=".json" onchange="restoreFileChosen(this)"></div>
@@ -875,7 +883,7 @@ function restoreFileChosen(inp) {
 }
 
 function applyRestore(mode) {
-  if (!RESTORE_DATA) return;
+  if (!RESTORE_DATA || !isSuperAdmin()) return;
   const R = RESTORE_DATA;
   if (mode === "replace") {
     DB = Object.assign({ groups: [...DEFAULT_GROUPS], stockGroups: JSON.parse(JSON.stringify(DEFAULT_STOCK_GROUPS)), items: [] }, R);
@@ -892,7 +900,9 @@ function applyRestore(mode) {
   toast("✅ Backup Restored!");
 }
 
-// ================= SUPABASE CLOUD AUTH, AUTO-SYNC & STRICT RBAC SECURITY =================
+// ============================================================================
+// SUPABASE CLOUD AUTH, AUTO-SYNC & STRICT RBAC SECURITY
+// ============================================================================
 const MASTER_ADMIN_EMAIL = "tradingtrainerakki@gmail.com";
 const SUPA_SESSION_KEY = "SUPA_TALLY_AUTH_SESSION_V2";
 const ACCESS_LIST_KEY = "TALLY_PRIME_USER_PERMISSIONS";
@@ -906,22 +916,37 @@ function getLoggedInEmail() {
   return (s && s.email) ? String(s.email).toLowerCase().trim() : "";
 }
 
-// Unified Role Resolver (Checks both DB.userRoles and global TALLY_PRIME_USER_PERMISSIONS)
+function isSuperAdmin() {
+  return getLoggedInEmail() === MASTER_ADMIN_EMAIL;
+}
+
+// Searches across current DB, all saved entities, and global permissions map
 function getCurrentUserRole() {
   const email = getLoggedInEmail();
-  if (!email) return "viewer"; // Strict Default: No empty-email admin bypass!
+  if (!email) return "viewer";
   if (email === MASTER_ADMIN_EMAIL) return "admin";
 
-  // 1. Check DB.userRoles array
+  // 1. Check current entity DB.userRoles
   if (DB && Array.isArray(DB.userRoles)) {
     const found = DB.userRoles.find(u => String(u.email || "").toLowerCase().trim() === email);
-    if (found) {
-      if (found.blocked) return "blocked";
-      return found.role || "viewer";
+    if (found) return found.blocked ? "blocked" : (found.role || "viewer");
+  }
+
+  // 2. Check all other saved entities' DB.userRoles in localStorage
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith("TALLY_PRIME_GST_DB_")) {
+      try {
+        const d = JSON.parse(localStorage.getItem(k) || "{}");
+        if (Array.isArray(d.userRoles)) {
+          const f = d.userRoles.find(u => String(u.email || "").toLowerCase().trim() === email);
+          if (f) return f.blocked ? "blocked" : (f.role || "viewer");
+        }
+      } catch {}
     }
   }
 
-  // 2. Check TALLY_PRIME_USER_PERMISSIONS map (works across all entities)
+  // 3. Check global TALLY_PRIME_USER_PERMISSIONS map
   try {
     const map = JSON.parse(localStorage.getItem(ACCESS_LIST_KEY) || "{}");
     const entry = map[email];
@@ -934,23 +959,17 @@ function getCurrentUserRole() {
   return "viewer";
 }
 
-function isSuperAdmin() {
-  return getLoggedInEmail() === MASTER_ADMIN_EMAIL;
-}
-
 function canWriteData() {
   const r = getCurrentUserRole();
   return r === "admin" || r === "operator";
 }
 
-// Keep DB.userRoles and TALLY_PRIME_USER_PERMISSIONS 100% in sync
 function syncUserRolesStorage() {
   if (!DB) return;
   if (!Array.isArray(DB.userRoles)) DB.userRoles = [];
   let map = {};
   try { map = JSON.parse(localStorage.getItem(ACCESS_LIST_KEY) || "{}") || {}; } catch {}
 
-  // Merge map into DB.userRoles if DB.userRoles is empty
   if (DB.userRoles.length === 0) {
     Object.entries(map).forEach(([em, obj]) => {
       if (em && em !== MASTER_ADMIN_EMAIL && obj && typeof obj === "object") {
@@ -959,7 +978,6 @@ function syncUserRolesStorage() {
     });
   }
 
-  // Rebuild map from DB.userRoles
   const newMap = { [MASTER_ADMIN_EMAIL]: { role: "admin", active: true } };
   DB.userRoles.forEach(u => {
     const em = String(u.email || "").toLowerCase().trim();
@@ -967,7 +985,7 @@ function syncUserRolesStorage() {
       newMap[em] = { role: u.role || "viewer", active: !u.blocked, blocked: !!u.blocked };
     }
   });
-  localStorage.setItem(ACCESS_LIST_KEY, JSON.stringify(newMap));
+  try { localStorage.setItem(ACCESS_LIST_KEY, JSON.stringify(newMap)); } catch {}
 }
 
 (function initSupabaseCloud() {
@@ -1041,7 +1059,7 @@ function syncUserRolesStorage() {
           loadDB(last && avail.includes(last) ? last : (avail[0] || "DEFAULT_ENTITY"));
           syncUserRolesStorage();
           if (getCurrentUserRole() === "blocked") {
-            alert("🚫 आपका अकाउंट Admin द्वारा ब्लॉक कर दिया गया है!");
+            alert("🚫 Aapka account Admin dwara block kar diya gaya hai!");
             window.supaLogout();
             return;
           }
@@ -1061,7 +1079,8 @@ function syncUserRolesStorage() {
       badge.style.display = "inline-block";
       badge.style.background = isSuperAdmin() ? "#047857" : (ROLE === "operator" ? "#0369a1" : "#1d4ed8");
       badge.style.fontWeight = "700";
-      badge.innerHTML = `${isSuperAdmin() ? "👑" : (ROLE === "operator" ? "✏️" : "👁️")} ${escHtml(sess.email.split("@")[0])} (${ROLE}) | <u onclick="event.stopPropagation(); supaLogout();">Logout</u>`;
+      const icon = isSuperAdmin() ? "👑" : (ROLE === "operator" ? "✏️" : "👁️");
+      badge.innerHTML = `${icon} ${escHtml(sess.email.split("@")[0])} (${ROLE}) | <u onclick="event.stopPropagation(); supaLogout();">Logout</u>`;
     }
     injectUserManagerButton();
   };
@@ -1120,31 +1139,15 @@ function syncUserRolesStorage() {
   });
 })();
 
-// 1. Read-Only / Blocked Guard on saveDB
-(function wrapSaveDBForRoles() {
-  if (typeof saveDB !== "function" || window._SAVE_DB_ROLE_WRAPPED) return;
-  const origSaveDB = saveDB;
-  window.saveDB = function (...args) {
-    const role = getCurrentUserRole();
-    if (role === "blocked") {
-      toast("🚫 Aapka access Admin dwara block kar diya gaya hai!");
-      return;
-    }
-    if (role === "viewer") {
-      toast("🔒 Read-Only Mode: Viewer sirf reports dekh aur print kar sakta hai!");
-      return;
-    }
-    return origSaveDB.apply(this, args);
-  };
-  window._SAVE_DB_ROLE_WRAPPED = true;
-})();
-
-// 2. Auto-Add "👥 Users" Button in Top Bar (STRICTLY ONLY FOR MASTER ADMIN)
+// Strictly show "👥 Users" Button ONLY for Master Admin (tradingtrainerakki@gmail.com)
 function injectUserManagerButton() {
   const oldBtn = document.getElementById("aeUsersMgrBtn");
-  // Sirf Master Admin (tradingtrainerakki@gmail.com) ko hi button dikhega
   if (!isSuperAdmin()) {
     if (oldBtn) oldBtn.remove();
+    // Extra safety: remove any other button with text "Users" in header
+    document.querySelectorAll("header button, .top-bar button").forEach(b => {
+      if (/Users/i.test(b.textContent || "")) b.remove();
+    });
     return;
   }
   if (oldBtn) return;
@@ -1161,9 +1164,8 @@ function injectUserManagerButton() {
   topbar.appendChild(btn);
 }
 
-setInterval(injectUserManagerButton, 800);
+setInterval(injectUserManagerButton, 500);
 
-// 3. Users Manager Popup (Strictly Master Admin Only)
 function openUserManagerModal() {
   if (!isSuperAdmin()) {
     toast("🚫 Security Lock: Sirf Master Admin hi Users manage kar sakta hai!");
@@ -1250,10 +1252,15 @@ function removeUserRoleItem(idx) {
   openUserManagerModal();
   toast("🗑️ User Removed");
 }
+
 // ============================================================================
 // ENHANCED COMPANY / TRUST ALTERATION (F3) WITH ALL DETAILS
 // ============================================================================
 function openCompanyAlterModal() {
+  if (!canWriteData()) {
+    toast("🔒 Read-Only Mode: Viewer Company details alter nahi kar sakta!");
+    return;
+  }
   const c = DB.company || {};
   const stateOpts = (typeof STATE_LIST !== "undefined" ? STATE_LIST : ["05 - Uttarakhand"])
     .map(s => `<option value="${escHtml(s)}" ${c.state === s ? "selected" : ""}>${escHtml(s)}</option>`).join("");
@@ -1285,7 +1292,7 @@ function openCompanyAlterModal() {
       <div class="form-grid" style="grid-template-columns: 1fr 1fr 1fr 1fr; gap:8px; margin-bottom:12px;">
         <div class="field"><label>GST Reg. Type</label>
           <select id="caRegType">
-            <option value="Regular" ${(c.regType || "Regular") === "Regular" ? "selected" : ""}>Regular</option>
+            <option value="Regular" ${(c.regType || "Regular") === "Regular" : ""}>Regular</option>
             <option value="Composition" ${c.regType === "Composition" ? "selected" : ""}>Composition</option>
             <option value="Unregistered" ${c.regType === "Unregistered" ? "selected" : ""}>Unregistered</option>
           </select>
@@ -1323,6 +1330,7 @@ function openCompanyAlterModal() {
 }
 
 function saveCompanyAlter() {
+  if (!canWriteData()) return;
   const name = (document.getElementById("caName")?.value || "").trim();
   if (!name) { toast("⚠ Company / Trust Name zaroori hai!"); return; }
 
