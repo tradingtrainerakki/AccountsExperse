@@ -425,6 +425,7 @@
 
     // clone + inputs ko text me badlo
     const clone = srcEl.cloneNode(true);
+    clone.removeAttribute("id");
     const origInputs = srcEl.querySelectorAll("input,select,textarea");
     const cloneInputs = clone.querySelectorAll("input,select,textarea");
     origInputs.forEach((el, i) => {
