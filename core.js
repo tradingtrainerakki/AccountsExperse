@@ -1363,3 +1363,81 @@ function saveCompanyAlter() {
   if (typeof updateShellUI === "function") updateShellUI();
   toast("✅ Company / Trust Details Saved!");
 }
+// ============================================================================
+// STRICT VIEWER HARD-LOCK (BLOCKS MEMORY MUTATION, VOUCHER ENTRY & DELETE)
+// ============================================================================
+(function enforceViewerHardLock() {
+  // 1. Agar saveDB block ho, toh DB memory ko turant storage se reload/revert karein
+  const origSave = window.saveDB;
+  if (typeof origSave === "function" && !origSave._hardLocked) {
+    window.saveDB = function () {
+      if (!canWriteData()) {
+        toast("🔒 Read-Only Mode: Viewer koi entry ya बदलाव nahi kar sakta!");
+        // Memory me jo push hua hai use wapas asli state par revert karein
+        try {
+          const raw = localStorage.getItem("TALLY_PRIME_GST_DB_" + CURRENT_ENTITY_ID);
+          if (raw) DB = Object.assign(DB, JSON.parse(raw));
+        } catch (e) {}
+        refreshHeaderAndSidebar();
+        return false;
+      }
+      return origSave.apply(this, arguments);
+    };
+    window.saveDB._hardLocked = true;
+  }
+
+  // 2. Navigation Lock: Viewer ko Voucher Entry aur Master Create/Alter screens par jaane se rokein
+  const origNav = window.navigate;
+  if (typeof origNav === "function" && !origNav._hardLocked) {
+    window.navigate = function (screen, pushHistory = true) {
+      const restrictedScreens = [
+        "voucher_entry",
+        "masters_ledger",
+        "masters_groups",
+        "masters_item",
+        "masters_stock_groups",
+        "bom_production"
+      ];
+      if (!canWriteData() && restrictedScreens.includes(screen)) {
+        toast("👁️ Read-Only Mode: Viewer sirf Reports dekh aur Print kar sakta hai!");
+        return;
+      }
+      return origNav.call(this, screen, pushHistory);
+    };
+    window.navigate._hardLocked = true;
+  }
+
+  // 3. Function-level Lock on Voucher Open, Save & Delete (after all scripts load)
+  window.addEventListener("DOMContentLoaded", () => {
+    const writeFns = [
+      "openVoucherScreen",
+      "saveCurrentVoucher",
+      "deleteVoucher",
+      "saveLedgerFromForm",
+      "deleteLedger",
+      "saveGroupFromForm",
+      "deleteGroup",
+      "saveItemFromForm",
+      "deleteItem",
+      "saveStockGroupFromForm",
+      "openQuickLedgerModal",
+      "openInventoryVoucherModal",
+      "saveMfgProductionVoucher",
+      "setReconRowDate"
+    ];
+
+    writeFns.forEach(fnName => {
+      const origFn = window[fnName];
+      if (typeof origFn === "function" && !origFn._viewerGuarded) {
+        window[fnName] = function () {
+          if (!canWriteData()) {
+            toast("👁️ Read-Only Mode: Viewer ko Entry/Edit/Delete ki permission nahi hai!");
+            return;
+          }
+          return origFn.apply(this, arguments);
+        };
+        window[fnName]._viewerGuarded = true;
+      }
+    });
+  });
+})();
