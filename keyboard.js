@@ -547,9 +547,17 @@ window.addEventListener("keydown", function (e) {
   setTimeout(() => inp.focus(), 40);
 }, true);
 // ============================================================================
-// 1. CHANGE GROUP (G) — STANDALONE PICKER (NO BUTTON FOCUS JUMP)
+// 1. CHANGE GROUP (G) — STANDALONE PICKER + SHOWMODAL INTERCEPTOR
 // ============================================================================
 window._openGroupPickerModal = function () {
+  // Agar purana modal khul gaya ho toh turant band karein
+  if (typeof closeModal === "function") closeModal();
+  const modalEl = document.getElementById("modalOverlay");
+  if (modalEl) {
+    modalEl.classList.remove("show");
+    modalEl.style.display = "none";
+  }
+
   const bodyEl = document.getElementById("screenBody");
   if (!bodyEl) return;
   const grpSelect = bodyEl.querySelector("select");
@@ -564,7 +572,7 @@ window._openGroupPickerModal = function () {
 
   const overlay = document.createElement("div");
   overlay.id = "customGrpPickerOverlay";
-  overlay.style.cssText = "position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:99999; display:flex; align-items:center; justify-content:center;";
+  overlay.style.cssText = "position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:999999; display:flex; align-items:center; justify-content:center;";
 
   overlay.innerHTML = `
     <div style="background:#fff; width:460px; max-width:92vw; border-radius:6px; box-shadow:0 12px 30px rgba(0,0,0,0.25); overflow:hidden;">
@@ -622,24 +630,33 @@ window._openGroupPickerModal = function () {
     if (!document.getElementById("customGrpPickerOverlay")) return;
     if (ev.key === "ArrowDown") {
       ev.preventDefault();
+      ev.stopPropagation();
       ev.stopImmediatePropagation();
       selIdx = Math.min(filtered.length - 1, selIdx + 1);
       renderList();
       inp.focus();
     } else if (ev.key === "ArrowUp") {
       ev.preventDefault();
+      ev.stopPropagation();
       ev.stopImmediatePropagation();
       selIdx = Math.max(0, selIdx - 1);
       renderList();
       inp.focus();
     } else if (ev.key === "Enter") {
       ev.preventDefault();
+      ev.stopPropagation();
       ev.stopImmediatePropagation();
       pickGroup(selIdx);
     } else if (ev.key === "Escape") {
       ev.preventDefault();
+      ev.stopPropagation();
       ev.stopImmediatePropagation();
       closePicker();
+    } else if (ev.key === "Tab") {
+      ev.preventDefault();
+      ev.stopPropagation();
+      ev.stopImmediatePropagation();
+      inp.focus();
     }
   }
 
@@ -659,13 +676,40 @@ window._openGroupPickerModal = function () {
   setTimeout(() => inp.focus(), 30);
 };
 
-// Auto-inject "🔄 Change Group (G)" button on Group Summary top bar
-function injectGroupChangeButton() {
+// Hijack showModal: agar kahin se bhi "Change Group" modal khule toh standalone picker kholein
+(function interceptChangeGroupModal() {
+  const origShowModal = window.showModal;
+  if (typeof origShowModal === "function" && !origShowModal._grpWrapped) {
+    window.showModal = function (title, body, footer) {
+      if (title && /Change Group/i.test(String(title))) {
+        return window._openGroupPickerModal();
+      }
+      return origShowModal.apply(this, arguments);
+    };
+    window.showModal._grpWrapped = true;
+  }
+})();
+
+// Button aur G key dono ko force-bind karein
+setInterval(() => {
   const bodyEl = document.getElementById("screenBody");
   if (!bodyEl || !/Select Group/i.test(bodyEl.textContent || "")) return;
 
+  // Agar koi pehle se button bana hai toh uska click bhi humare function par set kar dein
+  const existingBtns = Array.from(bodyEl.querySelectorAll("button")).filter(b => /Change Group/i.test(b.textContent || ""));
+  if (existingBtns.length > 0) {
+    existingBtns.forEach(b => {
+      b.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        window._openGroupPickerModal();
+      };
+    });
+    return;
+  }
+
   const topBar = bodyEl.querySelector("div[style*='display:flex']") || bodyEl.querySelector(".form-card");
-  if (!topBar || document.getElementById("aeGroupChangeBtn")) return;
+  if (!topBar) return;
 
   const btn = document.createElement("button");
   btn.id = "aeGroupChangeBtn";
@@ -674,25 +718,22 @@ function injectGroupChangeButton() {
   btn.innerHTML = "🔄 Change Group (G)";
   btn.onclick = () => window._openGroupPickerModal();
   topBar.appendChild(btn);
-}
-setInterval(injectGroupChangeButton, 800);
+}, 500);
 
-// Keyboard listener for 'G' key
 window.addEventListener("keydown", function (e) {
   if (e.key.toLowerCase() !== "g" || e.altKey || e.ctrlKey || e.metaKey) return;
   const tag = (document.activeElement && document.activeElement.tagName || "").toUpperCase();
   if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-  const modal = document.getElementById("modalOverlay");
-  if ((modal && window.getComputedStyle(modal).display !== "none") || document.getElementById("customGrpPickerOverlay")) return;
+  if (document.getElementById("customGrpPickerOverlay")) return;
 
   const bodyEl = document.getElementById("screenBody");
   if (!bodyEl || !/Select Group/i.test(bodyEl.textContent || "")) return;
 
   e.preventDefault();
+  e.stopPropagation();
   e.stopImmediatePropagation();
   window._openGroupPickerModal();
 }, true);
-
 // ============================================================================
 // 2. ARROW KEY NAVIGATION & ENTER ON LEDGER VOUCHERS SCREEN
 // ============================================================================
