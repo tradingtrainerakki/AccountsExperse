@@ -236,14 +236,29 @@ function persistCurrentEntitySilently() {
 
 function refreshHeaderAndSidebar() {
   const c = DB.company || {};
+  const trust = isTrustEntity();
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+
   set("topCmpName", c.name || "AccountsExperse ERP");
   set("topPeriod", `${fmtDate(c.fyFrom)} to ${fmtDate(c.fyTo)}`);
   set("topCurDate", fmtDate(c.curDate));
   set("lpCmpName", c.name || "-");
   set("lpCmpGstin", c.gstin || "Unregistered");
   set("lpCmpState", `${c.stateCode || "05"} - ${GST_STATES[c.stateCode || "05"] || ""}`);
-  set("lpCmpReg", c.regType || "Regular");
+
+  // Trust ke liye Registration Number dikhayein, Company ke liye GST Reg. Type
+  const regEl = document.getElementById("lpCmpReg");
+  if (regEl) {
+    const labelEl = regEl.previousElementSibling;
+    if (trust) {
+      if (labelEl) labelEl.textContent = "Trust Reg.";
+      regEl.textContent = c.regNo ? c.regNo : "Registered Trust";
+    } else {
+      if (labelEl) labelEl.textContent = "GST Type";
+      regEl.textContent = c.regType || "Regular";
+    }
+  }
+
   set("lpVchCount", (DB.vouchers || []).length);
   computeQuickPulse();
 }
