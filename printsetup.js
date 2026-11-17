@@ -11,13 +11,16 @@
   // --------------------------------------------------------------------------
   const PRINT_DEFAULTS = {
     company: { address: true, phone: true, email: true, website: false, regNo: true, pan: true, gstin: true,
-               reg12A: false, reg80G: false, bankMode: "none", sign: true },
+               reg12A: false, reg80G: false, bankMode: "none", sign: true,
+               qrCaption: "Scan to Pay via UPI", qrSize: "medium", qrPos: "right", qrShowId: true },
     ledger:  { ledgerName: true, period: true, partyAddr: false, partyGstin: false, opening: true,
-               vchType: true, vchNo: true, narration: true, totals: true, closing: true, printDate: false, pageNo: true },
+               vchType: true, vchNo: true, narration: true, totals: true, closing: true, printDate: false, pageNo: true, qr: false },
     group:   { title: true, period: true, serial: true, grpCol: true, opening: true, periodDrCr: true,
-               closing: true, totals: true, printDate: false, pageNo: true },
+               closing: true, totals: true, printDate: false, pageNo: true, qr: false },
     daybook: { title: true, period: true, serial: true, vchType: true, vchNo: true, party: true,
-               narration: true, amount: true, totals: true, printDate: false, pageNo: true }
+               narration: true, amount: true, totals: true, printDate: false, pageNo: true, qr: false },
+    voucher: { "qr_Receipt": true, "qr_Sales": true, "qr_Payment": false, "qr_Journal": false, "qr_Contra": false,
+               "qr_Purchase": false, "qr_Credit Note": false, "qr_Debit Note": false }
   };
 
   const SECTIONS = [
@@ -27,26 +30,33 @@
       ["regNo", "Registration No."], ["pan", "PAN"], ["gstin", "GSTIN"],
       ["reg12A", "12A No."], ["reg80G", "80G No."],
       ["sign", "Authorised Signatory (For ... / Sign) neeche"]
-    ], bank: true },
+    ], bank: true, qrExtra: true },
     { key: "ledger", icon: "📒", title: "Ledger (Alt+L)", items: [
       ["ledgerName", "Ledger Name"], ["period", "Period line"],
       ["partyAddr", "Party Address"], ["partyGstin", "Party GSTIN"],
       ["opening", "Opening Balance row"], ["vchType", "Vch Type column"], ["vchNo", "Vch No. column"],
       ["narration", "Narration (screen par Narration ✔ ho tab)"],
       ["totals", "Current Total row"], ["closing", "Closing Balance + Grand Total"],
-      ["printDate", "Print Date & Time"], ["pageNo", "Page No. (Page 1 of N)"]
+      ["printDate", "Print Date & Time"], ["pageNo", "Page No. (Page 1 of N)"],
+      ["qr", "📲 UPI QR Scanner (neeche)"]
     ] },
     { key: "group", icon: "📂", title: "Group Summary (Alt+U)", items: [
       ["title", "Group Name (title)"], ["period", "Period line"], ["serial", "# (Serial No.)"],
       ["grpCol", "Group column"], ["opening", "Opening column"], ["periodDrCr", "Period Dr / Cr columns"],
       ["closing", "Closing Dr / Cr columns"], ["totals", "Total row"],
-      ["printDate", "Print Date & Time"], ["pageNo", "Page No. (Page 1 of N)"]
+      ["printDate", "Print Date & Time"], ["pageNo", "Page No. (Page 1 of N)"],
+      ["qr", "📲 UPI QR Scanner (neeche)"]
     ] },
     { key: "daybook", icon: "📖", title: "Day Book (Alt+D)", items: [
       ["title", "Report Title"], ["period", "Period line"], ["serial", "# (Serial No.)"],
       ["vchType", "Type column"], ["vchNo", "Vch No column"], ["party", "Particulars / Party"],
       ["narration", "Narration column"], ["amount", "Amount column"], ["totals", "Total row"],
-      ["printDate", "Print Date & Time"], ["pageNo", "Page No. (Page 1 of N)"]
+      ["printDate", "Print Date & Time"], ["pageNo", "Page No. (Page 1 of N)"],
+      ["qr", "📲 UPI QR Scanner (neeche)"]
+    ] },
+    { key: "voucher", icon: "🧾", title: "Voucher / Receipt par UPI QR (voucher screen se Alt+P)", items: [
+      ["qr_Receipt", "Receipt"], ["qr_Sales", "Sales"], ["qr_Payment", "Payment"], ["qr_Journal", "Journal"],
+      ["qr_Contra", "Contra"], ["qr_Purchase", "Purchase"], ["qr_Credit Note", "Credit Note"], ["qr_Debit Note", "Debit Note"]
     ] }
   ];
 
@@ -138,9 +148,70 @@
       <button type="button" class="btn btn-sec" style="padding:4px 10px;font-size:12px;" onclick="window._caAddBank()">➕ Add Another Bank</button>`;
     if (anchor) scroller.insertBefore(sec, anchor); else scroller.appendChild(sec);
 
+    // ---- UPI QR section ----
+    window._caQrData = (DB.company && DB.company.upiQr) || "";
+    const qsec = document.createElement("div");
+    qsec.style.marginBottom = "12px";
+    qsec.innerHTML = `
+      <div style="font-size:11px;font-weight:800;color:var(--pri);text-transform:uppercase;border-bottom:1px solid #e2e8f0;padding-bottom:3px;margin-bottom:8px;">📲 UPI QR Scanner (Print ke liye)</div>
+      <div style="display:flex;gap:12px;align-items:flex-start;">
+        <div style="width:110px;height:110px;border:1px dashed #94a3b8;border-radius:4px;display:flex;align-items:center;justify-content:center;background:#f8fafc;overflow:hidden;">
+          <img id="caQrPreview" alt="" style="max-width:100%;max-height:100%;${window._caQrData ? "" : "display:none;"}" src="${window._caQrData ? escHtml(window._caQrData) : ""}">
+          <span id="caQrEmpty" style="font-size:11px;color:#64748b;text-align:center;${window._caQrData ? "display:none;" : ""}">QR nahi<br>laga hai</span>
+        </div>
+        <div style="flex:1;">
+          <div class="field" style="margin-bottom:6px;"><label>UPI QR ki photo (PNG / JPG)</label><input type="file" id="caQrFile" accept="image/*"></div>
+          <div class="field" style="margin-bottom:6px;"><label>UPI ID (optional)</label><input id="caUpiId" value="${escHtml((DB.company && DB.company.upiId) || "")}" placeholder="e.g. sanrakshan@sbi"></div>
+          <button type="button" class="btn btn-danger" style="padding:3px 9px;font-size:11.5px;" onclick="window._caQrClear()">✕ QR Hatayein</button>
+        </div>
+      </div>`;
+    if (anchor) scroller.insertBefore(qsec, anchor); else scroller.appendChild(qsec);
+    const fileInp = document.getElementById("caQrFile");
+    if (fileInp) fileInp.addEventListener("change", () => window._caQrLoad(fileInp.files && fileInp.files[0]));
+
     // koi bank nahi hai to ek khali row de do
     if (!banks.length) window._caAddBank(true);
   }
+
+  function _setQrPreview(src) {
+    const img = document.getElementById("caQrPreview"), emp = document.getElementById("caQrEmpty");
+    if (img) { img.src = src || ""; img.style.display = src ? "" : "none"; }
+    if (emp) emp.style.display = src ? "none" : "";
+  }
+
+  window._caQrClear = function () {
+    window._caQrData = "";
+    const f = document.getElementById("caQrFile"); if (f) f.value = "";
+    _setQrPreview("");
+  };
+
+  // photo ko chhota karke (max 320px) save karte hain, taaki DB bhari na ho
+  window._caQrLoad = function (file) {
+    if (!file) return;
+    if (!/^image\//.test(file.type)) { toast("⚠ Sirf image (PNG/JPG) chunein"); return; }
+    const fr = new FileReader();
+    fr.onerror = () => toast("⚠ Photo padh nahi paaye");
+    fr.onload = () => {
+      const im = new Image();
+      im.onerror = () => toast("⚠ Photo kharab hai ya khul nahi rahi");
+      im.onload = () => {
+        const max = 320, sc = Math.min(1, max / Math.max(im.width, im.height));
+        const cv = document.createElement("canvas");
+        cv.width = Math.max(1, Math.round(im.width * sc));
+        cv.height = Math.max(1, Math.round(im.height * sc));
+        const cx = cv.getContext("2d");
+        cx.fillStyle = "#fff"; cx.fillRect(0, 0, cv.width, cv.height);
+        cx.drawImage(im, 0, 0, cv.width, cv.height);
+        let out = cv.toDataURL("image/png");
+        if (out.length > 150000) out = cv.toDataURL("image/jpeg", 0.92);
+        window._caQrData = out;
+        _setQrPreview(out);
+        toast("✅ QR laga diya — Save (Ctrl+A) dabayein");
+      };
+      im.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  };
 
   function collectBanks() {
     const rows = Array.from(document.querySelectorAll("#caBankList .ca-bank-row"));
@@ -185,6 +256,10 @@
         const hid = document.getElementById("caBankAcc");
         if (hid) hid.value = def ? def.accNo : "";
       }
+      if (document.getElementById("caQrFile")) {
+        DB.company.upiQr = window._caQrData || "";
+        DB.company.upiId = ((document.getElementById("caUpiId") || {}).value || "").trim();
+      }
       return _origSave.apply(this, arguments);
     };
   }
@@ -208,6 +283,24 @@
             <option value="all" ${cfg.company.bankMode === "all" ? "selected" : ""}>Sabhi Banks</option>
           </select>
         </div>` : "";
+      const qrEx = s.qrExtra ? `
+        <div style="margin-top:10px;padding:8px;border:1px dashed #cbd5e1;border-radius:4px;background:#f8fafc;font-size:12.5px;">
+          <b>📲 UPI QR Scanner ki setting</b> <span style="color:#64748b;">(QR photo F3 me upload hoti hai)</span>
+          <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px;margin-top:6px;">
+            <div class="field"><label>QR ke neeche likha text</label><input id="pcQrCaption" value="${escHtml(cfg.company.qrCaption || "")}"></div>
+            <div class="field"><label>Size</label><select id="pcQrSize">
+              <option value="small" ${cfg.company.qrSize === "small" ? "selected" : ""}>Chhota</option>
+              <option value="medium" ${cfg.company.qrSize === "medium" ? "selected" : ""}>Medium</option>
+              <option value="large" ${cfg.company.qrSize === "large" ? "selected" : ""}>Bada</option></select></div>
+            <div class="field"><label>Jagah</label><select id="pcQrPos">
+              <option value="right" ${cfg.company.qrPos === "right" ? "selected" : ""}>Neeche Right</option>
+              <option value="left" ${cfg.company.qrPos === "left" ? "selected" : ""}>Neeche Left</option>
+              <option value="center" ${cfg.company.qrPos === "center" ? "selected" : ""}>Neeche Beech me</option></select></div>
+          </div>
+          <label style="display:flex;gap:6px;align-items:center;margin-top:6px;cursor:pointer;">
+            <input type="checkbox" id="pcQrShowId" ${cfg.company.qrShowId ? "checked" : ""}> QR ke saath UPI ID bhi likhein
+          </label>
+        </div>` : "";
       return `
         <div style="margin-bottom:14px;">
           <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e2e8f0;padding-bottom:3px;margin-bottom:8px;">
@@ -218,7 +311,7 @@
             </span>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;">${boxes}</div>
-          ${bankSel}
+          ${bankSel}${qrEx}
         </div>`;
     }).join("");
 
@@ -240,6 +333,10 @@
     });
     cfg.company = cfg.company || {};
     cfg.company.bankMode = (document.getElementById("pcBankMode") || {}).value || "none";
+    cfg.company.qrCaption = ((document.getElementById("pcQrCaption") || {}).value || "").trim();
+    cfg.company.qrSize = (document.getElementById("pcQrSize") || {}).value || "medium";
+    cfg.company.qrPos = (document.getElementById("pcQrPos") || {}).value || "right";
+    cfg.company.qrShowId = !!(document.getElementById("pcQrShowId") || {}).checked;
     DB.company.printCfg = cfg;
     if (typeof canWriteData === "function" && !canWriteData()) {
       toast("ℹ Sirf is session ke liye lagega (Viewer save nahi kar sakta)");
@@ -302,17 +399,36 @@
       <div style="font-size:18px;font-weight:800;">${e(c.name || "")}</div>${lines.join("")}</div>`;
   }
 
-  function footerHtml(cc, rc) {
+  function qrBlockHtml(cc) {
+    const c = DB.company || {};
+    if (!c.upiQr) return "";
+    const px = { small: 90, medium: 125, large: 165 }[cc.qrSize] || 125;
+    return `<div style="text-align:center;font-size:11px;">
+      <img src="${escHtml(c.upiQr)}" alt="UPI QR" style="width:${px}px;height:${px}px;object-fit:contain;">
+      ${cc.qrCaption ? `<div style="font-weight:700;margin-top:2px;">${escHtml(cc.qrCaption)}</div>` : ""}
+      ${cc.qrShowId && c.upiId ? `<div>UPI ID: ${escHtml(c.upiId)}</div>` : ""}
+    </div>`;
+  }
+
+  function footerHtml(cc, rc, qrOn) {
     const c = DB.company || {};
     const e = escHtml;
     let h = "";
-    if (cc.sign) {
-      h += `<div style="display:flex;justify-content:flex-end;margin-top:36px;padding-right:10px;">
-        <div style="text-align:center;font-size:12px;">
+    const signHtml = cc.sign ? `<div style="text-align:center;font-size:12px;">
           <div style="font-weight:700;">For ${e(c.name || "")}</div>
           <div style="margin-top:34px;">${e(c.signatoryName || "")}</div>
           <div>${e(c.signatoryDesig || "Authorised Signatory")}</div>
-        </div></div>`;
+        </div>` : "";
+    const qrHtml = qrOn ? qrBlockHtml(cc) : "";
+    if (qrOn && !qrHtml) toast("ℹ UPI QR laga nahi hai — F3 (Company) me photo upload karein");
+    if (signHtml || qrHtml) {
+      const pos = cc.qrPos || "right";
+      const slots = { left: "", center: "", right: "" };
+      if (qrHtml) slots[pos] = qrHtml;
+      if (signHtml) slots[qrHtml ? (pos === "right" ? "left" : "right") : "right"] = signHtml;
+      const cell = (jc, inner) => `<div style="flex:1;display:flex;justify-content:${jc};">${inner}</div>`;
+      h += `<div style="display:flex;align-items:flex-end;margin-top:30px;padding:0 10px;">
+        ${cell("flex-start", slots.left)}${cell("center", slots.center)}${cell("flex-end", slots.right)}</div>`;
     }
     if (rc && rc.printDate) {
       h += `<div style="margin-top:10px;font-size:10px;color:#475569;">Printed on: ${e(new Date().toLocaleString("en-IN"))}</div>`;
@@ -425,7 +541,7 @@
 
     // clone + inputs ko text me badlo
     const clone = srcEl.cloneNode(true);
-    clone.removeAttribute("id");
+    clone.removeAttribute("id"); // warna style.css ka :has(~ #screenBody) rule header chhupa deta hai
     const origInputs = srcEl.querySelectorAll("input,select,textarea");
     const cloneInputs = clone.querySelectorAll("input,select,textarea");
     origInputs.forEach((el, i) => {
@@ -457,7 +573,10 @@
     area.innerHTML = head;
     area.appendChild(clone);
     const foot = document.createElement("div");
-    foot.innerHTML = footerHtml(cfg.company, rc);
+    let qrOn = false;
+    if (kind) qrOn = !!rc.qr;
+    else if (screen === "voucher_entry" && typeof VCH_STATE !== "undefined" && VCH_STATE) qrOn = !!cfg.voucher["qr_" + VCH_STATE.vchType];
+    foot.innerHTML = footerHtml(cfg.company, rc, qrOn);
     area.appendChild(foot);
 
     // Page number (Chrome)
