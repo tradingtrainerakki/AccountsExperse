@@ -180,8 +180,9 @@
     return true;
   }
 
+  // UPDATED: Included table.clean-led-tbl tbody tr[data-vid] so Ledger Vouchers arrow keys work natively
   function getSelectableRows(root) {
-    return Array.from(root.querySelectorAll("table.tally-tbl tbody tr, .tally-grp-block.clickable, .tally-sub-led"))
+    return Array.from(root.querySelectorAll("table.tally-tbl tbody tr, table.clean-led-tbl tbody tr[data-vid], .tally-grp-block.clickable, .tally-sub-led"))
       .filter(el => el.offsetParent !== null);
   }
 
@@ -283,8 +284,12 @@
       return;
     }
 
-    // F. F2 TEMP DATE & LEDGER PICKER POPUPS (handled by their own inputs)
-    if (document.getElementById("directF2DateModal") || document.getElementById("directLedgerPickerModal")) return;
+    // F. F2 TEMP DATE, LEDGER PICKER (F4) & GROUP PICKER (G) POPUPS (handled by their own inputs!)
+    if (
+      document.getElementById("directF2DateModal") ||
+      document.getElementById("directLedgerPickerModal") ||
+      document.getElementById("directGroupPickerModal")
+    ) return;
 
     // G. OPEN <SELECT> WITH ARROW / ENTER / TYPING
     if (active && active.tagName === "SELECT" && !active.hasAttribute("data-nokd")) {
@@ -336,6 +341,12 @@
       launchDirectLedgerPicker(CURRENT_SCREEN === "bank_recon" ? "recon" : "ledger_view");
       return;
     }
+    // G or F4 on Group Summary Screen -> Open Direct Group Picker (exact F4 style)
+    if ((k.toLowerCase() === "g" || k === "F4") && CURRENT_SCREEN === "group_summary" && !e.altKey && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault(); e.stopImmediatePropagation();
+      if (typeof launchDirectGroupPicker === "function") launchDirectGroupPicker();
+      return;
+    }
 
     // Standard Tally Function Keys (F4-F9) — Works everywhere (even inside dropdowns/inputs)
     const FN_VCH = { F4: "Contra", F5: "Payment", F6: "Receipt", F7: "Journal", F8: "Sales", F9: "Purchase" };
@@ -363,6 +374,7 @@
         }
       }
     }
+
     // J. GATEWAY SCREEN
     if (CURRENT_SCREEN === "gateway") {
       const list = getActiveGatewayList();
@@ -390,7 +402,6 @@
     if (CURRENT_SCREEN === "voucher_entry") {
       if (k === "Escape") { e.preventDefault(); e.stopImmediatePropagation(); openVtBox(); return; }
 
-      // Voucher Type Hotkeys (C, Y, R, J, S, P, K, D) — Text/Narration box ke bahar (Date box par bhi chalega)
       const isTextTyping = active && (
         active.tagName === "TEXTAREA" ||
         (active.tagName === "INPUT" && ["text", "search", "email", "password"].includes((active.type || "text").toLowerCase()))
@@ -434,8 +445,8 @@
     const sb = document.getElementById("screenBody");
     if (!sb) return;
 
-    // Inside Form Inputs (Masters / BOM / Search)
-    if (active && sb.contains(active) && (active.tagName === "INPUT" || active.tagName === "TEXTAREA")) {
+    // Inside Form Inputs (Masters / BOM / Search) — Exclude Checkboxes so Ledger View checkboxes don't trap arrows
+    if (active && sb.contains(active) && ((active.tagName === "INPUT" && active.type !== "checkbox" && active.type !== "radio") || active.tagName === "TEXTAREA")) {
       if (k === "ArrowDown" || k === "ArrowUp") {
         e.preventDefault(); e.stopImmediatePropagation();
         const fields = getFocusableList(sb, false);
@@ -453,15 +464,19 @@
       return;
     }
 
-    // Table / Report Row Navigation
+    // Table / Report Row Navigation (Day Book, Ledger Vouchers, Group Summary, Trial Balance, etc.)
     if (k === "ArrowDown" || k === "ArrowUp") {
       const rows = getSelectableRows(sb);
       if (!rows.length) return;
       e.preventDefault(); e.stopImmediatePropagation();
       let idx = rows.findIndex(r => r.classList.contains("kb-sel"));
-      rows.forEach(r => r.classList.remove("kb-sel"));
+      rows.forEach(r => {
+        r.classList.remove("kb-sel");
+        r.style.removeProperty("background-color");
+      });
       idx = idx < 0 ? (k === "ArrowDown" ? 0 : rows.length - 1) : (idx + (k === "ArrowDown" ? 1 : -1) + rows.length) % rows.length;
       rows[idx].classList.add("kb-sel");
+      rows[idx].style.setProperty("background-color", "#fef08a", "important");
       rows[idx].scrollIntoView({ block: "nearest" });
       return;
     }
@@ -472,224 +487,3 @@
     }
   }, true);
 })();
-// ============================================================================
-// DEDICATED "G" KEY FOR "CHANGE GROUP" ON GROUP SUMMARY SCREEN
-// ============================================================================
-window.addEventListener("keydown", function (e) {
-  if (e.key.toLowerCase() !== "g" || e.altKey || e.ctrlKey || e.metaKey) return;
-
-  // Agar kisi input/textarea me type kar rahe hon ya modal khula ho toh skip karein
-  const tag = (document.activeElement && document.activeElement.tagName || "").toUpperCase();
-  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-  if (document.querySelector("#modalOverlay.show, #modalOverlay[style*='flex'], .modal-overlay.show")) return;
-
-  // Check karein ki screen par "Select Group" wala dropdown maujood hai
-  const bodyEl = document.getElementById("screenBody");
-  if (!bodyEl || !/Select Group/i.test(bodyEl.textContent || "")) return;
-
-  const grpSelect = bodyEl.querySelector("select");
-  if (!grpSelect) return;
-
-  e.preventDefault();
-  e.stopImmediatePropagation();
-
-  const options = Array.from(grpSelect.options).map(o => ({ val: o.value, text: o.textContent.trim() }));
-  let selIdx = Math.max(0, options.findIndex(o => o.val === grpSelect.value));
-
-  const body = `
-    <input id="gGrpSearch" type="text" placeholder="Type Group name... (↑ ↓ + Enter)"
-      style="width:100%; padding:8px 10px; font-size:13px; border:1.5px solid var(--pri); border-radius:4px; margin-bottom:8px;">
-    <div id="gGrpList" style="max-height:300px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:4px;"></div>`;
-
-  showModal("Change Group (G)", body, `<button class="btn btn-sec" onclick="closeModal()">Cancel (Esc)</button>`);
-
-  const inp = document.getElementById("gGrpSearch");
-  const listEl = document.getElementById("gGrpList");
-  let filtered = options.slice();
-
-  function renderList() {
-    if (selIdx >= filtered.length) selIdx = Math.max(0, filtered.length - 1);
-    listEl.innerHTML = filtered.map((o, i) => `
-      <div class="g-grp-item" data-idx="${i}"
-        style="padding:7px 10px; cursor:pointer; font-size:13px; border-bottom:1px solid #f1f5f9;
-        background:${i === selIdx ? "#fef08a" : "#fff"}; font-weight:${i === selIdx ? "700" : "500"};">
-        ${escHtml(o.text)}
-      </div>`).join("") || `<div style="padding:12px; text-align:center; color:#64748b;">No group found</div>`;
-
-    listEl.querySelectorAll(".g-grp-item").forEach(el => {
-      el.onclick = () => pickGroup(Number(el.dataset.idx));
-    });
-    const activeEl = listEl.querySelector(`[data-idx="${selIdx}"]`);
-    if (activeEl) activeEl.scrollIntoView({ block: "nearest" });
-  }
-
-  function pickGroup(idx) {
-    if (!filtered[idx]) return;
-    grpSelect.value = filtered[idx].val;
-    closeModal();
-    grpSelect.dispatchEvent(new Event("change", { bubbles: true }));
-  }
-
-  inp.addEventListener("input", () => {
-    const q = inp.value.trim().toLowerCase();
-    filtered = options.filter(o => o.text.toLowerCase().includes(q));
-    selIdx = 0;
-    renderList();
-  });
-
-  inp.addEventListener("keydown", (ev) => {
-    if (ev.key === "ArrowDown") { ev.preventDefault(); selIdx = Math.min(filtered.length - 1, selIdx + 1); renderList(); }
-    else if (ev.key === "ArrowUp") { ev.preventDefault(); selIdx = Math.max(0, selIdx - 1); renderList(); }
-    else if (ev.key === "Enter") { ev.preventDefault(); pickGroup(selIdx); }
-  });
-
-  renderList();
-  setTimeout(() => inp.focus(), 40);
-}, true);
-// ============================================================================
-// DEDICATED "CHANGE GROUP" BUTTON & "G" KEY FOR GROUP SUMMARY SCREEN
-// ============================================================================
-window._openGroupPickerModal = function() {
-  const bodyEl = document.getElementById("screenBody");
-  if (!bodyEl) return;
-  const grpSelect = bodyEl.querySelector("select");
-  if (!grpSelect) return;
-
-  const options = Array.from(grpSelect.options).map(o => ({ val: o.value, text: o.textContent.trim() }));
-  let selIdx = Math.max(0, options.findIndex(o => o.val === grpSelect.value));
-
-  const body = `
-    <input id="gGrpSearch" type="text" placeholder="Type Group name... (↑ ↓ + Enter)"
-      style="width:100%; padding:8px 10px; font-size:13px; border:1.5px solid var(--pri); border-radius:4px; margin-bottom:8px;">
-    <div id="gGrpList" style="max-height:300px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:4px;"></div>`;
-
-  showModal("Change Group (G)", body, `<button class="btn btn-sec" onclick="closeModal()">Cancel (Esc)</button>`);
-
-  const inp = document.getElementById("gGrpSearch");
-  const listEl = document.getElementById("gGrpList");
-  let filtered = options.slice();
-
-  function renderList() {
-    if (selIdx >= filtered.length) selIdx = Math.max(0, filtered.length - 1);
-    listEl.innerHTML = filtered.map((o, i) => `
-      <div class="g-grp-item" data-idx="${i}"
-        style="padding:7px 10px; cursor:pointer; font-size:13px; border-bottom:1px solid #f1f5f9;
-        background:${i === selIdx ? "#fef08a" : "#fff"}; font-weight:${i === selIdx ? "700" : "500"};">
-        ${escHtml(o.text)}
-      </div>`).join("") || `<div style="padding:12px; text-align:center; color:#64748b;">No group found</div>`;
-
-    listEl.querySelectorAll(".g-grp-item").forEach(el => {
-      el.onclick = () => pickGroup(Number(el.dataset.idx));
-    });
-    const activeEl = listEl.querySelector(`[data-idx="${selIdx}"]`);
-    if (activeEl) activeEl.scrollIntoView({ block: "nearest" });
-  }
-
-  function pickGroup(idx) {
-    if (!filtered[idx]) return;
-    grpSelect.value = filtered[idx].val;
-    closeModal();
-    grpSelect.dispatchEvent(new Event("change", { bubbles: true }));
-  }
-
-  inp.addEventListener("input", () => {
-    const q = inp.value.trim().toLowerCase();
-    filtered = options.filter(o => o.text.toLowerCase().includes(q));
-    selIdx = 0;
-    renderList();
-  });
-
-  inp.addEventListener("keydown", (ev) => {
-    if (ev.key === "ArrowDown") { ev.preventDefault(); selIdx = Math.min(filtered.length - 1, selIdx + 1); renderList(); }
-    else if (ev.key === "ArrowUp") { ev.preventDefault(); selIdx = Math.max(0, selIdx - 1); renderList(); }
-    else if (ev.key === "Enter") { ev.preventDefault(); pickGroup(selIdx); }
-  });
-
-  renderList();
-  setTimeout(() => inp.focus(), 40);
-};
-
-// Auto-inject "🔄 Change Group (G)" button on Group Summary top bar
-function injectGroupChangeButton() {
-  const bodyEl = document.getElementById("screenBody");
-  if (!bodyEl || !/Select Group/i.test(bodyEl.textContent || "")) return;
-
-  const topBar = bodyEl.querySelector("div[style*='display:flex']") || bodyEl.querySelector(".form-card");
-  if (!topBar || document.getElementById("aeGroupChangeBtn")) return;
-
-  const btn = document.createElement("button");
-  btn.id = "aeGroupChangeBtn";
-  btn.className = "btn btn-sec";
-  btn.style.cssText = "padding:3px 9px; font-size:11.5px; margin-left:6px;";
-  btn.innerHTML = "🔄 Change Group (G)";
-  btn.onclick = () => window._openGroupPickerModal();
-  topBar.appendChild(btn);
-}
-setInterval(injectGroupChangeButton, 800);
-
-// Keyboard listener for 'G' key
-window.addEventListener("keydown", function (e) {
-  if (e.key.toLowerCase() !== "g" || e.altKey || e.ctrlKey || e.metaKey) return;
-  const tag = (document.activeElement && document.activeElement.tagName || "").toUpperCase();
-  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-  if (document.querySelector("#modalOverlay.show, #modalOverlay[style*='flex'], .modal-overlay.show")) return;
-
-  const bodyEl = document.getElementById("screenBody");
-  if (!bodyEl || !/Select Group/i.test(bodyEl.textContent || "")) return;
-
-  e.preventDefault();
-  e.stopImmediatePropagation();
-  window._openGroupPickerModal();
-}, true);
-
-// ============================================================================
-// 2. ARROW KEY NAVIGATION & ENTER ON LEDGER VOUCHERS SCREEN
-// ============================================================================
-window.addEventListener("keydown", function (e) {
-  if (e.key !== "ArrowDown" && e.key !== "ArrowUp" && e.key !== "Enter") return;
-
-  const bodyEl = document.getElementById("screenBody");
-  if (!bodyEl || !bodyEl.textContent.includes("Ledger:")) return;
-
-  const active = document.activeElement;
-  if (active && ((active.tagName === "INPUT" && active.type !== "checkbox") || active.tagName === "TEXTAREA" || active.tagName === "SELECT")) return;
-
-  const modal = document.getElementById("modalOverlay");
-  const isModalVisible = modal && window.getComputedStyle(modal).display !== "none";
-  if (isModalVisible || document.getElementById("customGrpPickerOverlay")) return;
-
-  const rows = Array.from(bodyEl.querySelectorAll("table tbody tr, table tr"))
-    .filter(tr => tr.querySelector("td") && tr.textContent.trim().length > 0);
-  if (!rows.length) return;
-
-  e.preventDefault();
-  e.stopPropagation();
-  e.stopImmediatePropagation();
-
-  let activeIdx = rows.findIndex(tr => tr.getAttribute("data-ledger-active") === "1");
-
-  if (e.key === "ArrowDown") {
-    activeIdx = activeIdx >= rows.length - 1 ? 0 : activeIdx + 1;
-  } else if (e.key === "ArrowUp") {
-    activeIdx = activeIdx <= 0 ? rows.length - 1 : activeIdx - 1;
-  } else if (e.key === "Enter") {
-    if (activeIdx >= 0 && rows[activeIdx]) {
-      const target = rows[activeIdx].hasAttribute("onclick")
-        ? rows[activeIdx]
-        : rows[activeIdx].querySelector("[onclick]") || rows[activeIdx];
-      target.click();
-    }
-    return;
-  }
-
-  rows.forEach(tr => {
-    tr.style.removeProperty("background-color");
-    tr.removeAttribute("data-ledger-active");
-  });
-
-  if (activeIdx >= 0 && rows[activeIdx]) {
-    rows[activeIdx].style.setProperty("background-color", "#fef08a", "important");
-    rows[activeIdx].setAttribute("data-ledger-active", "1");
-    rows[activeIdx].scrollIntoView({ block: "nearest" });
-  }
-}, true);
