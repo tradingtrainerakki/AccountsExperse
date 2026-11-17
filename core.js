@@ -1292,7 +1292,7 @@ function openCompanyAlterModal() {
       <div class="form-grid" style="grid-template-columns: 1fr 1fr 1fr 1fr; gap:8px; margin-bottom:12px;">
         <div class="field"><label>GST Reg. Type</label>
           <select id="caRegType">
-            <option value="Regular" ${(c.regType || "Regular") === "Regular" : ""}>Regular</option>
+            <option value="Regular" ${(c.regType || "Regular") === "Regular" ? "selected" : ""}>Regular</option>
             <option value="Composition" ${c.regType === "Composition" ? "selected" : ""}>Composition</option>
             <option value="Unregistered" ${c.regType === "Unregistered" ? "selected" : ""}>Unregistered</option>
           </select>
