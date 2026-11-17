@@ -1,10 +1,9 @@
 // ============================================================================
-// ACCOUNTSEXPERSE GST v2.0 — UNIFIED KEYBOARD & NAVIGATION ENGINE (CLEAN BUILD)
+// ACCOUNTSEXPERSE GST v2.0 — KEYBOARD ENGINE WITH BACKGROUND SCREEN-LOCK
 // ============================================================================
 (function () {
   "use strict";
 
-  // Helper: Safe HTML escape
   function safeEsc(str) {
     if (typeof window.escHtml === "function") return window.escHtml(str);
     return String(str == null ? "" : str)
@@ -14,7 +13,11 @@
       .replace(/"/g, "&quot;");
   }
 
-  // Helper: Check if standard #modalOverlay is currently visible
+  // Helper to get screenBody even when locked by our Group Picker
+  function getRealScreenBody() {
+    return document.getElementById("screenBody") || document.getElementById("screenBody_locked");
+  }
+
   function isStandardModalOpen() {
     const m = document.getElementById("modalOverlay");
     if (!m) return false;
@@ -23,33 +26,67 @@
     return disp !== "none" && disp !== "";
   }
 
-  // Helper: Check if our Standalone Group Picker is open
   function isGroupPickerOpen() {
     return !!document.getElementById("customGrpPickerOverlay");
   }
 
-  // Helper: Check if current screen is Group Summary
   function isGroupSummaryScreen() {
-    const bodyEl = document.getElementById("screenBody");
+    const bodyEl = getRealScreenBody();
     const titleEl = document.querySelector("#screenTitle, .screen-title, .screen-bar");
     const titleTxt = titleEl ? titleEl.textContent : "";
     const bodyTxt = bodyEl ? bodyEl.textContent : "";
-    return /Group Summary/i.test(titleTxt) || (/Select Group/i.test(bodyTxt) && !!bodyEl.querySelector("select"));
+    return /Group Summary/i.test(titleTxt) || (/Select Group/i.test(bodyTxt) && !!(bodyEl && bodyEl.querySelector("select")));
   }
 
   // ==========================================================================
-  // 1. STANDALONE "CHANGE GROUP (G)" PICKER MODAL
+  // 1. STANDALONE "CHANGE GROUP (G)" PICKER WITH BACKGROUND FREEZE
   // ==========================================================================
   let grpPickerState = {
     options: [],
     filtered: [],
     selIdx: 0,
-    selectEl: null
+    selectEl: null,
+    lockedRows: []
   };
+
+  function lockBackgroundScreen() {
+    const bodyEl = document.getElementById("screenBody");
+    if (!bodyEl) return;
+
+    // 1. Temporarily rename #screenBody ID so reports.js / app.js listeners find NOTHING
+    bodyEl.id = "screenBody_locked";
+
+    // 2. Temporarily disable onclick on background table rows so Enter cannot open a ledger
+    grpPickerState.lockedRows = [];
+    bodyEl.querySelectorAll("[onclick], tr, td, a").forEach(el => {
+      if (el.hasAttribute("onclick")) {
+        grpPickerState.lockedRows.push({ el, attr: el.getAttribute("onclick"), prop: el.onclick });
+        el.removeAttribute("onclick");
+        el.onclick = null;
+      } else if (typeof el.onclick === "function") {
+        grpPickerState.lockedRows.push({ el, attr: null, prop: el.onclick });
+        el.onclick = null;
+      }
+    });
+  }
+
+  function unlockBackgroundScreen() {
+    const bodyEl = document.getElementById("screenBody_locked");
+    if (bodyEl) bodyEl.id = "screenBody";
+
+    if (grpPickerState.lockedRows && grpPickerState.lockedRows.length) {
+      grpPickerState.lockedRows.forEach(item => {
+        if (item.attr !== null) item.el.setAttribute("onclick", item.attr);
+        if (item.prop) item.el.onclick = item.prop;
+      });
+      grpPickerState.lockedRows = [];
+    }
+  }
 
   window._closeGrpPicker = function () {
     const old = document.getElementById("customGrpPickerOverlay");
     if (old) old.remove();
+    unlockBackgroundScreen();
     grpPickerState.selectEl = null;
   };
 
@@ -87,21 +124,25 @@
   window._pickGroupFromModal = function (idx) {
     const item = grpPickerState.filtered[idx];
     const selectEl = grpPickerState.selectEl;
-    window._closeGrpPicker();
+
+    // Pehle background unlock karein taaki renderGroupSummary("#screenBody") sahi kaam kare
+    const old = document.getElementById("customGrpPickerOverlay");
+    if (old) old.remove();
+    unlockBackgroundScreen();
+    grpPickerState.selectEl = null;
+
     if (!item || !selectEl) return;
 
-    // Group change trigger karein bina piche ki table par Enter bheje
-    selectEl.value = item.val;
-    selectEl.dispatchEvent(new Event("change", { bubbles: true }));
-
-    // Focus ko select se hata dein taaki agli arrow key table par chale
-    if (document.activeElement && typeof document.activeElement.blur === "function") {
-      document.activeElement.blur();
-    }
+    setTimeout(() => {
+      selectEl.value = item.val;
+      selectEl.dispatchEvent(new Event("change", { bubbles: true }));
+      if (document.activeElement && typeof document.activeElement.blur === "function") {
+        document.activeElement.blur();
+      }
+    }, 10);
   };
 
   window._openGroupPickerModal = function () {
-    // Agar galti se standard modal khul gaya ho toh band karein
     if (typeof window.closeModal === "function") window.closeModal();
     const stdModal = document.getElementById("modalOverlay");
     if (stdModal) {
@@ -109,12 +150,14 @@
       stdModal.style.display = "none";
     }
 
+    unlockBackgroundScreen();
     const bodyEl = document.getElementById("screenBody");
     if (!bodyEl) return;
     const grpSelect = bodyEl.querySelector("select");
     if (!grpSelect) return;
 
-    window._closeGrpPicker();
+    const old = document.getElementById("customGrpPickerOverlay");
+    if (old) old.remove();
 
     const options = Array.from(grpSelect.options).map(o => ({
       val: o.value,
@@ -125,6 +168,9 @@
     grpPickerState.filtered = options.slice();
     grpPickerState.selIdx = Math.max(0, options.findIndex(o => o.val === grpSelect.value));
     grpPickerState.selectEl = grpSelect;
+
+    // FREEZE BACKGROUND SCREEN SO OTHER JS FILES CANNOT TOUCH IT
+    lockBackgroundScreen();
 
     const overlay = document.createElement("div");
     overlay.id = "customGrpPickerOverlay";
@@ -166,8 +212,8 @@
     setTimeout(() => inp.focus(), 25);
   };
 
-  // Intercept showModal if any other script tries to open "Change Group" via old modal
-  function hookShowModalForGroup() {
+  // Intercept showModal if any other script calls showModal("Change Group (G)", ...)
+  setInterval(function () {
     if (typeof window.showModal === "function" && !window.showModal._cleanGrpHooked) {
       const orig = window.showModal;
       window.showModal = function (title) {
@@ -179,12 +225,11 @@
       };
       window.showModal._cleanGrpHooked = true;
     }
-  }
-  setInterval(hookShowModalForGroup, 400);
+  }, 300);
 
-  // Inject or Re-bind "🔄 Change Group (G)" button on Group Summary screen
+  // Inject or Re-bind "🔄 Change Group (G)" button
   setInterval(function () {
-    if (!isGroupSummaryScreen()) return;
+    if (isGroupPickerOpen() || !isGroupSummaryScreen()) return;
     const bodyEl = document.getElementById("screenBody");
     if (!bodyEl) return;
 
@@ -217,271 +262,18 @@
   }, 500);
 
   // ==========================================================================
-  // 2. TABLE ROW NAVIGATION (LEDGER VOUCHERS, GROUP SUMMARY, DAY BOOK, ETC.)
+  // 2. TABLE ROW NAVIGATION (LEDGER VOUCHERS, GROUP SUMMARY, DAY BOOK)
   // ==========================================================================
   function handleTableArrowNavigation(e) {
     const bodyEl = document.getElementById("screenBody");
     if (!bodyEl) return false;
 
-    // Gateway menu items OR Report table rows
-    const menuItems = Array.from(bodyEl.querySelectorAll(".gw-item, .menu-item, [data-gw-item]"));
-    if (menuItems.length > 0) {
-      let idx = menuItems.findIndex(el => el.classList.contains("active") || el.getAttribute("data-kb-active") === "1");
-      if (e.key === "ArrowDown") {
-        idx = idx >= menuItems.length - 1 ? 0 : idx + 1;
-      } else if (e.key === "ArrowUp") {
-        idx = idx <= 0 ? menuItems.length - 1 : idx - 1;
-      } else if (e.key === "Enter") {
-        if (idx >= 0 && menuItems[idx]) {
-          menuItems[idx].click();
-          return true;
-        }
-        return false;
-      }
-      menuItems.forEach(el => {
-        el.classList.remove("active");
-        el.removeAttribute("data-kb-active");
-        el.style.removeProperty("background-color");
-      });
-      if (idx >= 0 && menuItems[idx]) {
-        menuItems[idx].classList.add("active");
-        menuItems[idx].setAttribute("data-kb-active", "1");
-        menuItems[idx].style.setProperty("background-color", "#fef08a", "important");
-        menuItems[idx].scrollIntoView({ block: "nearest" });
-      }
-      return true;
-    }
-
-    // Standard Data Table Rows (Ledger, Group Summary, Day Book, Trial Balance)
     const allRows = Array.from(bodyEl.querySelectorAll("table tbody tr, table tr"));
-    const rows = allRows.filter(tr => {
-      if (!tr.querySelector("td")) return false;
-      const txt = tr.textContent.trim();
-      if (!txt) return false;
-      // Total / Grand Total / Opening Balance footer rows ko skip na karein agar clickable hain, par empty rows skip karein
-      return true;
-    });
-
+    const rows = allRows.filter(tr => tr.querySelector("td") && tr.textContent.trim().length > 0);
     if (rows.length === 0) return false;
 
     let activeIdx = rows.findIndex(tr => tr.getAttribute("data-kb-row") === "1");
 
     if (e.key === "ArrowDown") {
       activeIdx = activeIdx >= rows.length - 1 ? 0 : activeIdx + 1;
-    } else if (e.key === "ArrowUp") {
-      activeIdx = activeIdx <= 0 ? rows.length - 1 : activeIdx - 1;
-    } else if (e.key === "Enter") {
-      if (activeIdx >= 0 && rows[activeIdx]) {
-        const row = rows[activeIdx];
-        const clickable = row.hasAttribute("onclick")
-          ? row
-          : row.querySelector("[onclick], a, button") || row;
-        clickable.click();
-        return true;
-      }
-      return false;
-    }
-
-    rows.forEach(tr => {
-      tr.removeAttribute("data-kb-row");
-      tr.style.removeProperty("background-color");
-    });
-
-    if (activeIdx >= 0 && rows[activeIdx]) {
-      rows[activeIdx].setAttribute("data-kb-row", "1");
-      rows[activeIdx].style.setProperty("background-color", "#fef08a", "important");
-      rows[activeIdx].scrollIntoView({ block: "nearest" });
-    }
-    return true;
-  }
-
-  // ==========================================================================
-  // 3. SINGLE MASTER KEYDOWN CONTROLLER (PRIORITY-BASED)
-  // ==========================================================================
-  window.addEventListener("keydown", function (e) {
-    // ------------------------------------------------------------------------
-    // PRIORITY 1: STANDALONE "CHANGE GROUP (G)" POPUP IS OPEN
-    // Piche ki screen aur baaki saare listeners ko 100% block rakhein
-    // ------------------------------------------------------------------------
-    if (isGroupPickerOpen()) {
-      const inp = document.getElementById("gGrpSearch");
-      const len = grpPickerState.filtered.length;
-
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        if (len > 0) {
-          grpPickerState.selIdx = Math.min(len - 1, grpPickerState.selIdx + 1);
-          window._renderGrpPickerList();
-        }
-        if (inp) inp.focus();
-        return;
-      }
-      if (e.key === "ArrowUp") {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        if (len > 0) {
-          grpPickerState.selIdx = Math.max(0, grpPickerState.selIdx - 1);
-          window._renderGrpPickerList();
-        }
-        if (inp) inp.focus();
-        return;
-      }
-      if (e.key === "Enter") {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        window._pickGroupFromModal(grpPickerState.selIdx);
-        return;
-      }
-      if (e.key === "Escape") {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        window._closeGrpPicker();
-        return;
-      }
-      if (e.key === "Tab") {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        if (inp) inp.focus();
-        return;
-      }
-      // Typing keys ko search input me jaane dein, par piche ke shortcuts block rakhein
-      e.stopPropagation();
-      return;
-    }
-
-    // ------------------------------------------------------------------------
-    // PRIORITY 2: STANDARD MODAL (#modalOverlay) IS OPEN (e.g., F4 Change Ledger, F2, F3)
-    // ------------------------------------------------------------------------
-    if (isStandardModalOpen()) {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        e.stopPropagation();
-        if (typeof window.closeModal === "function") window.closeModal();
-        return;
-      }
-      // Agar Change Ledger (F4) ya list wala modal khula hai toh uske andar arrow/enter
-      const modalEl = document.getElementById("modalOverlay");
-      const listItems = modalEl ? Array.from(modalEl.querySelectorAll("[data-idx], .picker-item, .ledger-pick-item")) : [];
-      if (listItems.length > 0 && (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter")) {
-        // Agar modal ka apna input handler laga hai toh button focus jump na karein
-        return;
-      }
-      return;
-    }
-
-    // ------------------------------------------------------------------------
-    // PRIORITY 3: GLOBAL FUNCTION & ALT/CTRL SHORTCUTS
-    // ------------------------------------------------------------------------
-    const active = document.activeElement;
-    const tag = active && active.tagName ? active.tagName.toUpperCase() : "";
-    const isTypingInput =
-      (tag === "INPUT" && active.type !== "checkbox" && active.type !== "radio" && active.type !== "button") ||
-      tag === "TEXTAREA" ||
-      tag === "SELECT" ||
-      (active && active.isContentEditable);
-
-    // Ctrl+A -> Save / Accept Voucher
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a" && !isTypingInput) {
-      const saveBtn = document.querySelector("#screenBody button.btn-pri, #screenBody [onclick*='save']");
-      if (saveBtn) {
-        e.preventDefault();
-        saveBtn.click();
-        return;
-      }
-    }
-
-    // Alt+P -> Print
-    if (e.altKey && e.key.toLowerCase() === "p") {
-      e.preventDefault();
-      if (typeof window.printCurrentScreen === "function") window.printCurrentScreen();
-      else window.print();
-      return;
-    }
-
-    // Escape -> Back / Gateway
-    if (e.key === "Escape") {
-      if (isTypingInput) {
-        active.blur();
-        return;
-      }
-      e.preventDefault();
-      const backBtn = document.querySelector("#screenBody button[onclick*='goBack'], #screenBody button[onclick*='Gateway'], #screenBody button");
-      if (backBtn && /Back|Esc/i.test(backBtn.textContent || "")) {
-        backBtn.click();
-      } else if (typeof window.navigate === "function") {
-        window.navigate("gateway");
-      }
-      return;
-    }
-
-    // F2 / Alt+F2 -> Date / Period
-    if (e.key === "F2") {
-      e.preventDefault();
-      if (e.altKey && typeof window.openPeriodModal === "function") window.openPeriodModal();
-      else if (typeof window.openDateModal === "function") window.openDateModal();
-      else if (typeof window.openPeriodModal === "function") window.openPeriodModal();
-      return;
-    }
-
-    // F3 -> Company Info
-    if (e.key === "F3") {
-      e.preventDefault();
-      if (typeof window.openCompanyModal === "function") window.openCompanyModal();
-      return;
-    }
-
-    // F4 -> Change Ledger (on Ledger screen)
-    if (e.key === "F4") {
-      const chgLedgerBtn = Array.from(document.querySelectorAll("#screenBody button")).find(b => /Change Ledger|F4/i.test(b.textContent || ""));
-      if (chgLedgerBtn) {
-        e.preventDefault();
-        chgLedgerBtn.click();
-        return;
-      }
-    }
-
-    // Agar user kisi input box me type kar raha hai, toh single-letter aur arrow keys ko typing me rehne dein
-    if (isTypingInput) {
-      // Voucher screen me Enter se agle field par jaana
-      if (e.key === "Enter" && tag !== "TEXTAREA") {
-        const formInputs = Array.from(document.querySelectorAll("#screenBody input:not([type='hidden']):not([disabled]), #screenBody select:not([disabled])"));
-        const idx = formInputs.indexOf(active);
-        if (idx >= 0 && idx < formInputs.length - 1) {
-          e.preventDefault();
-          formInputs[idx + 1].focus();
-        }
-      }
-      return;
-    }
-
-    // ------------------------------------------------------------------------
-    // PRIORITY 4: 'G' KEY ON GROUP SUMMARY SCREEN
-    // ------------------------------------------------------------------------
-    if (e.key.toLowerCase() === "g" && !e.altKey && !e.ctrlKey && !e.metaKey) {
-      if (isGroupSummaryScreen()) {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        window._openGroupPickerModal();
-        return;
-      }
-    }
-
-    // ------------------------------------------------------------------------
-    // PRIORITY 5: ARROW UP / DOWN & ENTER ON TABLES (LEDGER, GROUP SUMMARY, ETC.)
-    // ------------------------------------------------------------------------
-    if (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter") {
-      const handled = handleTableArrowNavigation(e);
-      if (handled) {
-        e.preventDefault();
-        e.stopPropagation();
-      }
-    }
-  }, true);
-})();
+    } else if (e.key === "ArrowUp
