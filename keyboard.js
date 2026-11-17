@@ -547,10 +547,77 @@ window.addEventListener("keydown", function (e) {
   setTimeout(() => inp.focus(), 40);
 }, true);
 // ============================================================================
-// 1. CHANGE GROUP (G) — STANDALONE PICKER + SHOWMODAL INTERCEPTOR
+// 1. CHANGE GROUP (G) — STANDALONE PICKER (TOP-PRIORITY KEY INTERCEPTOR)
 // ============================================================================
+(function() {
+  // Capture-phase interceptor jo keyboard.js ke baaki saare listeners se pehle chalega
+  function handleGroupPickerKeys(ev) {
+    const overlay = document.getElementById("customGrpPickerOverlay");
+    if (!overlay) return;
+
+    const inp = document.getElementById("gGrpSearch");
+    const listEl = document.getElementById("gGrpList");
+    if (!inp || !listEl) return;
+
+    const items = Array.from(listEl.querySelectorAll(".g-grp-item"));
+    let selIdx = items.findIndex(el => el.getAttribute("data-selected") === "1");
+    if (selIdx < 0) selIdx = 0;
+
+    if (ev.key === "ArrowDown") {
+      ev.preventDefault();
+      ev.stopPropagation();
+      ev.stopImmediatePropagation();
+      selIdx = Math.min(items.length - 1, selIdx + 1);
+      if (window._updateGrpHighlight) window._updateGrpHighlight(selIdx);
+      inp.focus();
+    } else if (ev.key === "ArrowUp") {
+      ev.preventDefault();
+      ev.stopPropagation();
+      ev.stopImmediatePropagation();
+      selIdx = Math.max(0, selIdx - 1);
+      if (window._updateGrpHighlight) window._updateGrpHighlight(selIdx);
+      inp.focus();
+    } else if (ev.key === "Enter") {
+      ev.preventDefault();
+      ev.stopPropagation();
+      ev.stopImmediatePropagation();
+      if (window._pickGrpByIdx) window._pickGrpByIdx(selIdx);
+    } else if (ev.key === "Escape") {
+      ev.preventDefault();
+      ev.stopPropagation();
+      ev.stopImmediatePropagation();
+      if (window._closeGrpPicker) window._closeGrpPicker();
+    } else if (ev.key === "Tab") {
+      ev.preventDefault();
+      ev.stopPropagation();
+      ev.stopImmediatePropagation();
+      inp.focus();
+    }
+  }
+
+  // Window ke saare existing listeners ko bypass karne ke liye prototype level par hook
+  const origStopProp = Event.prototype.stopImmediatePropagation;
+  Event.prototype.stopImmediatePropagation = function() {
+    if (document.getElementById("customGrpPickerOverlay") && 
+        ["ArrowDown", "ArrowUp", "Enter", "Escape", "Tab"].includes(this.key) && 
+        !this._handledByGrpPicker) {
+      this._handledByGrpPicker = true;
+      handleGroupPickerKeys(this);
+    }
+    return origStopProp.apply(this, arguments);
+  };
+
+  window.addEventListener("keydown", function(ev) {
+    if (document.getElementById("customGrpPickerOverlay") && !ev._handledByGrpPicker) {
+      if (["ArrowDown", "ArrowUp", "Enter", "Escape", "Tab"].includes(ev.key)) {
+        ev._handledByGrpPicker = true;
+        handleGroupPickerKeys(ev);
+      }
+    }
+  }, true);
+})();
+
 window._openGroupPickerModal = function () {
-  // Agar purana modal khul gaya ho toh turant band karein
   if (typeof closeModal === "function") closeModal();
   const modalEl = document.getElementById("modalOverlay");
   if (modalEl) {
@@ -595,15 +662,26 @@ window._openGroupPickerModal = function () {
   const inp = document.getElementById("gGrpSearch");
   const listEl = document.getElementById("gGrpList");
 
-  function closePicker() {
-    window.removeEventListener("keydown", onPickerKey, true);
+  window._closeGrpPicker = function() {
     overlay.remove();
-  }
+  };
+
+  window._updateGrpHighlight = function(newIdx) {
+    selIdx = newIdx;
+    renderList();
+  };
+
+  window._pickGrpByIdx = function(idx) {
+    if (!filtered[idx]) return;
+    grpSelect.value = filtered[idx].val;
+    window._closeGrpPicker();
+    grpSelect.dispatchEvent(new Event("change", { bubbles: true }));
+  };
 
   function renderList() {
     if (selIdx >= filtered.length) selIdx = Math.max(0, filtered.length - 1);
     listEl.innerHTML = filtered.map((o, i) => `
-      <div class="g-grp-item" data-idx="${i}"
+      <div class="g-grp-item" data-idx="${i}" data-selected="${i === selIdx ? '1' : '0'}"
         style="padding:7px 10px; cursor:pointer; font-size:13px; border-bottom:1px solid #f1f5f9;
         background:${i === selIdx ? "#fef08a" : "#fff"}; font-weight:${i === selIdx ? "700" : "500"};">
         ${escHtml(o.text)}
@@ -612,52 +690,11 @@ window._openGroupPickerModal = function () {
     listEl.querySelectorAll(".g-grp-item").forEach(el => {
       el.onmousedown = (ev) => {
         ev.preventDefault();
-        pickGroup(Number(el.dataset.idx));
+        window._pickGrpByIdx(Number(el.dataset.idx));
       };
     });
     const activeEl = listEl.querySelector(`[data-idx="${selIdx}"]`);
     if (activeEl) activeEl.scrollIntoView({ block: "nearest" });
-  }
-
-  function pickGroup(idx) {
-    if (!filtered[idx]) return;
-    grpSelect.value = filtered[idx].val;
-    closePicker();
-    grpSelect.dispatchEvent(new Event("change", { bubbles: true }));
-  }
-
-  function onPickerKey(ev) {
-    if (!document.getElementById("customGrpPickerOverlay")) return;
-    if (ev.key === "ArrowDown") {
-      ev.preventDefault();
-      ev.stopPropagation();
-      ev.stopImmediatePropagation();
-      selIdx = Math.min(filtered.length - 1, selIdx + 1);
-      renderList();
-      inp.focus();
-    } else if (ev.key === "ArrowUp") {
-      ev.preventDefault();
-      ev.stopPropagation();
-      ev.stopImmediatePropagation();
-      selIdx = Math.max(0, selIdx - 1);
-      renderList();
-      inp.focus();
-    } else if (ev.key === "Enter") {
-      ev.preventDefault();
-      ev.stopPropagation();
-      ev.stopImmediatePropagation();
-      pickGroup(selIdx);
-    } else if (ev.key === "Escape") {
-      ev.preventDefault();
-      ev.stopPropagation();
-      ev.stopImmediatePropagation();
-      closePicker();
-    } else if (ev.key === "Tab") {
-      ev.preventDefault();
-      ev.stopPropagation();
-      ev.stopImmediatePropagation();
-      inp.focus();
-    }
   }
 
   inp.addEventListener("input", () => {
@@ -667,16 +704,15 @@ window._openGroupPickerModal = function () {
     renderList();
   });
 
-  document.getElementById("customGrpClose").onclick = closePicker;
-  document.getElementById("customGrpCancel").onclick = closePicker;
-  overlay.onclick = (e) => { if (e.target === overlay) closePicker(); };
+  document.getElementById("customGrpClose").onclick = window._closeGrpPicker;
+  document.getElementById("customGrpCancel").onclick = window._closeGrpPicker;
+  overlay.onclick = (e) => { if (e.target === overlay) window._closeGrpPicker(); };
 
-  window.addEventListener("keydown", onPickerKey, true);
   renderList();
   setTimeout(() => inp.focus(), 30);
 };
 
-// Hijack showModal: agar kahin se bhi "Change Group" modal khule toh standalone picker kholein
+// Hijack showModal
 (function interceptChangeGroupModal() {
   const origShowModal = window.showModal;
   if (typeof origShowModal === "function" && !origShowModal._grpWrapped) {
@@ -690,12 +726,11 @@ window._openGroupPickerModal = function () {
   }
 })();
 
-// Button aur G key dono ko force-bind karein
+// Button aur G key bind karein
 setInterval(() => {
   const bodyEl = document.getElementById("screenBody");
   if (!bodyEl || !/Select Group/i.test(bodyEl.textContent || "")) return;
 
-  // Agar koi pehle se button bana hai toh uska click bhi humare function par set kar dein
   const existingBtns = Array.from(bodyEl.querySelectorAll("button")).filter(b => /Change Group/i.test(b.textContent || ""));
   if (existingBtns.length > 0) {
     existingBtns.forEach(b => {
@@ -734,6 +769,7 @@ window.addEventListener("keydown", function (e) {
   e.stopImmediatePropagation();
   window._openGroupPickerModal();
 }, true);
+
 // ============================================================================
 // 2. ARROW KEY NAVIGATION & ENTER ON LEDGER VOUCHERS SCREEN
 // ============================================================================
