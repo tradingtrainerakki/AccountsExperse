@@ -892,31 +892,93 @@ function applyRestore(mode) {
   toast("✅ Backup Restored!");
 }
 
-// ================= SUPABASE CLOUD AUTH & AUTO-SYNC =================
+// ================= SUPABASE CLOUD AUTH, AUTO-SYNC & STRICT RBAC SECURITY =================
+const MASTER_ADMIN_EMAIL = "tradingtrainerakki@gmail.com";
+const SUPA_SESSION_KEY = "SUPA_TALLY_AUTH_SESSION_V2";
+const ACCESS_LIST_KEY = "TALLY_PRIME_USER_PERMISSIONS";
+
+function getSupaSession() {
+  try { return JSON.parse(sessionStorage.getItem(SUPA_SESSION_KEY) || "null"); } catch { return null; }
+}
+
+function getLoggedInEmail() {
+  const s = getSupaSession();
+  return (s && s.email) ? String(s.email).toLowerCase().trim() : "";
+}
+
+// Unified Role Resolver (Checks both DB.userRoles and global TALLY_PRIME_USER_PERMISSIONS)
+function getCurrentUserRole() {
+  const email = getLoggedInEmail();
+  if (!email) return "viewer"; // Strict Default: No empty-email admin bypass!
+  if (email === MASTER_ADMIN_EMAIL) return "admin";
+
+  // 1. Check DB.userRoles array
+  if (DB && Array.isArray(DB.userRoles)) {
+    const found = DB.userRoles.find(u => String(u.email || "").toLowerCase().trim() === email);
+    if (found) {
+      if (found.blocked) return "blocked";
+      return found.role || "viewer";
+    }
+  }
+
+  // 2. Check TALLY_PRIME_USER_PERMISSIONS map (works across all entities)
+  try {
+    const map = JSON.parse(localStorage.getItem(ACCESS_LIST_KEY) || "{}");
+    const entry = map[email];
+    if (entry) {
+      if (entry.active === false || entry.blocked === true) return "blocked";
+      return entry.role || "viewer";
+    }
+  } catch {}
+
+  return "viewer";
+}
+
+function isSuperAdmin() {
+  return getLoggedInEmail() === MASTER_ADMIN_EMAIL;
+}
+
+function canWriteData() {
+  const r = getCurrentUserRole();
+  return r === "admin" || r === "operator";
+}
+
+// Keep DB.userRoles and TALLY_PRIME_USER_PERMISSIONS 100% in sync
+function syncUserRolesStorage() {
+  if (!DB) return;
+  if (!Array.isArray(DB.userRoles)) DB.userRoles = [];
+  let map = {};
+  try { map = JSON.parse(localStorage.getItem(ACCESS_LIST_KEY) || "{}") || {}; } catch {}
+
+  // Merge map into DB.userRoles if DB.userRoles is empty
+  if (DB.userRoles.length === 0) {
+    Object.entries(map).forEach(([em, obj]) => {
+      if (em && em !== MASTER_ADMIN_EMAIL && obj && typeof obj === "object") {
+        DB.userRoles.push({ email: em, role: obj.role || "viewer", blocked: obj.active === false || !!obj.blocked });
+      }
+    });
+  }
+
+  // Rebuild map from DB.userRoles
+  const newMap = { [MASTER_ADMIN_EMAIL]: { role: "admin", active: true } };
+  DB.userRoles.forEach(u => {
+    const em = String(u.email || "").toLowerCase().trim();
+    if (em && em !== MASTER_ADMIN_EMAIL) {
+      newMap[em] = { role: u.role || "viewer", active: !u.blocked, blocked: !!u.blocked };
+    }
+  });
+  localStorage.setItem(ACCESS_LIST_KEY, JSON.stringify(newMap));
+}
+
 (function initSupabaseCloud() {
   const SUPABASE_URL = "https://mjnqbmmyapusejymjchp.supabase.co";
   const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1qbnFibW15YXB1c2VqeW1qY2hwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI2MTQ4MjMsImV4cCI6MjEwODE5MDgyM30.196QHOcQ-bzbhgXGDwXZ6LXo6wpSh4yHNwIsJ4MuGJU";
-  const SUPER_ADMIN_EMAIL = "tradingtrainerakki@gmail.com";
   const TABLE_URL = `${SUPABASE_URL}/rest/v1/erp_cloud_data`;
   const AUTH_TOKEN_URL = `${SUPABASE_URL}/auth/v1/token?grant_type=password`;
-  const SUPA_SESSION_KEY = "SUPA_TALLY_AUTH_SESSION_V2";
-  const ACCESS_LIST_KEY = "TALLY_PRIME_USER_PERMISSIONS";
 
   let isLoadingFromCloud = false;
   let syncTimer = null;
   const originalSetItem = localStorage.setItem;
-
-  function getSupaSession() { try { return JSON.parse(sessionStorage.getItem(SUPA_SESSION_KEY) || "null"); } catch { return null; } }
-  function getPermissionsMap() { try { return JSON.parse(localStorage.getItem(ACCESS_LIST_KEY) || "null") || { [SUPER_ADMIN_EMAIL]: { role: "admin", active: true } }; } catch { return {}; } }
-  function isSuperAdmin() { const s = getSupaSession(); return !!(s && s.email && s.email.toLowerCase() === SUPER_ADMIN_EMAIL); }
-  function getCurrentUserRole() {
-    const s = getSupaSession(); if (!s || !s.email) return "viewer";
-    if (s.email.toLowerCase() === SUPER_ADMIN_EMAIL) return "admin";
-    const entry = getPermissionsMap()[s.email.toLowerCase()];
-    if (entry && entry.active === false) return "blocked";
-    return (entry && entry.role) || "viewer";
-  }
-  function canWriteData() { const r = getCurrentUserRole(); return r === "admin" || r === "operator"; }
 
   function showCloudStatus(msg, color = "#16a34a") {
     let badge = document.getElementById("supa-cloud-badge");
@@ -931,7 +993,10 @@ function applyRestore(mode) {
   }
 
   localStorage.setItem = function(key, value) {
-    if (getSupaSession() && !canWriteData() && !isLoadingFromCloud) { toast("🔒 Read-Only Access!"); return; }
+    if (getSupaSession() && !canWriteData() && !isLoadingFromCloud) {
+      toast("🔒 Read-Only Access: Viewer बदलाव सेव नहीं कर सकता!");
+      return;
+    }
     originalSetItem.apply(this, arguments);
     if (!isLoadingFromCloud && canWriteData()) syncToSupabase();
   };
@@ -974,25 +1039,32 @@ function applyRestore(mode) {
           const avail = getSavedEntitiesList();
           const last = localStorage.getItem("TALLY_PRIME_LAST_ENTITY");
           loadDB(last && avail.includes(last) ? last : (avail[0] || "DEFAULT_ENTITY"));
+          syncUserRolesStorage();
+          if (getCurrentUserRole() === "blocked") {
+            alert("🚫 आपका अकाउंट Admin द्वारा ब्लॉक कर दिया गया है!");
+            window.supaLogout();
+            return;
+          }
           renderScreen(CURRENT_SCREEN);
-          applyUserBadge();
+          window.applyUserBadge();
           showCloudStatus(`☁️ Cloud Synced (${sess.email.split("@")[0]})`, "#16a34a");
         }
       }
     } catch { showCloudStatus("⚠️ Retry Sync", "#d97706"); }
   }
 
-  function applyUserBadge() {
+  window.applyUserBadge = function() {
     const sess = getSupaSession(); if (!sess) return;
     ROLE = getCurrentUserRole();
     const badge = document.getElementById("topUserBadge");
     if (badge) {
       badge.style.display = "inline-block";
-      badge.style.background = isSuperAdmin() ? "#047857" : "#1d4ed8";
+      badge.style.background = isSuperAdmin() ? "#047857" : (ROLE === "operator" ? "#0369a1" : "#1d4ed8");
       badge.style.fontWeight = "700";
-      badge.innerHTML = `👑 ${escHtml(sess.email.split("@")[0])} (${ROLE}) | <u onclick="event.stopPropagation(); supaLogout();">Logout</u>`;
+      badge.innerHTML = `${isSuperAdmin() ? "👑" : (ROLE === "operator" ? "✏️" : "👁️")} ${escHtml(sess.email.split("@")[0])} (${ROLE}) | <u onclick="event.stopPropagation(); supaLogout();">Logout</u>`;
     }
-  }
+    injectUserManagerButton();
+  };
 
   window.supaLogout = function() {
     sessionStorage.removeItem(SUPA_SESSION_KEY);
@@ -1008,7 +1080,7 @@ function applyRestore(mode) {
     const ov = document.getElementById("supaAuthOverlay");
     const sess = getSupaSession();
     if (sess && sess.token) {
-      applyUserBadge();
+      window.applyUserBadge();
       loadFromSupabase();
     } else if (ov) {
       ov.classList.add("active");
@@ -1037,7 +1109,7 @@ function applyRestore(mode) {
           sessionStorage.setItem(SUPA_SESSION_KEY, JSON.stringify({ token: data.access_token, email: data.user.email.toLowerCase() }));
           ov.classList.remove("active");
           await loadFromSupabase();
-          applyUserBadge();
+          window.applyUserBadge();
           toast("✅ Welcome " + data.user.email);
         } catch {
           errBox.style.display = "block"; errBox.textContent = "❌ Network Error!";
@@ -1047,29 +1119,6 @@ function applyRestore(mode) {
     }
   });
 })();
-// ============================================================================
-// USER ROLE & ACCESS MANAGER (ADMIN / OPERATOR / VIEWER + READ-ONLY LOCK)
-// ============================================================================
-const MASTER_ADMIN_EMAIL = "tradingtrainerakki@gmail.com";
-
-function getLoggedInEmail() {
-  const badge = document.querySelector("#supaUserBadge, .supa-user-badge");
-  if (window._SUPA_USER && window._SUPA_USER.email) return String(window._SUPA_USER.email).toLowerCase().trim();
-  const saved = localStorage.getItem("SUPA_LAST_EMAIL") || "";
-  if (saved) return saved.toLowerCase().trim();
-  if (badge && badge.textContent.includes("tradingtrainerakki")) return MASTER_ADMIN_EMAIL;
-  return "";
-}
-
-function getCurrentUserRole() {
-  const email = getLoggedInEmail();
-  if (!email || email === MASTER_ADMIN_EMAIL) return "admin";
-  const list = (DB && Array.isArray(DB.userRoles)) ? DB.userRoles : [];
-  const found = list.find(u => String(u.email || "").toLowerCase().trim() === email);
-  if (!found) return "viewer";
-  if (found.blocked) return "blocked";
-  return found.role || "viewer";
-}
 
 // 1. Read-Only / Blocked Guard on saveDB
 (function wrapSaveDBForRoles() {
@@ -1090,17 +1139,17 @@ function getCurrentUserRole() {
   window._SAVE_DB_ROLE_WRAPPED = true;
 })();
 
-// 2. Auto-Add "👥 Users" Button in Top Bar (Only for Admin)
+// 2. Auto-Add "👥 Users" Button in Top Bar (STRICTLY ONLY FOR MASTER ADMIN)
 function injectUserManagerButton() {
   const oldBtn = document.getElementById("aeUsersMgrBtn");
-  const role = getCurrentUserRole();
-  if (role !== "admin") {
+  // Sirf Master Admin (tradingtrainerakki@gmail.com) ko hi button dikhega
+  if (!isSuperAdmin()) {
     if (oldBtn) oldBtn.remove();
     return;
   }
   if (oldBtn) return;
 
-  const topbar = document.querySelector(".topbar-right, .topbar, header");
+  const topbar = document.querySelector(".top-meta, .top-bar, header");
   if (!topbar) return;
 
   const btn = document.createElement("button");
@@ -1112,15 +1161,15 @@ function injectUserManagerButton() {
   topbar.appendChild(btn);
 }
 
-setInterval(injectUserManagerButton, 1200);
+setInterval(injectUserManagerButton, 800);
 
-// 3. Users Manager Popup
+// 3. Users Manager Popup (Strictly Master Admin Only)
 function openUserManagerModal() {
-  if (getCurrentUserRole() !== "admin") {
-    toast("🚫 Sirf Admin hi Users manage kar sakta hai!");
+  if (!isSuperAdmin()) {
+    toast("🚫 Security Lock: Sirf Master Admin hi Users manage kar sakta hai!");
     return;
   }
-  if (!Array.isArray(DB.userRoles)) DB.userRoles = [];
+  syncUserRolesStorage();
 
   const rowsHtml = DB.userRoles.map((u, idx) => `
     <tr style="${u.blocked ? "background:#fef2f2; opacity:0.75;" : ""}">
@@ -1167,6 +1216,7 @@ function openUserManagerModal() {
 }
 
 function addUserRoleItem() {
+  if (!isSuperAdmin()) return;
   const email = (document.getElementById("umEmailInp")?.value || "").trim().toLowerCase();
   const role = document.getElementById("umRoleInp")?.value || "viewer";
   if (!email || !email.includes("@")) { toast("⚠ Valid Email dalein!"); return; }
@@ -1177,22 +1227,25 @@ function addUserRoleItem() {
   if (existing) { existing.role = role; existing.blocked = false; }
   else DB.userRoles.push({ email, role, blocked: false });
 
+  syncUserRolesStorage();
   saveDB();
   openUserManagerModal();
   toast(`✅ ${email} (${role}) Saved & Synced!`);
 }
 
 function updateUserRoleItem(idx, field, val) {
-  if (!DB.userRoles || !DB.userRoles[idx]) return;
+  if (!isSuperAdmin() || !DB.userRoles || !DB.userRoles[idx]) return;
   DB.userRoles[idx][field] = val;
+  syncUserRolesStorage();
   saveDB();
   openUserManagerModal();
   toast("✅ User Access Updated!");
 }
 
 function removeUserRoleItem(idx) {
-  if (!DB.userRoles) return;
+  if (!isSuperAdmin() || !DB.userRoles) return;
   DB.userRoles.splice(idx, 1);
+  syncUserRolesStorage();
   saveDB();
   openUserManagerModal();
   toast("🗑️ User Removed");
