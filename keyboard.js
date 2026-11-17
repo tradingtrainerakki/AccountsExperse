@@ -641,3 +641,55 @@ window.addEventListener("keydown", function (e) {
   e.stopImmediatePropagation();
   window._openGroupPickerModal();
 }, true);
+
+// ============================================================================
+// 2. ARROW KEY NAVIGATION & ENTER ON LEDGER VOUCHERS SCREEN
+// ============================================================================
+window.addEventListener("keydown", function (e) {
+  if (e.key !== "ArrowDown" && e.key !== "ArrowUp" && e.key !== "Enter") return;
+
+  const bodyEl = document.getElementById("screenBody");
+  if (!bodyEl || !bodyEl.textContent.includes("Ledger:")) return;
+
+  const active = document.activeElement;
+  if (active && ((active.tagName === "INPUT" && active.type !== "checkbox") || active.tagName === "TEXTAREA" || active.tagName === "SELECT")) return;
+
+  const modal = document.getElementById("modalOverlay");
+  const isModalVisible = modal && window.getComputedStyle(modal).display !== "none";
+  if (isModalVisible || document.getElementById("customGrpPickerOverlay")) return;
+
+  const rows = Array.from(bodyEl.querySelectorAll("table tbody tr, table tr"))
+    .filter(tr => tr.querySelector("td") && tr.textContent.trim().length > 0);
+  if (!rows.length) return;
+
+  e.preventDefault();
+  e.stopPropagation();
+  e.stopImmediatePropagation();
+
+  let activeIdx = rows.findIndex(tr => tr.getAttribute("data-ledger-active") === "1");
+
+  if (e.key === "ArrowDown") {
+    activeIdx = activeIdx >= rows.length - 1 ? 0 : activeIdx + 1;
+  } else if (e.key === "ArrowUp") {
+    activeIdx = activeIdx <= 0 ? rows.length - 1 : activeIdx - 1;
+  } else if (e.key === "Enter") {
+    if (activeIdx >= 0 && rows[activeIdx]) {
+      const target = rows[activeIdx].hasAttribute("onclick")
+        ? rows[activeIdx]
+        : rows[activeIdx].querySelector("[onclick]") || rows[activeIdx];
+      target.click();
+    }
+    return;
+  }
+
+  rows.forEach(tr => {
+    tr.style.removeProperty("background-color");
+    tr.removeAttribute("data-ledger-active");
+  });
+
+  if (activeIdx >= 0 && rows[activeIdx]) {
+    rows[activeIdx].style.setProperty("background-color", "#fef08a", "important");
+    rows[activeIdx].setAttribute("data-ledger-active", "1");
+    rows[activeIdx].scrollIntoView({ block: "nearest" });
+  }
+}, true);
