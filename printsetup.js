@@ -641,4 +641,156 @@
     window.addEventListener("afterprint", done);
     setTimeout(() => window.print(), 60);
   };
+
+  // --------------------------------------------------------------------------
+  // 4. HAR VYAKTI KI ALAG RECEIPT  (Receipt voucher me jitne Cr naam, utni alag parchi)
+  // --------------------------------------------------------------------------
+  function inWords(n) {
+    const a = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve",
+      "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+    const b = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+    const two = x => x < 20 ? a[x] : b[Math.floor(x / 10)] + (x % 10 ? " " + a[x % 10] : "");
+    const three = x => (x >= 100 ? a[Math.floor(x / 100)] + " Hundred" + (x % 100 ? " " : "") : "") + (x % 100 ? two(x % 100) : "");
+    n = Math.floor(n);
+    if (n === 0) return "Zero";
+    const parts = [];
+    const cr = Math.floor(n / 1e7); n %= 1e7;
+    const lk = Math.floor(n / 1e5); n %= 1e5;
+    const th = Math.floor(n / 1e3); n %= 1e3;
+    if (cr) parts.push(three(cr) + " Crore");
+    if (lk) parts.push(two(lk) + " Lakh");
+    if (th) parts.push(two(th) + " Thousand");
+    if (n) parts.push(three(n));
+    return parts.join(" ");
+  }
+  function amountWords(x) {
+    const r = Math.floor(x), p = Math.round((x - r) * 100);
+    return "Rupees " + inWords(r) + (p ? " and " + inWords(p) + " Paise" : "") + " Only";
+  }
+
+  function slipHtml(cfg, d) {
+    const e = escHtml;
+    const row = (l, v) => `<div style="margin:5px 0;font-size:12.5px;"><span style="display:inline-block;width:150px;color:#334155;">${l}</span><b>${v}</b></div>`;
+    return `<div style="border:1.5px solid #000;padding:10px 14px 12px;margin-bottom:14px;page-break-inside:avoid;">
+      ${companyHeaderHtml(cfg.company)}
+      <div style="text-align:center;font-weight:800;font-size:15px;letter-spacing:2px;margin:2px 0 8px;">RECEIPT</div>
+      <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:6px;">
+        <span>Receipt No: <b>${e(d.no)}</b></span><span>Date: <b>${e(d.date)}</b></span>
+      </div>
+      ${row("Received with thanks from", e(d.name))}
+      ${d.addr ? row("Address", e(d.addr)) : ""}
+      ${d.pan ? row("PAN", e(d.pan)) : ""}
+      ${row("Amount", "₹ " + e(fmtINR(d.amount)))}
+      ${row("In Words", e(amountWords(d.amount)))}
+      ${d.mode ? row("Mode / Received in", e(d.mode)) : ""}
+      ${d.ref ? row("Cheque / UTR / Ref", e(d.ref)) : ""}
+      ${d.narr ? row("Towards", e(d.narr)) : ""}
+      ${d.footer}
+    </div>`;
+  }
+
+  // Step 1: popup — har Cr line ke liye "receipt par kiska naam / address / PAN" pooch lo
+  let _slipRows = [];
+  window.printSeparateReceipts = function () {
+    try { if (typeof syncVoucherHeaderFromDOM === "function") syncVoucherHeaderFromDOM(); } catch (e) {}
+    const st = typeof VCH_STATE !== "undefined" ? VCH_STATE : null;
+    if (!st || st.vchType !== "Receipt") return;
+    const lines = st.acctLines || [];
+    _slipRows = lines.filter(l => l.type === "Cr" && l.ledgerId && Number(l.amount) > 0).map((l, i) => {
+      const led = typeof getLedger === "function" ? getLedger(l.ledgerId) : null;
+      const lname = getLedgerName(l.ledgerId);
+      const generic = /donation|general|misc|other|collection|dan\b/i.test(lname);
+      return { no: i + 1, lname, amount: Number(l.amount), name: generic ? "" : lname, addr: (led && led.address) || "", generic };
+    });
+    if (!_slipRows.length) { toast("⚠ Pehle Cr me naam aur raashi bharein"); return; }
+
+    const e = escHtml;
+    const rows = _slipRows.map((r, i) => `
+      <div style="border:1px solid #e2e8f0;border-radius:4px;padding:8px;margin-bottom:8px;background:#f8fafc;">
+        <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:6px;">
+          <label style="cursor:pointer;display:flex;gap:6px;align-items:center;"><input type="checkbox" class="sl-on" data-i="${i}" checked> <b>${e(r.lname)}</b></label>
+          <b>₹ ${e(fmtINR(r.amount))}</b>
+        </div>
+        <div class="form-grid" style="grid-template-columns:1.3fr 1.3fr 1fr;gap:8px;">
+          <div class="field"><label>Daandata ka Naam (receipt par) *</label><input class="sl-name" data-i="${i}" value="${e(r.name)}" placeholder="${r.generic ? "Naam likhein" : ""}"></div>
+          <div class="field"><label>Address</label><input class="sl-addr" data-i="${i}" value="${e(r.addr)}"></div>
+          <div class="field"><label>PAN (optional)</label><input class="sl-pan" data-i="${i}" maxlength="10" style="text-transform:uppercase;"></div>
+        </div>
+      </div>`).join("");
+    const body = `<div style="max-height:62vh;overflow-y:auto;padding-right:6px;">
+      <div style="font-size:12px;color:#475569;margin-bottom:8px;">Jis naam se receipt deni hai wahi likhein. ✔ hata dene par us line ki receipt nahi banegi.</div>${rows}</div>`;
+    const foot = `<button class="btn btn-sec" onclick="closeModal()">Cancel (Esc)</button><button class="btn" onclick="window._slipGo()">🖨️ Receipts Print Karein (Ctrl+A)</button>`;
+    showModal("🧾 Alag-Alag Receipt", body, foot);
+    setTimeout(() => {
+      const first = Array.from(document.querySelectorAll("#modalBody .sl-name")).find(i => !i.value.trim()) || document.querySelector("#modalBody .sl-name");
+      if (first) first.focus();
+    }, 50);
+  };
+
+  // Step 2: popup ke naam se receipts banakar print
+  window._slipGo = function () {
+    const st = VCH_STATE;
+    const get = (cls, i) => ((document.querySelector(`#modalBody .${cls}[data-i="${i}"]`) || {}).value || "").trim();
+    const picked = [];
+    for (let i = 0; i < _slipRows.length; i++) {
+      const on = !!(document.querySelector(`#modalBody .sl-on[data-i="${i}"]`) || {}).checked;
+      if (!on) continue;
+      const name = get("sl-name", i);
+      if (!name) { toast(`⚠ Line ${i + 1} (₹ ${fmtINR(_slipRows[i].amount)}) ka naam likhein`); return; }
+      const pan = get("sl-pan", i).toUpperCase();
+      if (pan && !/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan)) { toast(`⚠ Line ${i + 1} ka PAN galat hai (jaise ABCDE1234F)`); return; }
+      picked.push({ i, name, addr: get("sl-addr", i), pan });
+    }
+    if (!picked.length) { toast("⚠ Koi receipt chuni nahi gayi"); return; }
+
+    const lines = st.acctLines || [];
+    const mode = lines.filter(l => l.type === "Dr" && l.ledgerId && Number(l.amount) > 0)
+      .map(l => getLedgerName(l.ledgerId)).join(", ");
+    const cfg = getCfg();
+    const hasQr = !!(DB.company && DB.company.upiQr);
+    const qrOn = !!cfg.voucher["qr_Receipt"];
+    if (qrOn && !hasQr) toast("ℹ UPI QR laga nahi hai — F3 me UPI ID bhar kar QR banayein");
+    const footer = footerHtml(cfg.company, null, qrOn && hasQr);
+
+    const html = picked.map(p => slipHtml(cfg, {
+      no: _slipRows.length > 1 ? `${st.vchNo}-${_slipRows[p.i].no}` : st.vchNo,
+      date: fmtDate(st.date), name: p.name, addr: p.addr, pan: p.pan,
+      amount: _slipRows[p.i].amount, mode: mode, ref: st.refNo || "", narr: st.narration || "", footer: footer
+    })).join("");
+
+    closeModal();
+    const area = document.getElementById("printArea");
+    area.innerHTML = html;
+    document.body.classList.add("printing");
+    const done = () => {
+      document.body.classList.remove("printing");
+      area.innerHTML = "";
+      window.removeEventListener("afterprint", done);
+    };
+    window.addEventListener("afterprint", done);
+    setTimeout(() => window.print(), 60);
+  };
+
+  // Receipt screen par "Alag-Alag Receipt" button (Cancel jaisa hi simple style)
+  function addSlipButton() {
+    if (typeof VCH_STATE === "undefined" || VCH_STATE.vchType !== "Receipt") return;
+    const save = document.getElementById("saveVchMainBtn");
+    if (!save || document.getElementById("vchSlipBtn")) return;
+    const btn = document.createElement("button");
+    btn.id = "vchSlipBtn";
+    btn.type = "button";
+    btn.className = "btn btn-sec";
+    btn.textContent = "🧾 Alag-Alag Receipt";
+    btn.title = "Har Cr (naam) ki alag receipt print hogi";
+    btn.onclick = () => window.printSeparateReceipts();
+    save.insertAdjacentElement("afterend", btn);
+  }
+  const _origRV = window.renderVoucherEntryScreen;
+  if (typeof _origRV === "function") {
+    window.renderVoucherEntryScreen = function () {
+      const r = _origRV.apply(this, arguments);
+      try { addSlipButton(); } catch (e) {}
+      return r;
+    };
+  }
 })();
