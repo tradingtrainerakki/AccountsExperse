@@ -444,7 +444,7 @@ function computeInventoryStockSummary() {
   });
 
   (DB.vouchers || []).forEach(v => {
-    if (!Array.isArray(v.itemLines) || !v.itemLines.length) return;
+    if (v.cancelled || !Array.isArray(v.itemLines) || !v.itemLines.length) return;
     v.itemLines.forEach(ln => {
       const st = stockMap[ln.itemId];
       if (!st) return;
