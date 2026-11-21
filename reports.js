@@ -884,7 +884,7 @@ function renderStockSummaryScreen() {
 function renderGstr1Screen() {
   document.getElementById("screenTitle").textContent = "GSTR-1 (Outward Supplies)";
   document.getElementById("screenSub").textContent = "B2B, B2CL, B2CS Summary & JSON Export";
-  const sales = (DB.vouchers || []).filter(v => v.type === "Sales" && v.gst);
+  const sales = (DB.vouchers || []).filter(v => v.type === "Sales" && v.gst && !v.cancelled);
   const rows = sales.map((v, i) => {
     const party = getLedger(v.partyLedgerId);
     return `
@@ -913,7 +913,7 @@ function renderGstr1Screen() {
 }
 
 function exportGstr1JSON() {
-  const sales = (DB.vouchers || []).filter(v => v.type === "Sales" && v.gst);
+  const sales = (DB.vouchers || []).filter(v => v.type === "Sales" && v.gst && !v.cancelled);
   const a = document.createElement("a");
   a.href = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(sales, null, 2));
   a.download = `GSTR1_${DB.company.gstin || "export"}.json`;
