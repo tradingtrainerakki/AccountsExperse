@@ -308,4 +308,31 @@
       return r;
     };
   }
+  // --------------------------------------------------------------------------
+  // 6. GATEWAY se "Vouchers Entry" dabane par hamesha NAYA (fresh) voucher khule
+  //    (pehle pichhla edit kiya hua voucher dobara khul jaata tha)
+  // --------------------------------------------------------------------------
+  window.__vchInit = false;
+  const _origOpenV = window.openVoucherScreen;
+  if (typeof _origOpenV === "function") {
+    window.openVoucherScreen = function () {
+      window.__vchInit = true; // is raaste me state pehle se sahi tarah set hoti hai
+      try { return _origOpenV.apply(this, arguments); }
+      finally { window.__vchInit = false; }
+    };
+  }
+
+  const _origNav = window.navigate;
+  if (typeof _origNav === "function") {
+    window.navigate = function (screen) {
+      if (screen === "voucher_entry" && !window.__vchInit && CURRENT_SCREEN === "gateway" &&
+          typeof initVoucherState === "function") {
+        try {
+          const lastType = (typeof VCH_STATE !== "undefined" && VCH_STATE && VCH_STATE.vchType) || "Receipt";
+          initVoucherState(lastType); // naya khaali voucher (editingId = null)
+        } catch (err) { /* ignore */ }
+      }
+      return _origNav.apply(this, arguments);
+    };
+  }
 })();
