@@ -5,6 +5,7 @@
 //   * Cancel se pehle Yes / No ka popup
 //   * Cancelled voucher: Day Book me CANCELLED likha dikhega, Ledger/Group/Reports
 //     me iska asar nahi judega, Voucher No. dobara use nahi hoga, Restore bhi ho sakta hai
+//   * Voucher SAVE karte waqt bhi screen ke beech me "Save? Yes / No" popup
 // Load order: index.html me printsetup.js ke BAAD (sabse last) lagayein.
 // ============================================================================
 (function () {
@@ -46,23 +47,30 @@
   function askPopup(opts) {
     // opts: { title, v, headline, points[], withReason, yesLabel, onYes }
     const pts = (opts.points || []).map(p => `<li>${p}</li>`).join("");
+    const token = String(Date.now()) + Math.random().toString(36).slice(2, 6); // is popup ki pehchaan
     const body = `
-      <div id="cvConfirmBox" style="font-size:13px;line-height:1.6;">
+      <div id="cvConfirmBox" data-cv="${token}" style="font-size:13px;line-height:1.6;">
         <div style="margin-bottom:8px;padding:8px 10px;background:#f1f5f9;border-radius:4px;">
           <b>${e(opts.v.type)}</b> &nbsp;|&nbsp; No: <b>${e(opts.v.vchNo)}</b> &nbsp;|&nbsp; ${e(fmtDate(opts.v.date))} &nbsp;|&nbsp; <b>₹${e(fmtINR(opts.v.amount))}</b>
         </div>
         <div style="font-weight:700;">${opts.headline}</div>
+        ${opts.extra || ""}
         <ul style="margin:8px 0 8px 18px;font-size:12px;color:#475569;">${pts}</ul>
         ${opts.withReason ? `<div class="field"><label>Cancel ka karan (optional)</label><input id="cvReason" placeholder="e.g. Galat entry / Duplicate entry"></div>` : ""}
       </div>`;
     const foot = `<button class="btn btn-sec" onclick="closeModal()">No (N / Esc)</button>
-                  <button class="btn btn-danger" id="cvYesBtn">${opts.yesLabel}</button>`;
+                  <button class="${opts.yesClass || "btn btn-danger"}" id="cvYesBtn">${opts.yesLabel}</button>`;
     showModal(opts.title, body, foot);
     const yes = document.getElementById("cvYesBtn");
-    if (yes) yes.onclick = () => opts.onYes();
+    if (yes) {
+      yes.onclick = () => opts.onYes();
+      if (opts.focusYes) setTimeout(() => yes.focus(), 30);
+    }
     // Y / N keys (jab box khula ho aur koi text box me type na ho)
     const onKey = (ev) => {
-      if (!document.getElementById("cvConfirmBox")) { window.removeEventListener("keydown", onKey, true); return; }
+      const box = document.getElementById("cvConfirmBox");
+      // popup band ho gaya ya koi aur popup aa gaya => ye listener hata do (Y/N ka asar nahi hoga)
+      if (!box || box.dataset.cv !== token || !kbOverlayOpen()) { window.removeEventListener("keydown", onKey, true); return; }
       const tag = (document.activeElement && document.activeElement.tagName || "").toUpperCase();
       if (tag === "INPUT" || tag === "TEXTAREA") return;
       const k = (ev.key || "").toLowerCase();
@@ -143,14 +151,49 @@
     toast("↩ Voucher Restore ho gaya");
   };
 
-  // Cancelled voucher ko normal Save se edit nahi hone dena
+  // --------------------------------------------------------------------------
+  // 3b. SAVE se pehle "Save? Yes / No" popup  (+ Cancelled voucher edit block)
+  // --------------------------------------------------------------------------
+  function voucherTotals(st) {
+    if (st.mode === "item" && typeof isItemCapableVoucher === "function" && isItemCapableVoucher(st.vchType)) return null;
+    let dr = 0, cr = 0;
+    (st.acctLines || []).forEach(l => {
+      const a = Number(l.amount) || 0;
+      if (!l.ledgerId || a <= 0) return;
+      if (l.type === "Dr") dr += a; else cr += a;
+    });
+    return { dr: +dr.toFixed(2), cr: +cr.toFixed(2) };
+  }
+
   const _origSV = window.saveCurrentVoucher;
   if (typeof _origSV === "function") {
     window.saveCurrentVoucher = function () {
-      const id = (typeof VCH_STATE !== "undefined" && VCH_STATE) ? VCH_STATE.editingId : null;
-      const v = id ? findV(id) : null;
-      if (v && v.cancelled) { toast("⛔ Cancelled voucher edit nahi ho sakta — pehle Restore karein"); return; }
-      return _origSV.apply(this, arguments);
+      const st = (typeof VCH_STATE !== "undefined") ? VCH_STATE : null;
+      const id = st ? st.editingId : null;
+      const old = id ? findV(id) : null;
+      if (old && old.cancelled) { toast("⛔ Cancelled voucher edit nahi ho sakta — pehle Restore karein"); return; }
+      const boxOpen = !!document.getElementById("cvConfirmBox") && kbOverlayOpen();
+      if (!st || boxOpen) return _origSV.apply(this, arguments);
+
+      try { if (typeof syncVoucherHeaderFromDOM === "function") syncVoucherHeaderFromDOM(); } catch (err) { /* ignore */ }
+      const t = voucherTotals(st);
+      // Zaroori cheezein adhoori / Dr-Cr barabar nahi => popup ke bajay asli error dikhne do
+      if (!String(st.vchNo || "").trim() || !st.date || (t && (t.dr <= 0 || t.dr !== t.cr))) {
+        return _origSV.apply(this, arguments);
+      }
+      const extra = t ? `<div style="margin:6px 0;font-size:12.5px;">Debit: <b>₹${e(fmtINR(t.dr))}</b> &nbsp;|&nbsp; Credit: <b>₹${e(fmtINR(t.cr))}</b> <span style="color:#15803d;">✓ Matched</span></div>` : "";
+      askPopup({
+        title: "💾 Voucher Save Karein?",
+        v: { type: st.vchType, vchNo: st.vchNo, date: st.date, amount: t ? t.dr : 0 },
+        headline: old ? "Kya aap is voucher ke <b>badlav Save</b> karna chahte hain?" : "Kya aap is voucher ko <b>Save</b> karna chahte hain?",
+        extra: extra,
+        points: [],
+        withReason: false,
+        yesClass: "btn",
+        focusYes: true,
+        yesLabel: "Yes, Save (Y)",
+        onYes: () => { closeModal(); _origSV.call(window); }
+      });
     };
   }
 
