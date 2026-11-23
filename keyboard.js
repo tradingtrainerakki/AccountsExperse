@@ -179,6 +179,19 @@
     }
     return true;
   }
+    // Screen ko scroll karna: jis dibbe me screen scroll hoti hai (screenBody) use dhundo
+  function kbScrollHost(el) {
+    let n = el;
+    while (n && n !== document.body) {
+      const cs = getComputedStyle(n);
+      if (/(auto|scroll)/.test(cs.overflowY) && n.scrollHeight > n.clientHeight + 1) return n;
+      n = n.parentElement;
+    }
+    return document.scrollingElement || document.documentElement;
+  }
+  function kbScrollScreen(el, dir) {
+    kbScrollHost(el).scrollBy({ top: dir * 160, behavior: "auto" });
+  }
 
   // UPDATED: Included table.clean-led-tbl tbody tr[data-vid] so Ledger Vouchers arrow keys work natively
   function getSelectableRows(root) {
@@ -469,12 +482,18 @@
       const rows = getSelectableRows(sb);
       if (!rows.length) return;
       e.preventDefault(); e.stopImmediatePropagation();
-      let idx = rows.findIndex(r => r.classList.contains("kb-sel"));
+      const cur = rows.findIndex(r => r.classList.contains("kb-sel"));
+      const down = k === "ArrowDown";
+      // Pehli / aakhri entry par aur aage dabane par: ghumne ki jagah screen scroll hogi
+      if (cur >= 0 && ((down && cur === rows.length - 1) || (!down && cur === 0))) {
+        kbScrollScreen(sb, down ? 1 : -1);
+        return;
+      }
+      let idx = cur < 0 ? (down ? 0 : rows.length - 1) : cur + (down ? 1 : -1);
       rows.forEach(r => {
         r.classList.remove("kb-sel");
         r.style.removeProperty("background-color");
       });
-      idx = idx < 0 ? (k === "ArrowDown" ? 0 : rows.length - 1) : (idx + (k === "ArrowDown" ? 1 : -1) + rows.length) % rows.length;
       rows[idx].classList.add("kb-sel");
       rows[idx].style.setProperty("background-color", "#fef08a", "important");
       rows[idx].scrollIntoView({ block: "nearest" });
