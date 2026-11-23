@@ -477,6 +477,24 @@
       return;
     }
 
+        // Home / End: seedhe pehli ya aakhri entry par (aur screen upar / neeche tak scroll)
+    if ((k === "Home" || k === "End") && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      const rows = getSelectableRows(sb);
+      if (rows.length) {
+        e.preventDefault(); e.stopImmediatePropagation();
+        const idx = k === "Home" ? 0 : rows.length - 1;
+        rows.forEach(r => {
+          r.classList.remove("kb-sel");
+          r.style.removeProperty("background-color");
+        });
+        rows[idx].classList.add("kb-sel");
+        rows[idx].style.setProperty("background-color", "#fef08a", "important");
+        rows[idx].scrollIntoView({ block: "nearest" });
+        const host = kbScrollHost(sb);
+        host.scrollTo({ top: k === "Home" ? 0 : host.scrollHeight });
+        return;
+      }
+    }
     // Table / Report Row Navigation (Day Book, Ledger Vouchers, Group Summary, Trial Balance, etc.)
     if (k === "ArrowDown" || k === "ArrowUp") {
       const rows = getSelectableRows(sb);
