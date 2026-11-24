@@ -8,6 +8,10 @@
 //     5    Inward nil/exempt/non-GST
 //     6.1  Tax payable | ITC se bhara | Cash me bharna | Byaaj | Late fee   (rule 88A ke order me)
 //
+//   "Bahi vs 3B milaan" (Tally ki Books-vs-Return reconciliation jaisa): accounting-mode ke voucher
+//   (kharcha / Journal / Payment jisme GST ledger me tax chadha ho) 3B me apne aap nahi ginte —
+//   ye table unhe pakadti hai aur ek click me "Other ITC" adjustment bana deti hai.
+//
 //   Data kaha se aata hai (Tally ki tarah):
 //     * Item ki "GST Category"  (Taxable / Nil Rated / Exempt)  -> 3.1(c) aur Table 5
 //     * Stock Group ka "ITC Type" (Inputs / Capital Goods / Input Services / Ineligible) -> 4(A)(5) ya 4(D)
@@ -185,8 +189,75 @@
     return T;
   }
 
+  // --------------------------------------------------------------- Bahi vs 3B milaan
+  function reconcile(ym) {
+    const books = { out: zero4(), inp: zero4() }, doc = { out: zero4(), inp: zero4() };
+    const loose = new Map();   // item-voucher ke baahar ke voucher jinme GST ledger ka asar hai
+    const headOf = (led) => {
+      const hd = String((led && led.taxHead) || "");
+      const m = /^(CGST|SGST|IGST)(_IN)?$/.exec(hd);
+      return m ? { h: m[1][0].toLowerCase(), isIn: !!m[2] } : null;
+    };
+    (DB.vouchers || []).filter(v => (v.date || "").slice(0, 7) === ym && !v.cancelled).forEach(v => {
+      const isItem = !!(v.gst && Array.isArray(v.itemLines) && v.itemLines.length);
+      if (isItem) {
+        const sg = (v.type === "Credit Note" || v.type === "Debit Note") ? -1 : 1;
+        const tgt = (v.type === "Sales" || v.type === "Credit Note") ? doc.out : (v.type === "Purchase" || v.type === "Debit Note") ? doc.inp : null;
+        if (tgt) { tgt.i += sg * (v.gst.igst || 0); tgt.c += sg * (v.gst.cgst || 0); tgt.s += sg * (v.gst.sgst || 0); }
+      }
+      const ens = typeof getVoucherEntries === "function" ? getVoucherEntries(v) : [];
+      ens.forEach(en => {
+        const led = typeof getLedger === "function" ? getLedger(en.ledgerId) : null;
+        if (!led || led.taxType !== "GST") return;
+        const hd = headOf(led); if (!hd) return;
+        const a = Number(en.amount) || 0, dr = en.type === "Dr";
+        const signed = hd.isIn ? (dr ? a : -a) : (dr ? -a : a);      // Input: Dr +  |  Output: Cr +
+        (hd.isIn ? books.inp : books.out)[hd.h] += signed;
+        if (!isItem) {
+          const o = loose.get(v.id) || { v, inp: zero4(), out: zero4() };
+          (hd.isIn ? o.inp : o.out)[hd.h] += signed; loose.set(v.id, o);
+        }
+      });
+    });
+    ["out", "inp"].forEach(k => { HEADS.forEach(h => { books[k][h] = r2(books[k][h]); doc[k][h] = r2(doc[k][h]); }); });
+    const diff = { out: zero4(), inp: zero4() };
+    ["out", "inp"].forEach(k => HEADS.forEach(h => { diff[k][h] = r2(books[k][h] - doc[k][h]); }));
+    return { books, doc, diff, loose: [...loose.values()], any: ["out", "inp"].some(k => HEADS.some(h => Math.abs(diff[k][h]) > 0.5)) };
+  }
+
+  // kisi voucher ka input tax ek click me "Other ITC" adjustment banakar 3B me jodna
+  window.gstAdjFromVoucher = function (vid) {
+    const v = (DB.vouchers || []).find(x => x.id === vid);
+    if (!v) return;
+    const R = reconcile((v.date || "").slice(0, 7));
+    const o = R.loose.find(x => x.v.id === vid);
+    if (!o) return;
+    window.__gstMonth = (v.date || "").slice(0, 7);
+    window.gstAdjOpenForm(null, { nature: "itc_other", date: v.date, igst: Math.max(0, o.inp.i), cgst: Math.max(0, o.inp.c), sgst: Math.max(0, o.inp.s), narr: `ITC: ${v.type} ${v.vchNo}` });
+  };
+
   // --------------------------------------------------------------- screen
   const f2 = (x) => "₹" + e(fmtINR(x));
+  function reconHtml(ym) {
+    const R = reconcile(ym);
+    const sec = (title) => `<div style="font-size:12px;font-weight:800;color:var(--pri-dark);text-transform:uppercase;margin:12px 0 4px;">${title}</div>`;
+    const row = (lab, b, d, df) => `<tr><td>${lab}</td>${HEADS.slice(0, 3).map(h => `<td class="num">${f2(b[h])}</td>`).join("")}${HEADS.slice(0, 3).map(h => `<td class="num">${f2(d[h])}</td>`).join("")}${HEADS.slice(0, 3).map(h => `<td class="num" style="${Math.abs(df[h]) > 0.5 ? "color:#b91c1c;font-weight:700;" : ""}">${f2(df[h])}</td>`).join("")}</tr>`;
+    const looseRows = R.loose.filter(o => HEADS.some(h => Math.abs(o.inp[h]) > 0.005 || Math.abs(o.out[h]) > 0.005)).slice(0, 15).map(o => {
+      const inTot = r2(o.inp.i + o.inp.c + o.inp.s), outTot = r2(o.out.i + o.out.c + o.out.s);
+      return `<tr><td>${e(fmtDate(o.v.date))}</td><td>${e(o.v.type)} <b>${e(o.v.vchNo)}</b></td>
+        <td class="num">${inTot ? "Input " + f2(inTot) : ""}${outTot ? (inTot ? "<br>" : "") + "Output " + f2(outTot) : ""}</td>
+        <td>${inTot > 0 ? `<button class="btn btn-sec" style="padding:2px 8px;font-size:11px;" onclick="window.gstAdjFromVoucher('${e(o.v.id)}')">➕ ITC 3B me jodein</button>` : ""}</td></tr>`;
+    }).join("");
+    const head = `<tr><th rowspan="2">Tax</th><th colspan="3" style="text-align:center;">Bahi (GST ledger)</th><th colspan="3" style="text-align:center;">3B me item-bills se</th><th colspan="3" style="text-align:center;">Antar</th></tr>
+      <tr>${["IGST", "CGST", "SGST", "IGST", "CGST", "SGST", "IGST", "CGST", "SGST"].map(c => `<th class="num">${c}</th>`).join("")}</tr>`;
+    return `${sec("🔍 Bahi vs 3B Milaan (Books vs Return)")}
+      <div class="form-card" style="padding:0;overflow:hidden;"><table class="tally-tbl"><thead>${head}</thead><tbody>
+        ${row("Output tax (Cr − Dr)", R.books.out, R.doc.out, R.diff.out)}${row("Input tax / ITC (Dr − Cr)", R.books.inp, R.doc.inp, R.diff.inp)}</tbody></table></div>
+      ${R.any || looseRows ? `<div class="form-card" style="background:#fffbeb;color:#92400e;font-size:12.5px;">⚠ Bahi aur item-bills ke hisaab me antar hai. Ye aam taur par <b>accounting-mode ke voucher</b> (kharcha, Payment, Journal jisme Input/Output GST ledger me tax chadha ho) ya haath se kiye entry se aata hai — ye 3B me <b>apne aap nahi ginte</b>.
+        Neeche ke voucher dekhkar tay karein; ITC wale voucher "3B me jodein" se Other ITC me chale jayenge. Output tax / Reverse Charge ke liye ➕ GST Adjustment use karein.</div>` : `<div class="form-card" style="color:#15803d;font-weight:700;">✅ Bahi aur 3B (item-bills) ka hisaab milta hai.</div>`}
+      ${looseRows ? `<div class="form-card" style="padding:0;overflow:hidden;"><table class="tally-tbl"><thead><tr><th>Date</th><th>Voucher</th><th class="num">GST ledger me</th><th></th></tr></thead><tbody>${looseRows}</tbody></table></div>` : ""}`;
+  }
+
   function render3BScreen() {
     document.getElementById("screenTitle").textContent = "GSTR-3B (Tax Payable & ITC)";
     document.getElementById("screenSub").textContent = "Mahine ke hisaab se | Portal jaisi tables | Esc: Back";
@@ -244,6 +315,7 @@
       ${sec("4. Eligible ITC")}<div class="form-card" style="padding:0;overflow:hidden;">${t4}</div>
       ${sec("5. Values of exempt, nil-rated and non-GST inward supplies")}<div class="form-card" style="padding:0;overflow:hidden;">${t5}</div>
       ${sec("6.1 Payment of tax")}<div class="form-card" style="padding:0;overflow:hidden;">${t6}</div>
+      ${reconHtml(ym)}
       <div class="form-card" style="font-size:12px;color:#475569;">
         ℹ ITC lagane ka order (Rule 88A): IGST credit pehle IGST, phir CGST, phir SGST; CGST credit pehle CGST, phir IGST; SGST credit pehle SGST, phir IGST.
         Reverse Charge ka tax hamesha cash me; uska ITC cash dene ke baad milta hai, isliye wo is mahine ki liability me nahi ghataya (aage ke ITC me jodta hai).
@@ -303,15 +375,17 @@
       `<button class="btn btn-sec" onclick="closeModal()">Close (Esc)</button><button class="btn" onclick="window.gstAdjOpenForm()">➕ Naya Adjustment</button>`);
   };
 
-  window.gstAdjOpenForm = function (id) {
+  window.gstAdjOpenForm = function (id, prefill) {
     if (!writeGuard()) return;
-    const a = id ? (DB.gstAdj || []).find(x => x.id === id) : null;
+    const found = id ? (DB.gstAdj || []).find(x => x.id === id) : null;
+    const a = found || (prefill ? Object.assign({}, prefill) : null);
+    const isNew = !found;
     const ym = currentMonth();
     const defDate = a ? a.date : (((DB.company.curDate || "").slice(0, 7) === ym) ? DB.company.curDate : ym + "-01");
     const natOpts = NATURES.map(n => `<option value="${n.id}" ${(a && a.nature === n.id) ? "selected" : ""}>${e(n.label)}</option>`).join("");
     const v = (k) => e(a && a[k] != null ? a[k] : "");
     const body = `
-      <input type="hidden" id="gaId" value="${e(a ? a.id : "")}">
+      <input type="hidden" id="gaId" value="${e(found ? found.id : "")}">
       <div class="form-grid" style="grid-template-columns:2fr 1fr;gap:10px;">
         <div class="field"><label>Nature of Adjustment *</label><select id="gaNature">${natOpts}</select></div>
         <div class="field"><label>Date *</label><input type="date" id="gaDate" value="${e(defDate)}"></div>
@@ -330,7 +404,7 @@
         <div class="field gaTaxF"><label>Cess</label><input type="number" step="0.01" min="0" id="gaK" value="${v("cess")}"></div>
       </div>
       <div class="field" style="margin-top:8px;"><label>Narration</label><input id="gaNarr" value="${v("narr")}" placeholder="e.g. Transport freight Nov — GTA"></div>`;
-    showModal(a ? "✏️ GST Adjustment Badlein" : "➕ GST Adjustment", body,
+    showModal(found ? "✏️ GST Adjustment Badlein" : "➕ GST Adjustment", body,
       `<button class="btn btn-sec" onclick="window.gstAdjOpenList()">Back</button><button class="btn" onclick="window.gstAdjSave()">Save (Ctrl+A)</button>`);
 
     const natSel = document.getElementById("gaNature");
@@ -396,5 +470,5 @@
     toast("🗑 Adjustment hata diya");
   };
 
-  window.__gst3b_api = { compute3B, NATURES };
+  window.__gst3b_api = { compute3B, reconcile, NATURES };
 })();
