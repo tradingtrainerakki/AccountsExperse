@@ -12,6 +12,11 @@
 //   (kharcha / Journal / Payment jisme GST ledger me tax chadha ho) 3B me apne aap nahi ginte —
 //   ye table unhe pakadti hai aur ek click me "Other ITC" adjustment bana deti hai.
 //
+//   GST Adjustment ka LEDGER ASAR (Tally ke "GST adjustment journal" jaisa):
+//     Reverse Charge, ITC Reversal, Ineligible ITC, Interest, Late Fee save karte hi ek Journal voucher
+//     (GSA/0001 ...) bante hain jo Duties & Taxes ledger ko sahi Dr/Cr se badalte hain.
+//     Opening ITC, Zero-rated, Non-GST, Other ITC sirf RETURN ke liye hain (bahi me pehle se hai) — voucher nahi banta.
+//
 //   Data kaha se aata hai (Tally ki tarah):
 //     * Item ki "GST Category"  (Taxable / Nil Rated / Exempt)  -> 3.1(c) aur Table 5
 //     * Stock Group ka "ITC Type" (Inputs / Capital Goods / Input Services / Ineligible) -> 4(A)(5) ya 4(D)
@@ -33,16 +38,16 @@
 
   // --------------------------------------------------------------- GST Adjustment ke prakar
   const NATURES = [
-    { id: "opening", label: "Opening ITC Balance (Carry-forward)", hint: "Pichhle mahine / saal se bacha hua ITC — credit ledger ka balance.", fields: "tax" },
-    { id: "rcm", label: "Reverse Charge — Liability & ITC", hint: "Jin kharidari par tax aapko khud bharna hai (jaise GTA / transport freight). Tax cash me bharna padta hai, ITC baad me milta hai.", fields: "rcm" },
-    { id: "rev_rules", label: "ITC Reversal — Rule 38, 42, 43 & Sec 17(5)", hint: "Table 4(B)(1): niyam ke hisaab se ITC wapas.", fields: "tax" },
-    { id: "rev_other", label: "ITC Reversal — Others", hint: "Table 4(B)(2): baaki ITC wapas.", fields: "tax" },
-    { id: "inelig_1705", label: "Ineligible ITC — Sec 17(5) (Blocked)", hint: "Table 4(D)(1): purchase me jo ITC mil nahi sakta (4(A)(5) se ghataya jayega).", fields: "tax" },
-    { id: "zero", label: "Outward — Zero Rated (Export / SEZ)", hint: "Table 3.1(b): export / SEZ supply ki value (aur IGST, agar bhara ho).", fields: "taxval" },
-    { id: "nongst", label: "Outward — Non-GST Supply", hint: "Table 3.1(e): GST ke baahar ki supply ki value.", fields: "val" },
-    { id: "interest", label: "Interest on Late Payment", hint: "Table 5.1: der se bharne par byaaj (cash me).", fields: "tax" },
-    { id: "latefee", label: "Late Fee", hint: "Table 5.1: late fee (cash me).", fields: "tax" },
-    { id: "itc_other", label: "Other Increase of ITC", hint: "Table 4(A)(5) me jodna hai aisa koi aur ITC.", fields: "tax" }
+    { id: "opening", label: "Opening ITC Balance (Carry-forward)", hint: "Pichhle mahine / saal se bacha hua ITC. Sirf RETURN ke liye (ledger ka opening balance alag se bahi me rehta hai) — voucher nahi banta.", fields: "tax", posts: false },
+    { id: "rcm", label: "Reverse Charge — Liability & ITC", hint: "Jin kharidari par tax aapko khud bharna hai (jaise GTA / transport freight). Journal banta hai: Dr Input GST (ITC milne par) / Cr Output GST (RCM). Tax cash me bharna padta hai.", fields: "rcm", posts: true },
+    { id: "rev_rules", label: "ITC Reversal — Rule 38, 42, 43 & Sec 17(5)", hint: "Table 4(B)(1). Journal: Dr ITC Reversed (Expense) / Cr Input GST.", fields: "tax", posts: true },
+    { id: "rev_other", label: "ITC Reversal — Others", hint: "Table 4(B)(2). Journal: Dr ITC Reversed (Expense) / Cr Input GST.", fields: "tax", posts: true },
+    { id: "inelig_1705", label: "Ineligible ITC — Sec 17(5) (Blocked)", hint: "Table 4(D)(1): purchase me chadha ITC jo mil nahi sakta. Journal: Dr Ineligible ITC (Expense) / Cr Input GST.", fields: "tax", posts: true },
+    { id: "zero", label: "Outward — Zero Rated (Export / SEZ)", hint: "Table 3.1(b): export / SEZ supply ki value. Sirf RETURN ke liye (supply Sales voucher me pehle se hai) — voucher nahi banta.", fields: "taxval", posts: false },
+    { id: "nongst", label: "Outward — Non-GST Supply", hint: "Table 3.1(e): GST ke baahar ki supply ki value. Sirf RETURN ke liye — voucher nahi banta.", fields: "val", posts: false },
+    { id: "interest", label: "Interest on Late Payment", hint: "Table 5.1. Journal: Dr Interest on GST (Expense) / Cr Output GST (cash me bharna hai).", fields: "tax", posts: true },
+    { id: "latefee", label: "Late Fee", hint: "Table 5.1. Journal: Dr GST Late Fee (Expense) / Cr Output GST (cash me bharna hai).", fields: "tax", posts: true },
+    { id: "itc_other", label: "Other Increase of ITC", hint: "Aisa ITC jo bahi me (Input GST ledger me) pehle se chadha hai par item-bill se nahi aaya — sirf 3B me jodta hai, voucher nahi banta.", fields: "tax", posts: false }
   ];
   const natureOf = (id) => NATURES.find(n => n.id === id);
 
@@ -213,6 +218,7 @@
         const a = Number(en.amount) || 0, dr = en.type === "Dr";
         const signed = hd.isIn ? (dr ? a : -a) : (dr ? -a : a);      // Input: Dr +  |  Output: Cr +
         (hd.isIn ? books.inp : books.out)[hd.h] += signed;
+        if (v.gstAdjId) { (hd.isIn ? doc.inp : doc.out)[hd.h] += signed; return; }   // adjustment ka voucher 3B ke hisaab me pehle se hai
         if (!isItem) {
           const o = loose.get(v.id) || { v, inp: zero4(), out: zero4() };
           (hd.isIn ? o.inp : o.out)[hd.h] += signed; loose.set(v.id, o);
@@ -309,6 +315,7 @@
         <div style="font-size:13px;font-weight:700;color:var(--pri-dark);">NET CASH PAYABLE — ${monthLabel(ym)} (Tax + Interest + Late Fee)</div>
         <div style="font-size:24px;font-weight:800;color:var(--pri);">${f2(T.cashTotal)}</div>
         <div style="font-size:12px;color:#475569;margin-top:2px;">Aage ke liye bacha ITC: IGST ${f2(T.carry.i)} | CGST ${f2(T.carry.c)} | SGST ${f2(T.carry.s)}</div></div>
+      ${needsBackfill().length ? `<div class="form-card" style="background:#fffbeb;color:#92400e;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">⚠ <b>${needsBackfill().length}</b> GST Adjustment ka ledger (Duties & Taxes) me asar abhi nahi bana hai.<span style="flex:1;"></span><button class="btn btn-sec" onclick="window.gstAdjBackfillAsk()">📒 Ledger asar banayein</button></div>` : ""}
       ${T.notes.map(n => `<div class="form-card" style="color:#92400e;background:#fffbeb;">⚠ ${e(n)}</div>`).join("")}
       ${sec("3.1 Details of Outward Supplies and inward supplies liable to reverse charge")}<div class="form-card" style="padding:0;overflow:hidden;">${t31}</div>
       ${sec("3.2 Inter-State supplies (rajya ke hisaab se)")}<div class="form-card" style="padding:0;overflow:hidden;">${t32}</div>
@@ -354,6 +361,128 @@
     toast("📊 GSTR-3B CSV download ho gayi");
   };
 
+  // --------------------------------------------------------------- Adjustment ka LEDGER ASAR
+  const LEDGER_DEFS = [
+    { id: "L_IGST_RCM", name: "Output IGST (RCM)", group: "Duties & Taxes", taxType: "GST", taxHead: "IGST", opType: "Cr", rcm: true },
+    { id: "L_CGST_RCM", name: "Output CGST (RCM)", group: "Duties & Taxes", taxType: "GST", taxHead: "CGST", opType: "Cr", rcm: true },
+    { id: "L_SGST_RCM", name: "Output SGST (RCM)", group: "Duties & Taxes", taxType: "GST", taxHead: "SGST", opType: "Cr", rcm: true },
+    { id: "L_CESS_OUT", name: "Output Cess", group: "Duties & Taxes", taxType: "GST", taxHead: "CESS", opType: "Cr" },
+    { id: "L_CESS_IN", name: "Input Cess", group: "Duties & Taxes", taxType: "GST", taxHead: "CESS_IN", opType: "Dr" },
+    { id: "L_CESS_RCM", name: "Output Cess (RCM)", group: "Duties & Taxes", taxType: "GST", taxHead: "CESS", opType: "Cr", rcm: true },
+    { id: "L_GST_INTEREST", name: "Interest on GST", group: "Indirect Expenses", opType: "Dr" },
+    { id: "L_GST_LATEFEE", name: "GST Late Fee", group: "Indirect Expenses", opType: "Dr" },
+    { id: "L_ITC_REVERSED", name: "ITC Reversed (Expense)", group: "Indirect Expenses", opType: "Dr" },
+    { id: "L_ITC_BLOCKED", name: "Ineligible ITC (Expensed)", group: "Indirect Expenses", opType: "Dr" }
+  ];
+  const OUT_L = { i: "L_IGST_OUT", c: "L_CGST_OUT", s: "L_SGST_OUT", k: "L_CESS_OUT" };
+  const IN_L = { i: "L_IGST_IN", c: "L_CGST_IN", s: "L_SGST_IN", k: "L_CESS_IN" };
+  const RCM_L = { i: "L_IGST_RCM", c: "L_CGST_RCM", s: "L_SGST_RCM", k: "L_CESS_RCM" };
+
+  function ensureLedger(id) {
+    DB.ledgers = DB.ledgers || [];
+    if (DB.ledgers.some(l => l.id === id)) return;
+    const d = LEDGER_DEFS.find(x => x.id === id);
+    if (d) DB.ledgers.push(Object.assign({ opBal: 0 }, d));
+  }
+
+  // adjustment se banne wale Dr/Cr; null = sirf return ke liye (voucher nahi)
+  function postingFor(a) {
+    const nat = natureOf(a.nature);
+    if (!nat || !nat.posts) return null;
+    const t = { i: +a.igst || 0, c: +a.cgst || 0, s: +a.sgst || 0, k: +a.cess || 0 };
+    const heads = HEADS.filter(h => t[h] > 0);
+    if (!heads.length) return null;
+    const sum = r2(heads.reduce((x, h) => x + t[h], 0));
+    const en = [];
+    const dr = (id, amt) => en.push({ ledgerId: id, type: "Dr", amount: r2(amt) });
+    const cr = (id, amt) => en.push({ ledgerId: id, type: "Cr", amount: r2(amt) });
+    switch (a.nature) {
+      case "rcm":
+        if (a.itcEligible === false) dr("L_ITC_BLOCKED", sum); else heads.forEach(h => dr(IN_L[h], t[h]));
+        heads.forEach(h => cr(RCM_L[h], t[h])); break;
+      case "rev_rules": case "rev_other": dr("L_ITC_REVERSED", sum); heads.forEach(h => cr(IN_L[h], t[h])); break;
+      case "inelig_1705": dr("L_ITC_BLOCKED", sum); heads.forEach(h => cr(IN_L[h], t[h])); break;
+      case "interest": dr("L_GST_INTEREST", sum); heads.forEach(h => cr(OUT_L[h], t[h])); break;
+      case "latefee": dr("L_GST_LATEFEE", sum); heads.forEach(h => cr(OUT_L[h], t[h])); break;
+      default: return null;
+    }
+    return { entries: en, total: sum };
+  }
+
+  function nextGsaNo() {
+    let max = 0;
+    (DB.vouchers || []).forEach(v => { const m = /^GSA\/(\d+)$/.exec(String(v.vchNo || "")); if (m) max = Math.max(max, parseInt(m[1], 10)); });
+    return "GSA/" + String(max + 1).padStart(4, "0");
+  }
+
+  // adjustment ke saath judne wala Journal voucher banana / badalna / cancel karna
+  function syncAdjVoucher(adj) {
+    const nat = natureOf(adj.nature);
+    const post = postingFor(adj);
+    let v = adj.voucherId ? (DB.vouchers || []).find(x => x.id === adj.voucherId) : null;
+    if (!post) {
+      if (v && !v.cancelled) { v.cancelled = true; v.cancelledAt = new Date().toISOString(); v.cancelReason = "GST Adjustment badal gaya (ab sirf return ke liye)"; }
+      return;
+    }
+    post.entries.forEach(en => ensureLedger(en.ledgerId));
+    const narration = `GST Adjustment — ${nat.label}${adj.narr ? ": " + adj.narr : ""}`;
+    const dr = post.entries.find(x => x.type === "Dr"), cr = post.entries.find(x => x.type === "Cr");
+    if (v) {
+      Object.assign(v, { date: adj.date, entries: post.entries, amount: post.total, narration, drLedgerId: dr.ledgerId, crLedgerId: cr.ledgerId });
+      delete v.cancelled; delete v.cancelledAt; delete v.cancelReason;
+    } else {
+      const no = nextGsaNo();
+      v = { id: uid("V"), vchNo: no, date: adj.date, type: "Journal", mode: "acct", refNo: "", partyLedgerId: "", salesPurcLedgerId: "", posState: "",
+        rcm: false, bill: { type: "", ref: no }, narration, amount: post.total, drLedgerId: dr.ledgerId, crLedgerId: cr.ledgerId,
+        entries: post.entries, itemLines: [], gst: null, gstAdjId: adj.id };
+      DB.vouchers = DB.vouchers || [];
+      DB.vouchers.push(v);
+      adj.voucherId = v.id;
+    }
+  }
+  const needsBackfill = () => (DB.gstAdj || []).filter(a => !a.voucherId && postingFor(a));
+
+  window.gstAdjBackfillAsk = function () {
+    if (!writeGuard()) return;
+    const list = needsBackfill();
+    if (!list.length) return;
+    showModal("📒 Purane Adjustments ka Ledger Asar Banayein?",
+      `<div id="gaBackBox" style="font-size:13px;line-height:1.6;">
+        <b>${list.length}</b> GST Adjustment ke liye Journal voucher (GSA/…) banenge aur <b>Duties & Taxes ledger ka balance badlega</b>.
+        <ul style="margin:8px 0 8px 18px;font-size:12px;color:#475569;">
+          <li>Agar aapne inhe pehle se haath se Journal me chadha diya hai, to <b>dohra asar</b> hoga — pehle wo Journal cancel karein.</li>
+          <li>Opening ITC, Zero-rated, Non-GST aur Other ITC par koi voucher nahi banega.</li>
+          <li>Ye ek baar ka kaam hai; baad ke naye adjustments khud bante hain.</li></ul>
+        <b>Backup (Ctrl+E) lene ke baad hi aage badhein.</b></div>`,
+      `<button class="btn btn-sec" onclick="closeModal()">No (N / Esc)</button><button class="btn btn-danger" onclick="window.gstAdjBackfillDo()">Yes, Voucher Banayein</button>`);
+  };
+  window.gstAdjBackfillDo = function () {
+    if (!writeGuard()) return;
+    const list = needsBackfill();
+    list.forEach(a => syncAdjVoucher(a));
+    saveDB();
+    closeModal();
+    render3BScreen();
+    toast(`✅ ${list.length} adjustment ka ledger asar ban gaya`);
+  };
+
+  // is system-voucher ko normal screen se badalne / cancel / delete se roko (adjustment se hi badlein)
+  const isAdjVoucher = (id) => { const v = (DB.vouchers || []).find(x => x.id === id); return !!(v && v.gstAdjId); };
+  const lockMsg = () => toast("🔒 Ye voucher GST Adjustment se bana hai — 3B screen → GST Adjustments se badlein");
+  [["cancelVoucherAsk"], ["restoreVoucherAsk"], ["deleteVoucher"]].forEach(([fn]) => {
+    const orig = window[fn];
+    if (typeof orig !== "function") return;
+    window[fn] = function (vid) { if (isAdjVoucher(vid)) { lockMsg(); return; } return orig.apply(this, arguments); };
+  });
+  const _scv2 = window.saveCurrentVoucher;
+  if (typeof _scv2 === "function") {
+    window.saveCurrentVoucher = function () {
+      const id = (typeof VCH_STATE !== "undefined" && VCH_STATE) ? VCH_STATE.editingId : null;
+      if (id && isAdjVoucher(id)) { lockMsg(); return; }
+      return _scv2.apply(this, arguments);
+    };
+  }
+
   // --------------------------------------------------------------- GST Adjustment (list / form)
   function writeGuard() {
     if (typeof canWriteData === "function" && !canWriteData()) { toast("👁️ Read-Only Mode: adjustment ki permission nahi hai!"); return false; }
@@ -367,11 +496,12 @@
     const rows = list.map((a, i) => `<tr>
       <td>${i + 1}</td><td>${e(fmtDate(a.date))}</td><td><b>${e((natureOf(a.nature) || {}).label || a.nature)}</b>${a.narr ? `<div style="font-size:11px;color:#64748b;">${e(a.narr)}</div>` : ""}</td>
       <td class="num">${a.taxable ? f2(a.taxable) : "-"}</td><td class="num">${f2(a.igst || 0)}</td><td class="num">${f2(a.cgst || 0)}</td><td class="num">${f2(a.sgst || 0)}</td>
+      <td style="font-size:11.5px;">${a.voucherId ? `<b>${e(((DB.vouchers || []).find(x => x.id === a.voucherId) || {}).vchNo || "-")}</b>` : (postingFor(a) ? '<span style="color:#b45309;">⚠ banana baaki</span>' : '<span style="color:#64748b;">sirf return</span>')}</td>
       <td style="white-space:nowrap;"><button class="btn btn-sec" style="padding:2px 7px;font-size:11px;" onclick="window.gstAdjOpenForm('${e(a.id)}')">Edit</button>
       <button class="btn btn-sec cv-red" style="padding:2px 7px;font-size:11px;" onclick="window.gstAdjDeleteAsk('${e(a.id)}')">Del</button></td></tr>`).join("");
     showModal(`GST Adjustments — ${monthLabel(ym)}`,
-      `<div style="max-height:60vh;overflow:auto;"><table class="tally-tbl"><thead><tr><th>#</th><th>Date</th><th>Nature</th><th class="num">Taxable</th><th class="num">IGST</th><th class="num">CGST</th><th class="num">SGST</th><th></th></tr></thead>
-       <tbody>${rows || `<tr><td colspan="8" style="text-align:center;padding:16px;color:var(--muted);">Is mahine koi adjustment nahi.</td></tr>`}</tbody></table></div>`,
+      `<div style="max-height:60vh;overflow:auto;"><table class="tally-tbl"><thead><tr><th>#</th><th>Date</th><th>Nature</th><th class="num">Taxable</th><th class="num">IGST</th><th class="num">CGST</th><th class="num">SGST</th><th>Ledger asar</th><th></th></tr></thead>
+       <tbody>${rows || `<tr><td colspan="9" style="text-align:center;padding:16px;color:var(--muted);">Is mahine koi adjustment nahi.</td></tr>`}</tbody></table></div>`,
       `<button class="btn btn-sec" onclick="closeModal()">Close (Esc)</button><button class="btn" onclick="window.gstAdjOpenForm()">➕ Naya Adjustment</button>`);
   };
 
@@ -445,7 +575,9 @@
     DB.gstAdj = DB.gstAdj || [];
     const id = g("gaId");
     const ex = id ? DB.gstAdj.find(x => x.id === id) : null;
-    if (ex) Object.assign(ex, rec); else DB.gstAdj.push(Object.assign({ id: uid("GA") }, rec));
+    let saved;
+    if (ex) { Object.assign(ex, rec); saved = ex; } else { saved = Object.assign({ id: uid("GA") }, rec); DB.gstAdj.push(saved); }
+    syncAdjVoucher(saved);   // Journal voucher (agar is nature me ledger asar banta hai)
     saveDB();
     window.__gstMonth = ym;
     closeModal();
@@ -459,10 +591,15 @@
     if (!a) return;
     showModal("🗑 Adjustment Hatayein?",
       `<div id="gaDelBox" style="font-size:13px;line-height:1.6;"><div style="padding:8px 10px;background:#f1f5f9;border-radius:4px;margin-bottom:8px;"><b>${e((natureOf(a.nature) || {}).label || a.nature)}</b> | ${e(fmtDate(a.date))} | ₹${e(fmtINR(amt(a)))}</div>
-       Kya aap is adjustment ko <b>hata</b> dena chahte hain? Isse 3B ka hisaab badal jayega.</div>`,
+       Kya aap is adjustment ko <b>hata</b> dena chahte hain? Isse 3B ka hisaab badal jayega${a.voucherId ? " aur uska Journal voucher <b>Cancel</b> ho jayega (delete nahi hoga)" : ""}.</div>`,
       `<button class="btn btn-sec" onclick="window.gstAdjOpenList()">No (N / Esc)</button><button class="btn btn-danger" onclick="window.gstAdjDeleteDo('${e(id)}')">Yes, Hatayein</button>`);
   };
   window.gstAdjDeleteDo = function (id) {
+    const old = (DB.gstAdj || []).find(x => x.id === id);
+    if (old && old.voucherId) {   // voucher delete nahi, CANCEL hota hai (hisaab ka record rehta hai)
+      const v = (DB.vouchers || []).find(x => x.id === old.voucherId);
+      if (v && !v.cancelled) { v.cancelled = true; v.cancelledAt = new Date().toISOString(); v.cancelReason = "GST Adjustment hata diya gaya"; }
+    }
     DB.gstAdj = (DB.gstAdj || []).filter(x => x.id !== id);
     saveDB();
     render3BScreen();
@@ -470,5 +607,5 @@
     toast("🗑 Adjustment hata diya");
   };
 
-  window.__gst3b_api = { compute3B, reconcile, NATURES };
+  window.__gst3b_api = { compute3B, reconcile, postingFor, syncAdjVoucher, NATURES };
 })();
